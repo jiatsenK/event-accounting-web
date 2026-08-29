@@ -4,7 +4,6 @@
   else root.EventAccountingDomain = api;
 })(typeof self !== 'undefined' ? self : this, function () {
   const PAYMENT_METHODS = ['公司轉帳', '活動零用金', '個人代墊'];
-  const COMPLETED_REIMBURSEMENT_STATUSES = new Set(['已核銷', '核銷完成', '已完成']);
 
   function normalizeAmount(value) {
     const amount = Number(String(value ?? '').replace(/,/g, '').trim());
@@ -51,6 +50,36 @@
     return (expenses || []).reduce((sum, row) => sum + expenseAmount(row), 0);
   }
 
+  function isPendingPersonalAdvance(row) {
+    return row && row.payment_method === '個人代墊' && String(row.reimbursement_status || '').trim() === '待核銷';
+  }
+
+  function isPettyCashDeduction(row) {
+    return row && (row.payment_method === '活動零用金' || isPendingPersonalAdvance(row));
+  }
+
+  function summarizePettyCashSettlement(activity, expenses) {
+    const advance = optionalNonNegativeNumber(activity && activity.petty_cash_advance, '零用金暫支');
+    const items = (expenses || [])
+      .filter(isPettyCashDeduction)
+      .map(row => ({
+        expense_id: String(row.expense_id || ''),
+        date: String(row.date || ''),
+        item: String(row.item || ''),
+        payment_method: String(row.payment_method || ''),
+        payer: String(row.payer || ''),
+        reimbursement_status: String(row.reimbursement_status || ''),
+        amount: expenseAmount(row)
+      }));
+    const deductionTotal = items.reduce((sum, row) => sum + row.amount, 0);
+    return {
+      advance,
+      deductionTotal,
+      settlementAmount: advance === null ? null : advance - deductionTotal,
+      items
+    };
+  }
+
   function expenseEditableFieldsEqual(left, right) {
     if (!left || !right) return false;
     return String(left.date || '') === String(right.date || '') &&
@@ -79,16 +108,12 @@
   function summarizeDashboard(activity, expenses) {
     const rows = expenses || [];
     const budget = optionalNonNegativeNumber(activity && activity.budget, '活動預算');
-    const pettyCashAdvance = optionalNonNegativeNumber(activity && activity.petty_cash_advance, '零用金暫支');
     const actualExpense = summarizeExpenses(rows);
-    const pettyCashUsed = rows
-      .filter(row => row.payment_method === '活動零用金')
-      .reduce((sum, row) => sum + expenseAmount(row), 0);
+    const settlement = summarizePettyCashSettlement(activity, rows);
 
     const pendingByPayer = new Map();
     rows.forEach(row => {
-      if (row.payment_method !== '個人代墊') return;
-      if (COMPLETED_REIMBURSEMENT_STATUSES.has(String(row.reimbursement_status || '').trim())) return;
+      if (!isPendingPersonalAdvance(row)) return;
       const payer = String(row.payer || '').trim();
       if (!payer) throw new Error('個人代墊缺少支付人');
       pendingByPayer.set(payer, (pendingByPayer.get(payer) || 0) + expenseAmount(row));
@@ -98,9 +123,9 @@
       budget,
       actualExpense,
       budgetRemaining: budget === null ? null : budget - actualExpense,
-      pettyCashAdvance,
-      pettyCashUsed,
-      pettyCashRemaining: pettyCashAdvance === null ? null : pettyCashAdvance - pettyCashUsed,
+      pettyCashAdvance: settlement.advance,
+      pettyCashUsed: settlement.deductionTotal,
+      pettyCashRemaining: settlement.settlementAmount,
       pendingAdvances: Array.from(pendingByPayer, ([payer, amount]) => ({ payer, amount }))
     };
   }
@@ -110,6 +135,7 @@
     normalizeAmount,
     validateExpense,
     summarizeExpenses,
+    summarizePettyCashSettlement,
     summarizeDashboard,
     expenseEditableFieldsEqual,
     findDuplicateExpense
