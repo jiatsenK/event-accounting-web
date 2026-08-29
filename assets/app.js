@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzUzlcic8y8OhaxncTt8gc33TAsyemOy-3ezgUSelHeUtH85kY-dJ1tv5haD6Md6LIsQA/exec';
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycby7m4fJywm-J0Nm3bUtYVgVt2oGOzn-XaE4AvVMDRh-AWMFy6gZY69bZxMnykUE3JNP1Q/exec';
 const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026' };
 const $ = (sel) => document.querySelector(sel);
 
