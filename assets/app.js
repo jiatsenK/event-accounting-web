@@ -1,6 +1,6 @@
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
 const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
-const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026', expenses: [], editingExpenseId: '' };
+const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026', expenses: [], editingExpenseId: '', backendVersion: '', capabilities: [] };
 const $ = (sel) => document.querySelector(sel);
 
 function loadConfig() {
@@ -157,6 +157,8 @@ function render(data) {
   const activity = data.activity || {};
   const expenses = data.expenses || [];
   state.expenses = expenses;
+  state.backendVersion = String(data.backend_version || '');
+  state.capabilities = Array.isArray(data.capabilities) ? data.capabilities : [];
   const summary = EventAccountingDomain.summarizeDashboard(activity, expenses);
 
   $('#activityName').textContent = activity.name || '活動名稱未設定';
@@ -215,6 +217,9 @@ async function submitExpense(event) {
     if (duplicate) throw new Error('疑似重複支出：已有相同日期、項目與金額的紀錄');
 
     if (state.editingExpenseId) {
+      if (!state.capabilities.includes('update_expense')) {
+        throw new Error('目前 GAS 後端尚未更新到支援修改支出的版本，請先更新目前部署。');
+      }
       const current = state.expenses.find(row => String(row.expense_id || '') === state.editingExpenseId);
       if (!current) throw new Error('找不到要修改的支出，請重新載入頁面');
       if (EventAccountingDomain.expenseEditableFieldsEqual(current, expense)) {
@@ -243,6 +248,12 @@ async function submitExpense(event) {
 }
 
 function startEditExpense(expenseId) {
+  if (!state.capabilities.includes('update_expense')) {
+    setExpenseStatus('目前 GAS 後端尚未更新到支援修改支出的版本，請先更新目前部署。', true);
+    $('#expenseEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
   const row = state.expenses.find(expense => String(expense.expense_id || '') === String(expenseId || ''));
   if (!row) {
     setExpenseStatus('找不到要修改的支出，請重新載入頁面', true);
