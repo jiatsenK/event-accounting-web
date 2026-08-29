@@ -288,9 +288,19 @@ function resetExpenseForm() {
   $('#cancelEdit').hidden = true;
 }
 
-function generatePettyCashReport() {
+function downloadSpreadsheetAsExcel(downloadUrl, fileName) {
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = fileName || '零用金支出表.xlsx';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function generatePettyCashReport() {
   if (!state.capabilities.includes('generate_petty_cash_report')) {
-    setReportStatus('目前 GAS 後端尚未更新到支援產生零用金支出表的版本，請先更新目前部署。', true);
+    setReportStatus('目前 GAS 後端尚未更新到支援下載零用金支出表的版本，請先更新目前部署。', true);
     return;
   }
   if (!state.apiUrl || !state.token) {
@@ -298,24 +308,28 @@ function generatePettyCashReport() {
     return;
   }
 
-  const targetName = 'petty-cash-report-' + Date.now();
-  const reportWindow = window.open('', targetName);
-  if (!reportWindow) {
-    setReportStatus('瀏覽器阻擋了新分頁，請允許彈出式視窗後再試一次。', true);
-    return;
-  }
-  reportWindow.document.write('<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif;padding:24px">正在產生零用金支出表…</p>');
-  reportWindow.document.close();
+  const button = $('#generatePettyCashReport');
+  button.disabled = true;
+  setReportStatus('正在產生 Excel…');
+
+  const iframeName = 'petty-cash-report-' + Date.now();
+  const iframe = document.createElement('iframe');
+  iframe.name = iframeName;
+  iframe.style.display = 'none';
+  iframe.setAttribute('aria-hidden', 'true');
 
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = state.apiUrl;
-  form.target = targetName;
+  form.target = iframeName;
   form.style.display = 'none';
+  form.setAttribute('aria-hidden', 'true');
+
   const values = {
     action: 'generate_petty_cash_report',
     activity_id: state.activityId,
-    token: state.token
+    token: state.token,
+    origin: location.origin
   };
   Object.entries(values).forEach(([name, value]) => {
     const input = document.createElement('input');
@@ -324,11 +338,38 @@ function generatePettyCashReport() {
     form.appendChild(input);
   });
 
-  document.body.appendChild(form);
-  setReportStatus('正在產生零用金支出表…');
+  let serverResult = null;
+  const onMessage = (event) => {
+    if (event.source !== iframe.contentWindow) return;
+    const message = event.data;
+    if (!message || message.type !== 'event-accounting-result') return;
+    serverResult = message.payload || { ok: false, error: 'GAS 回覆格式錯誤' };
+  };
+  window.addEventListener('message', onMessage);
+
+  document.body.append(iframe, form);
   form.submit();
-  form.remove();
-  setReportStatus('已送出產表，結果會在新分頁開啟。');
+
+  try {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await sleep(attempt === 0 ? 500 : 500);
+      if (!serverResult) continue;
+      if (!serverResult.ok) throw new Error(serverResult.error || '產生 Excel 失敗');
+      const data = serverResult.data || {};
+      if (!data.download_url) throw new Error('GAS 沒有回傳可下載的 Excel');
+      downloadSpreadsheetAsExcel(data.download_url, data.file_name);
+      setReportStatus('Excel 已開始下載');
+      return;
+    }
+    throw new Error('尚未收到 Excel 產生結果，請稍後再試');
+  } catch (err) {
+    setReportStatus(err && err.message ? err.message : '下載失敗', true);
+  } finally {
+    window.removeEventListener('message', onMessage);
+    form.remove();
+    iframe.remove();
+    button.disabled = false;
+  }
 }
 
 function setMoneyMetric(selector, value) {
