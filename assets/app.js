@@ -288,6 +288,49 @@ function resetExpenseForm() {
   $('#cancelEdit').hidden = true;
 }
 
+function generatePettyCashReport() {
+  if (!state.capabilities.includes('generate_petty_cash_report')) {
+    setReportStatus('目前 GAS 後端尚未更新到支援產生零用金支出表的版本，請先更新目前部署。', true);
+    return;
+  }
+  if (!state.apiUrl || !state.token) {
+    requestToken('請先輸入活動帳務存取碼。');
+    return;
+  }
+
+  const targetName = 'petty-cash-report-' + Date.now();
+  const reportWindow = window.open('', targetName);
+  if (!reportWindow) {
+    setReportStatus('瀏覽器阻擋了新分頁，請允許彈出式視窗後再試一次。', true);
+    return;
+  }
+  reportWindow.document.write('<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif;padding:24px">正在產生零用金支出表…</p>');
+  reportWindow.document.close();
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = state.apiUrl;
+  form.target = targetName;
+  form.style.display = 'none';
+  const values = {
+    action: 'generate_petty_cash_report',
+    activity_id: state.activityId,
+    token: state.token
+  };
+  Object.entries(values).forEach(([name, value]) => {
+    const input = document.createElement('input');
+    input.name = name;
+    input.value = value ?? '';
+    form.appendChild(input);
+  });
+
+  document.body.appendChild(form);
+  setReportStatus('正在產生零用金支出表…');
+  form.submit();
+  form.remove();
+  setReportStatus('已送出產表，結果會在新分頁開啟。');
+}
+
 function setMoneyMetric(selector, value) {
   const el = $(selector);
   el.className = 'value';
@@ -321,6 +364,12 @@ function setExpenseStatus(text, error = false) {
   el.className = error ? 'status form-status error' : 'status form-status';
 }
 
+function setReportStatus(text, error = false) {
+  const el = $('#reportStatus');
+  el.textContent = text;
+  el.className = error ? 'status form-status error' : 'status form-status';
+}
+
 function money(v) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(Number(v));
 }
@@ -333,6 +382,7 @@ $('#saveConfig').addEventListener('click', saveConfig);
 $('#tokenInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') saveConfig(); });
 $('#expenseForm').addEventListener('submit', submitExpense);
 $('#cancelEdit').addEventListener('click', () => { resetExpenseForm(); setExpenseStatus(''); });
+$('#generatePettyCashReport').addEventListener('click', generatePettyCashReport);
 $('#expenseRows').addEventListener('click', (event) => {
   const button = event.target.closest('[data-edit-expense]');
   if (button) startEditExpense(button.dataset.editExpense);
