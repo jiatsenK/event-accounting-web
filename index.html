@@ -48,6 +48,17 @@
           }
           ['G', 'H', 'I'].forEach(column => { sheet.getColumn(column).numFmt = '#,##0;[Red](#,##0);0'; });
 
+          const lastExpenseRow = finalRow - 1;
+          if (lastExpenseRow >= 3) {
+            for (let column = 1; column <= 9; column += 1) {
+              const cell = sheet.getRow(lastExpenseRow).getCell(column);
+              cell.border = {
+                ...(cell.border || {}),
+                bottom: { style: 'double', color: { argb: 'FF000000' } }
+              };
+            }
+          }
+
           const dashboard = EventAccountingDomain.summarizeDashboard(state.activity, state.expenses);
           const settlement = EventAccountingDomain.summarizePettyCashSettlement(state.activity, state.expenses);
           const numberText = value => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value || 0));
