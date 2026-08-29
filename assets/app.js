@@ -223,7 +223,7 @@ function startEditExpense(expenseId) {
   state.editingExpenseId = String(row.expense_id || '');
   const form = $('#expenseForm');
   const setFieldValue = (name, value) => {
-    const field = form.elements.namedItem(name);
+    const field = form.querySelector(`[name="${name}"]`);
     if (field) field.value = value ?? '';
   };
   setFieldValue('date', row.date);
