@@ -222,13 +222,17 @@ function startEditExpense(expenseId) {
 
   state.editingExpenseId = String(row.expense_id || '');
   const form = $('#expenseForm');
-  form.elements.date.value = row.date || '';
-  form.elements.item.value = row.item || '';
-  form.elements.category.value = row.category || '';
-  form.elements.amount.value = row.amount || '';
-  form.elements.payment_method.value = row.payment_method || '';
-  form.elements.payer.value = row.payer || '';
-  form.elements.note.value = row.note || '';
+  const setFieldValue = (name, value) => {
+    const field = form.elements.namedItem(name);
+    if (field) field.value = value ?? '';
+  };
+  setFieldValue('date', row.date);
+  setFieldValue('item', row.item);
+  setFieldValue('category', row.category);
+  setFieldValue('amount', row.amount);
+  setFieldValue('payment_method', row.payment_method);
+  setFieldValue('payer', row.payer);
+  setFieldValue('note', row.note);
   $('#expenseFormTitle').textContent = '修改支出';
   $('#submitExpenseButton').textContent = '儲存修改';
   $('#cancelEdit').hidden = false;
