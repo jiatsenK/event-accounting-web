@@ -16,5 +16,5 @@
 <div class="card"><h2>新增支出</h2><form id="expenseForm"><div class="row"><input name="date" type="date" required><input name="amount" type="number" min="1" step="1" placeholder="金額" required></div><input name="item" placeholder="項目，例如：車資" required><div class="row"><select name="payment_method" required><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select><input name="payer" placeholder="支付人，個人代墊時必填"></div><textarea name="note" placeholder="備註（選填）"></textarea><button type="submit">登記支出</button></form><div id="status" class="status"></div></div>
 <div class="card" style="margin-top:14px"><h2>支出明細</h2><div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>支付方式</th><th>支付人</th><th class="num">金額</th></tr></thead><tbody id="expenseRows"><tr><td colspan="5" class="empty">讀取中…</td></tr></tbody></table></div></div>
 </div>
-<script src="assets/domain.js"></script><script src="assets/app.js?v=20260829-2"></script>
+<script src="assets/domain.js"></script><script src="assets/app.js?v=20260829-3"></script>
 </body></html>
