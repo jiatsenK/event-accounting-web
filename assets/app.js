@@ -416,7 +416,7 @@ async function generatePettyCashReport() {
       }
     });
 
-    sheet.mergeCells('A1:K1');
+    sheet.mergeCells('A1:I1');
     const title = sheet.getCell('A1');
     title.value = `${activity.name || state.activityId}零用金費用明細`;
     title.font = { name: 'Microsoft JhengHei', size: 18, bold: true };
@@ -432,7 +432,7 @@ async function generatePettyCashReport() {
 
     const firstDataRow = 3;
     const first = sheet.getRow(firstDataRow);
-    first.values = ['', '', reportDate(applicationDate), '零用金請款', '', '', '', '', settlement.advance, '', ''];
+    first.values = ['', reportDate(applicationDate), '零用金請款', '', '', '', '', settlement.advance, '', '', ''];
     first.getCell(9).value = { formula: `H${firstDataRow}-G${firstDataRow}`, result: settlement.advance };
     applyLedgerRowStyle(first);
 
@@ -442,7 +442,6 @@ async function generatePettyCashReport() {
       runningBalance -= row.amount;
       const excelRow = sheet.getRow(rowNumber);
       excelRow.values = [
-        '',
         index + 1,
         reportDate(row.date),
         row.vendor || row.item,
@@ -465,11 +464,11 @@ async function generatePettyCashReport() {
     const finalRowNumber = firstDataRow + 1 + deductions.length;
     const finalRow = sheet.getRow(finalRowNumber);
     if (settlement.settlementAmount > 0) {
-      finalRow.values = ['', '', '', '零用金匯回', '', '', '', settlement.settlementAmount, '', 0, '', ''];
+      finalRow.values = ['', '', '零用金匯回', '', '', '', settlement.settlementAmount, '', 0, '', ''];
     } else if (settlement.settlementAmount < 0) {
-      finalRow.values = ['', '', '', '公司補款', '', '', '', '', Math.abs(settlement.settlementAmount), 0, '', ''];
+      finalRow.values = ['', '', '公司補款', '', '', '', '', Math.abs(settlement.settlementAmount), 0, '', ''];
     } else {
-      finalRow.values = ['', '', '', '沖銷完成', '', '', '', '', '', 0, '', ''];
+      finalRow.values = ['', '', '沖銷完成', '', '', '', '', '', 0, '', ''];
     }
     finalRow.getCell(9).value = {
       formula: `I${finalRowNumber - 1}-G${finalRowNumber}+H${finalRowNumber}`,
@@ -502,7 +501,7 @@ async function generatePettyCashReport() {
     sheet.getColumn(16).width = 16;
     sheet.getColumn(16).numFmt = '#,##0;[Red](#,##0);-';
 
-    sheet.pageSetup.printArea = `A1:J${finalRowNumber}`;
+    sheet.pageSetup.printArea = `A1:I${finalRowNumber}`;
     sheet.pageSetup.printTitlesRow = '1:2';
     sheet.headerFooter.oddFooter = `&L零用金申請日：${applicationDate}&R需沖銷：${signedMoney(settlement.settlementAmount)}`;
 
