@@ -113,7 +113,7 @@ async function apiWrite(fields) {
 }
 
 async function refresh() {
-  setStatus('讀取中…');
+  setStatus('正在讀取活動帳務…');
   try {
     const data = await apiRead('activity', { activity_id: state.activityId });
     render(data);
@@ -126,13 +126,39 @@ async function refresh() {
 }
 
 function render(data) {
-  $('#activityName').textContent = data.activity.name || data.activity.activity_id;
-  $('#budget').textContent = money(data.activity.budget);
-  const total = EventAccountingDomain.summarizeExpenses(data.expenses);
-  $('#total').textContent = money(total);
-  $('#expenseRows').innerHTML = data.expenses.length ? data.expenses.map(r => `
-    <tr><td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.item)}</td><td>${escapeHtml(r.payment_method)}</td><td>${escapeHtml(r.payer || '')}</td><td class="num">${money(r.amount)}</td></tr>
-  `).join('') : '<tr><td colspan="5" class="empty">目前沒有支出</td></tr>';
+  const activity = data.activity || {};
+  const expenses = data.expenses || [];
+  const summary = EventAccountingDomain.summarizeDashboard(activity, expenses);
+
+  $('#activityName').textContent = activity.name || '活動名稱未設定';
+  $('#activityMeta').textContent = [
+    activity.date ? `活動日期 ${activity.date}` : '活動日期未設定',
+    activity.status || '狀態未設定'
+  ].join(' · ');
+
+  setMoneyMetric('#budget', summary.budget);
+  setMoneyMetric('#actualExpense', summary.actualExpense);
+  setBalanceMetric('#budgetRemaining', summary.budgetRemaining);
+  setMoneyMetric('#pettyCashAdvance', summary.pettyCashAdvance);
+  setMoneyMetric('#pettyCashUsed', summary.pettyCashUsed);
+  setBalanceMetric('#pettyCashRemaining', summary.pettyCashRemaining);
+
+  $('#pendingAdvances').innerHTML = summary.pendingAdvances.length
+    ? summary.pendingAdvances.map(row => `
+      <div class="advance-row"><span>${escapeHtml(row.payer)}</span><strong>${money(row.amount)}</strong></div>
+    `).join('')
+    : '<div class="empty compact">目前沒有待核銷代墊</div>';
+
+  $('#expenseRows').innerHTML = expenses.length ? expenses.map(r => `
+    <tr>
+      <td>${escapeHtml(r.date)}</td>
+      <td>${escapeHtml(r.item)}</td>
+      <td>${escapeHtml(r.payment_method)}</td>
+      <td>${escapeHtml(r.payer || '—')}</td>
+      <td>${escapeHtml(r.reimbursement_status || '—')}</td>
+      <td class="num">${money(r.amount)}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="6" class="empty">目前沒有支出</td></tr>';
 }
 
 async function submitExpense(event) {
@@ -148,7 +174,7 @@ async function submitExpense(event) {
       payer: form.get('payer'),
       note: form.get('note')
     });
-    setStatus('寫入中…');
+    setStatus('正在登記支出…');
     const confirmed = await apiWrite({ action: 'add_expense', ...expense });
     event.currentTarget.reset();
     render(confirmed);
@@ -158,6 +184,27 @@ async function submitExpense(event) {
   }
 }
 
+function setMoneyMetric(selector, value) {
+  const el = $(selector);
+  el.className = 'value';
+  el.textContent = value === null || value === undefined ? '尚未登記' : money(value);
+}
+
+function setBalanceMetric(selector, value) {
+  const el = $(selector);
+  el.className = 'value';
+  if (value === null || value === undefined) {
+    el.textContent = '尚未登記';
+    return;
+  }
+  if (value < 0) {
+    el.textContent = `超出 ${money(Math.abs(value))}`;
+    el.classList.add('danger');
+    return;
+  }
+  el.textContent = money(value);
+}
+
 function setStatus(text, error = false) {
   const el = $('#status');
   el.textContent = text;
@@ -165,7 +212,7 @@ function setStatus(text, error = false) {
 }
 
 function money(v) {
-  return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(Number(v || 0));
+  return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(Number(v));
 }
 
 function escapeHtml(v) {
