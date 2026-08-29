@@ -17,6 +17,7 @@
       activity_id: String(input.activity_id || '').trim(),
       date: String(input.date || '').trim(),
       item: String(input.item || '').trim(),
+      category: String(input.category || '').trim(),
       amount: normalizeAmount(input.amount),
       payment_method: String(input.payment_method || '').trim(),
       payer: String(input.payer || '').trim(),
@@ -50,6 +51,31 @@
     return (expenses || []).reduce((sum, row) => sum + expenseAmount(row), 0);
   }
 
+  function expenseEditableFieldsEqual(left, right) {
+    if (!left || !right) return false;
+    return String(left.date || '') === String(right.date || '') &&
+      String(left.item || '').trim() === String(right.item || '').trim() &&
+      String(left.category || '').trim() === String(right.category || '').trim() &&
+      expenseAmount(left) === normalizeAmount(right.amount) &&
+      String(left.payment_method || '') === String(right.payment_method || '') &&
+      String(left.payer || '').trim() === String(right.payer || '').trim() &&
+      String(left.note || '').trim() === String(right.note || '').trim();
+  }
+
+  function findDuplicateExpense(expenses, candidate, ignoreExpenseId) {
+    const date = String(candidate && candidate.date || '');
+    const item = String(candidate && candidate.item || '').trim();
+    const amount = normalizeAmount(candidate && candidate.amount);
+    const ignoreId = String(ignoreExpenseId || '');
+
+    return (expenses || []).find(row => {
+      if (ignoreId && String(row.expense_id || '') === ignoreId) return false;
+      return String(row.date || '') === date &&
+        String(row.item || '').trim() === item &&
+        expenseAmount(row) === amount;
+    }) || null;
+  }
+
   function summarizeDashboard(activity, expenses) {
     const rows = expenses || [];
     const budget = optionalNonNegativeNumber(activity && activity.budget, '活動預算');
@@ -79,5 +105,13 @@
     };
   }
 
-  return { PAYMENT_METHODS, normalizeAmount, validateExpense, summarizeExpenses, summarizeDashboard };
+  return {
+    PAYMENT_METHODS,
+    normalizeAmount,
+    validateExpense,
+    summarizeExpenses,
+    summarizeDashboard,
+    expenseEditableFieldsEqual,
+    findDuplicateExpense
+  };
 });
