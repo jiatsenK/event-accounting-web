@@ -26,5 +26,5 @@
 <div id="expenseEditor" class="card section"><h2 id="expenseFormTitle">新增支出</h2><form id="expenseForm"><div class="row"><input name="date" type="date" required><input name="amount" type="number" min="1" step="1" placeholder="金額" required></div><div class="row"><input name="item" placeholder="項目，例如：車資" required><input name="category" placeholder="分類（選填）"></div><div class="row"><select name="payment_method" required><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select><input name="payer" placeholder="支付人，個人代墊時必填"></div><textarea name="note" placeholder="備註（選填）"></textarea><div class="form-actions"><button id="submitExpenseButton" type="submit">登記支出</button><button id="cancelEdit" class="secondary" type="button" hidden>取消修改</button></div></form></div>
 <div class="card section"><h2>支出明細</h2><div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>支付方式</th><th>支付人</th><th>核銷狀態</th><th class="num">金額</th><th></th></tr></thead><tbody id="expenseRows"><tr><td colspan="7" class="empty">讀取中…</td></tr></tbody></table></div></div>
 </div>
-<script src="assets/domain.js?v=20260829-5"></script><script src="assets/app.js?v=20260829-5"></script>
+<script src="assets/domain.js?v=20260829-5"></script><script src="assets/app.js?v=20260829-6"></script>
 </body></html>
