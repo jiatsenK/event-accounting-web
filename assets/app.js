@@ -59,43 +59,57 @@ function apiRead(action, args = {}) {
   });
 }
 
-function apiWrite(fields) {
-  return new Promise((resolve, reject) => {
-    if (!state.apiUrl || !state.token) return reject(new Error('尚未輸入存取碼'));
-    const iframeName = 'gas-write-' + Date.now();
-    const iframe = document.createElement('iframe');
-    iframe.name = iframeName;
-    iframe.hidden = true;
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = state.apiUrl;
-    form.target = iframeName;
-    form.hidden = true;
-    const values = { ...fields, token: state.token, origin: location.origin };
-    Object.entries(values).forEach(([name, value]) => {
-      const input = document.createElement('input');
-      input.name = name;
-      input.value = value ?? '';
-      form.appendChild(input);
-    });
-    const timer = setTimeout(() => finish(new Error('GAS 寫入逾時')), 15000);
-    function onMessage(event) {
-      if (event.source !== iframe.contentWindow) return;
-      if (!event.data || event.data.type !== 'event-accounting-result') return;
-      const result = event.data.payload;
-      result.ok ? finish(null, result.data) : finish(new Error(result.error || '寫入失敗'));
-    }
-    function finish(err, data) {
-      clearTimeout(timer);
-      window.removeEventListener('message', onMessage);
-      form.remove();
-      iframe.remove();
-      err ? reject(err) : resolve(data);
-    }
-    window.addEventListener('message', onMessage);
-    document.body.append(iframe, form);
-    form.submit();
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function expenseMatches(row, expense) {
+  return String(row.date || '') === String(expense.date || '') &&
+    String(row.item || '').trim() === String(expense.item || '').trim() &&
+    Number(row.amount || 0) === Number(expense.amount || 0) &&
+    String(row.payment_method || '') === String(expense.payment_method || '') &&
+    String(row.payer || '').trim() === String(expense.payer || '').trim() &&
+    String(row.note || '').trim() === String(expense.note || '').trim();
+}
+
+async function apiWrite(fields) {
+  if (!state.apiUrl || !state.token) throw new Error('尚未輸入存取碼');
+
+  const before = await apiRead('activity', { activity_id: fields.activity_id });
+  const beforeCount = before.expenses.filter(row => expenseMatches(row, fields)).length;
+
+  const iframeName = 'gas-write-' + Date.now();
+  const iframe = document.createElement('iframe');
+  iframe.name = iframeName;
+  iframe.hidden = true;
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = state.apiUrl;
+  form.target = iframeName;
+  form.hidden = true;
+  const values = { ...fields, token: state.token, origin: location.origin };
+  Object.entries(values).forEach(([name, value]) => {
+    const input = document.createElement('input');
+    input.name = name;
+    input.value = value ?? '';
+    form.appendChild(input);
   });
+
+  document.body.append(iframe, form);
+  form.submit();
+
+  try {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await sleep(attempt === 0 ? 500 : 750);
+      const after = await apiRead('activity', { activity_id: fields.activity_id });
+      const afterCount = after.expenses.filter(row => expenseMatches(row, fields)).length;
+      if (afterCount > beforeCount) return after;
+    }
+    throw new Error('尚未確認寫入結果，請重新整理明細後再決定是否重送');
+  } finally {
+    form.remove();
+    iframe.remove();
+  }
 }
 
 async function refresh() {
@@ -104,8 +118,10 @@ async function refresh() {
     const data = await apiRead('activity', { activity_id: state.activityId });
     render(data);
     setStatus('');
+    return data;
   } catch (err) {
     handleError(err);
+    throw err;
   }
 }
 
@@ -133,9 +149,9 @@ async function submitExpense(event) {
       note: form.get('note')
     });
     setStatus('寫入中…');
-    await apiWrite({ action: 'add_expense', ...expense });
+    const confirmed = await apiWrite({ action: 'add_expense', ...expense });
     event.currentTarget.reset();
-    await refresh();
+    render(confirmed);
     setStatus('已登記');
   } catch (err) {
     handleError(err);
