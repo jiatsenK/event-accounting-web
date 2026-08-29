@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>活動帳務</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#252525;background:#f7f7f5}body{max-width:760px;margin:0 auto;padding:24px 16px 56px}h1{font-size:24px;margin:0 0 6px}.muted{color:#777;font-size:14px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}.card{background:white;border:1px solid #e5e5e0;border-radius:10px;padding:16px}.label{font-size:13px;color:#777}.value{font-size:24px;font-weight:650;margin-top:4px}form{display:grid;gap:10px}input,select,textarea,button{font:inherit;padding:10px;border:1px solid #d8d8d2;border-radius:8px;background:white}button{background:#2f4858;color:white;border:none;font-weight:600;cursor:pointer}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #eee}.num{text-align:right}.status{min-height:24px;margin:10px 0;color:#3b6650}.status.error{color:#9b2c2c}.empty{text-align:center;color:#888;padding:24px}.config-note{margin:0 0 10px;color:#666;font-size:14px}@media(max-width:560px){.grid,.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="muted">event-accounting v0.1</div>
+<h1 id="activityName">活動帳務</h1>
+<div id="configPanel" class="card" hidden><h2>第一次設定</h2><p class="config-note">輸入活動帳務存取碼。存取碼只保留在這次瀏覽器工作階段，不會寫進網址或 GitHub。</p><input id="tokenInput" type="password" autocomplete="off" placeholder="存取碼"><button id="saveConfig" type="button" style="margin-top:10px">開始使用</button></div>
+<div id="appContent">
+<div class="grid"><div class="card"><div class="label">活動預算</div><div id="budget" class="value">-</div></div><div class="card"><div class="label">目前實際支出</div><div id="total" class="value">-</div></div></div>
+<div class="card"><h2>新增支出</h2><form id="expenseForm"><div class="row"><input name="date" type="date" required><input name="amount" type="number" min="1" step="1" placeholder="金額" required></div><input name="item" placeholder="項目，例如：車資" required><div class="row"><select name="payment_method" required><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select><input name="payer" placeholder="支付人，個人代墊時必填"></div><textarea name="note" placeholder="備註（選填）"></textarea><button type="submit">登記支出</button></form><div id="status" class="status"></div></div>
+<div class="card" style="margin-top:14px"><h2>支出明細</h2><div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>支付方式</th><th>支付人</th><th class="num">金額</th></tr></thead><tbody id="expenseRows"><tr><td colspan="5" class="empty">讀取中…</td></tr></tbody></table></div></div>
+</div>
+<script src="assets/domain.js"></script><script src="assets/app.js"></script>
+</body></html>
