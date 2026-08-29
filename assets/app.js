@@ -1,6 +1,6 @@
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
 const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
-const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026' };
+const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026', expenses: [], editingExpenseId: '' };
 const $ = (sel) => document.querySelector(sel);
 
 function loadConfig() {
@@ -64,19 +64,17 @@ function sleep(ms) {
 }
 
 function expenseMatches(row, expense) {
-  return String(row.date || '') === String(expense.date || '') &&
-    String(row.item || '').trim() === String(expense.item || '').trim() &&
-    Number(row.amount || 0) === Number(expense.amount || 0) &&
-    String(row.payment_method || '') === String(expense.payment_method || '') &&
-    String(row.payer || '').trim() === String(expense.payer || '').trim() &&
-    String(row.note || '').trim() === String(expense.note || '').trim();
+  return EventAccountingDomain.expenseEditableFieldsEqual(row, expense);
 }
 
 async function apiWrite(fields) {
   if (!state.apiUrl || !state.token) throw new Error('尚未輸入存取碼');
 
   const before = await apiRead('activity', { activity_id: fields.activity_id });
-  const beforeCount = before.expenses.filter(row => expenseMatches(row, fields)).length;
+  const action = fields.action;
+  const beforeCount = action === 'add_expense'
+    ? before.expenses.filter(row => expenseMatches(row, fields)).length
+    : 0;
 
   const iframeName = 'gas-write-' + Date.now();
   const iframe = document.createElement('iframe');
@@ -102,10 +100,15 @@ async function apiWrite(fields) {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(attempt === 0 ? 500 : 750);
       const after = await apiRead('activity', { activity_id: fields.activity_id });
-      const afterCount = after.expenses.filter(row => expenseMatches(row, fields)).length;
-      if (afterCount > beforeCount) return after;
+      if (action === 'update_expense') {
+        const updated = after.expenses.find(row => String(row.expense_id || '') === String(fields.expense_id || ''));
+        if (updated && expenseMatches(updated, fields)) return after;
+      } else {
+        const afterCount = after.expenses.filter(row => expenseMatches(row, fields)).length;
+        if (afterCount > beforeCount) return after;
+      }
     }
-    throw new Error('尚未確認寫入結果，請重新整理明細後再決定是否重送');
+    throw new Error('寫入失敗或無法確認結果，請重新載入明細後再決定是否重送');
   } finally {
     form.remove();
     iframe.remove();
@@ -128,6 +131,7 @@ async function refresh() {
 function render(data) {
   const activity = data.activity || {};
   const expenses = data.expenses || [];
+  state.expenses = expenses;
   const summary = EventAccountingDomain.summarizeDashboard(activity, expenses);
 
   $('#activityName').textContent = activity.name || '活動名稱未設定';
@@ -157,31 +161,86 @@ function render(data) {
       <td>${escapeHtml(r.payer || '—')}</td>
       <td>${escapeHtml(r.reimbursement_status || '—')}</td>
       <td class="num">${money(r.amount)}</td>
+      <td><button type="button" class="table-action" data-edit-expense="${escapeHtml(r.expense_id)}">修改</button></td>
     </tr>
-  `).join('') : '<tr><td colspan="6" class="empty">目前沒有支出</td></tr>';
+  `).join('') : '<tr><td colspan="7" class="empty">目前沒有支出</td></tr>';
+}
+
+function formExpense() {
+  const form = new FormData($('#expenseForm'));
+  return EventAccountingDomain.validateExpense({
+    activity_id: state.activityId,
+    date: form.get('date'),
+    item: form.get('item'),
+    category: form.get('category'),
+    amount: form.get('amount'),
+    payment_method: form.get('payment_method'),
+    payer: form.get('payer'),
+    note: form.get('note')
+  });
 }
 
 async function submitExpense(event) {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
   try {
-    const expense = EventAccountingDomain.validateExpense({
-      activity_id: state.activityId,
-      date: form.get('date'),
-      item: form.get('item'),
-      amount: form.get('amount'),
-      payment_method: form.get('payment_method'),
-      payer: form.get('payer'),
-      note: form.get('note')
-    });
+    const expense = formExpense();
+    const duplicate = EventAccountingDomain.findDuplicateExpense(state.expenses, expense, state.editingExpenseId);
+    if (duplicate) throw new Error('疑似重複支出：已有相同日期、項目與金額的紀錄');
+
+    if (state.editingExpenseId) {
+      const current = state.expenses.find(row => String(row.expense_id || '') === state.editingExpenseId);
+      if (!current) throw new Error('找不到要修改的支出，請重新載入頁面');
+      if (EventAccountingDomain.expenseEditableFieldsEqual(current, expense)) {
+        setStatus('沒有需要儲存的變更');
+        return;
+      }
+
+      setStatus('正在儲存修改…');
+      const confirmed = await apiWrite({ action: 'update_expense', expense_id: state.editingExpenseId, ...expense });
+      resetExpenseForm();
+      render(confirmed);
+      setStatus('已更新');
+      return;
+    }
+
     setStatus('正在登記支出…');
     const confirmed = await apiWrite({ action: 'add_expense', ...expense });
-    event.currentTarget.reset();
+    resetExpenseForm();
     render(confirmed);
     setStatus('已登記');
   } catch (err) {
     handleError(err);
   }
+}
+
+function startEditExpense(expenseId) {
+  const row = state.expenses.find(expense => String(expense.expense_id || '') === String(expenseId || ''));
+  if (!row) {
+    setStatus('找不到要修改的支出，請重新載入頁面', true);
+    return;
+  }
+
+  state.editingExpenseId = String(row.expense_id || '');
+  const form = $('#expenseForm');
+  form.elements.date.value = row.date || '';
+  form.elements.item.value = row.item || '';
+  form.elements.category.value = row.category || '';
+  form.elements.amount.value = row.amount || '';
+  form.elements.payment_method.value = row.payment_method || '';
+  form.elements.payer.value = row.payer || '';
+  form.elements.note.value = row.note || '';
+  $('#expenseFormTitle').textContent = '修改支出';
+  $('#submitExpenseButton').textContent = '儲存修改';
+  $('#cancelEdit').hidden = false;
+  $('#expenseEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function resetExpenseForm() {
+  state.editingExpenseId = '';
+  $('#expenseForm').reset();
+  $('#expenseFormTitle').textContent = '新增支出';
+  $('#submitExpenseButton').textContent = '登記支出';
+  $('#cancelEdit').hidden = true;
 }
 
 function setMoneyMetric(selector, value) {
@@ -222,4 +281,9 @@ function escapeHtml(v) {
 $('#saveConfig').addEventListener('click', saveConfig);
 $('#tokenInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') saveConfig(); });
 $('#expenseForm').addEventListener('submit', submitExpense);
+$('#cancelEdit').addEventListener('click', () => { resetExpenseForm(); setStatus(''); });
+$('#expenseRows').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-edit-expense]');
+  if (button) startEditExpense(button.dataset.editExpense);
+});
 loadConfig();
