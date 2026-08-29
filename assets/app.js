@@ -1,6 +1,15 @@
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
 const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
-const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026', expenses: [], editingExpenseId: '', backendVersion: '', capabilities: [] };
+const state = {
+  apiUrl: DEFAULT_API_URL,
+  token: '',
+  activityId: 'midyear2026',
+  activity: {},
+  expenses: [],
+  editingExpenseId: '',
+  backendVersion: '',
+  capabilities: []
+};
 const $ = (sel) => document.querySelector(sel);
 
 function loadConfig() {
@@ -118,9 +127,7 @@ async function apiWrite(fields) {
   try {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(attempt === 0 ? 500 : 750);
-      if (serverResult && !serverResult.ok) {
-        throw new Error(serverResult.error || 'GAS 寫入失敗');
-      }
+      if (serverResult && !serverResult.ok) throw new Error(serverResult.error || 'GAS 寫入失敗');
 
       const after = await apiRead('activity', { activity_id: fields.activity_id });
       if (action === 'update_expense') {
@@ -156,6 +163,7 @@ async function refresh() {
 function render(data) {
   const activity = data.activity || {};
   const expenses = data.expenses || [];
+  state.activity = activity;
   state.expenses = expenses;
   state.backendVersion = String(data.backend_version || '');
   state.capabilities = Array.isArray(data.capabilities) ? data.capabilities : [];
@@ -172,7 +180,7 @@ function render(data) {
   setBalanceMetric('#budgetRemaining', summary.budgetRemaining);
   setMoneyMetric('#pettyCashAdvance', summary.pettyCashAdvance);
   setMoneyMetric('#pettyCashUsed', summary.pettyCashUsed);
-  setBalanceMetric('#pettyCashRemaining', summary.pettyCashRemaining);
+  setSignedMoneyMetric('#pettyCashRemaining', summary.pettyCashRemaining);
 
   $('#pendingAdvances').innerHTML = summary.pendingAdvances.length
     ? summary.pendingAdvances.map(row => `
@@ -288,86 +296,74 @@ function resetExpenseForm() {
   $('#cancelEdit').hidden = true;
 }
 
-function downloadSpreadsheetAsExcel(downloadUrl, fileName) {
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName || '零用金支出表.xlsx';
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+function formatLocalDateTime(date) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-async function generatePettyCashReport() {
-  if (!state.capabilities.includes('generate_petty_cash_report')) {
-    setReportStatus('目前 GAS 後端尚未更新到支援下載零用金支出表的版本，請先更新目前部署。', true);
-    return;
-  }
-  if (!state.apiUrl || !state.token) {
-    requestToken('請先輸入活動帳務存取碼。');
-    return;
-  }
+function safeFileName(value) {
+  return String(value || '活動').replace(/[\\/:*?"<>|]/g, '_').trim() || '活動';
+}
 
+function settlementItemLabel(row) {
+  if (row.payment_method === '個人代墊') {
+    const payer = String(row.payer || '').trim();
+    return `${row.item}${payer ? `｜${payer}代墊` : '｜個人代墊'}`;
+  }
+  return `${row.item}｜活動零用金`;
+}
+
+function generatePettyCashReport() {
   const button = $('#generatePettyCashReport');
   button.disabled = true;
   setReportStatus('正在產生 Excel…');
 
-  const iframeName = 'petty-cash-report-' + Date.now();
-  const iframe = document.createElement('iframe');
-  iframe.name = iframeName;
-  iframe.style.display = 'none';
-  iframe.setAttribute('aria-hidden', 'true');
-
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = state.apiUrl;
-  form.target = iframeName;
-  form.style.display = 'none';
-  form.setAttribute('aria-hidden', 'true');
-
-  const values = {
-    action: 'generate_petty_cash_report',
-    activity_id: state.activityId,
-    token: state.token,
-    origin: location.origin
-  };
-  Object.entries(values).forEach(([name, value]) => {
-    const input = document.createElement('input');
-    input.name = name;
-    input.value = value ?? '';
-    form.appendChild(input);
-  });
-
-  let serverResult = null;
-  const onMessage = (event) => {
-    if (event.source !== iframe.contentWindow) return;
-    const message = event.data;
-    if (!message || message.type !== 'event-accounting-result') return;
-    serverResult = message.payload || { ok: false, error: 'GAS 回覆格式錯誤' };
-  };
-  window.addEventListener('message', onMessage);
-
-  document.body.append(iframe, form);
-  form.submit();
-
   try {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await sleep(attempt === 0 ? 500 : 500);
-      if (!serverResult) continue;
-      if (!serverResult.ok) throw new Error(serverResult.error || '產生 Excel 失敗');
-      const data = serverResult.data || {};
-      if (!data.download_url) throw new Error('GAS 沒有回傳可下載的 Excel');
-      downloadSpreadsheetAsExcel(data.download_url, data.file_name);
-      setReportStatus('Excel 已開始下載');
-      return;
-    }
-    throw new Error('尚未收到 Excel 產生結果，請稍後再試');
+    if (typeof XLSX === 'undefined') throw new Error('Excel 產生工具載入失敗，請重新整理頁面');
+    const activity = state.activity || {};
+    const applicationDate = String(activity.petty_cash_application_date || '').trim();
+    if (!applicationDate) throw new Error('尚未讀到零用金申請日，請先更新 GAS 後端');
+
+    const settlement = EventAccountingDomain.summarizePettyCashSettlement(activity, state.expenses);
+    if (settlement.advance === null) throw new Error('尚未登記零用金金額');
+
+    const generatedAt = new Date();
+    const rows = [
+      ['零用金支出表', '', ''],
+      ['活動名稱', activity.name || '', ''],
+      ['活動 ID', activity.activity_id || state.activityId, ''],
+      ['零用金申請日', applicationDate, ''],
+      ['零用金金額', '', settlement.advance],
+      ['產生時間', formatLocalDateTime(generatedAt), ''],
+      ['', '', ''],
+      ['日期', '項目／支付人', '金額'],
+      ...settlement.items.map(row => [row.date, settlementItemLabel(row), -row.amount]),
+      ['', '', ''],
+      ['扣抵合計', '', -settlement.deductionTotal],
+      ['需沖銷金額', '', settlement.settlementAmount],
+      ['沖銷方向', settlement.settlementAmount >= 0 ? '繳回公司' : '公司補款', '']
+    ];
+
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    sheet['!cols'] = [{ wch: 14 }, { wch: 42 }, { wch: 16 }];
+
+    const signFormat = '+#,##0;-#,##0;0';
+    Object.keys(sheet).forEach(address => {
+      if (address[0] === '!') return;
+      const cell = sheet[address];
+      if (address.startsWith('C') && typeof cell.v === 'number') cell.z = signFormat;
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, '零用金支出表');
+    const stamp = `${generatedAt.getFullYear()}${String(generatedAt.getMonth() + 1).padStart(2, '0')}${String(generatedAt.getDate()).padStart(2, '0')}`;
+    const fileName = `${safeFileName(activity.name || state.activityId)}_零用金支出表_${stamp}.xlsx`;
+    XLSX.writeFile(workbook, fileName, { compression: true });
+    setReportStatus(`Excel 已下載；需沖銷金額 ${signedMoney(settlement.settlementAmount)}`);
   } catch (err) {
     setReportStatus(err && err.message ? err.message : '下載失敗', true);
   } finally {
-    window.removeEventListener('message', onMessage);
-    form.remove();
-    iframe.remove();
     button.disabled = false;
   }
 }
@@ -393,6 +389,12 @@ function setBalanceMetric(selector, value) {
   el.textContent = money(value);
 }
 
+function setSignedMoneyMetric(selector, value) {
+  const el = $(selector);
+  el.className = 'value';
+  el.textContent = value === null || value === undefined ? '尚未登記' : signedMoney(value);
+}
+
 function setStatus(text, error = false) {
   const el = $('#status');
   el.textContent = text;
@@ -413,6 +415,12 @@ function setReportStatus(text, error = false) {
 
 function money(v) {
   return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(Number(v));
+}
+
+function signedMoney(v) {
+  const number = Number(v);
+  if (number > 0) return '+' + money(number);
+  return money(number);
 }
 
 function escapeHtml(v) {
