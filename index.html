@@ -29,5 +29,52 @@
 <div class="card section"><h2>支出明細</h2><div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>預算項目</th><th>支付方式</th><th>支付人</th><th>核銷狀態</th><th class="num">金額</th><th></th></tr></thead><tbody id="expenseRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="assets/domain.js?v=20260830-7"></script><script src="assets/app.js?v=20260830-15"></script>
+<script src="assets/domain.js?v=20260830-7"></script><script src="assets/app.js?v=20260830-16"></script>
+<script>
+(() => {
+  const OriginalWorkbook = ExcelJS.Workbook;
+  ExcelJS.Workbook = class extends OriginalWorkbook {
+    constructor(...args) {
+      super(...args);
+      const originalWriteBuffer = this.xlsx.writeBuffer.bind(this.xlsx);
+      this.xlsx.writeBuffer = async (...writeArgs) => {
+        const sheet = this.getWorksheet('零用金費用');
+        if (sheet) {
+          const match = /A1:I(\d+)/.exec(String(sheet.pageSetup.printArea || ''));
+          const finalRow = match ? Number(match[1]) : sheet.rowCount;
+          for (let row = 3; row <= finalRow; row += 1) {
+            if (sheet.getCell(`G${row}`).value === '' || sheet.getCell(`G${row}`).value == null) sheet.getCell(`G${row}`).value = 0;
+            if (sheet.getCell(`H${row}`).value === '' || sheet.getCell(`H${row}`).value == null) sheet.getCell(`H${row}`).value = 0;
+          }
+          ['G', 'H', 'I'].forEach(column => { sheet.getColumn(column).numFmt = '#,##0;[Red](#,##0);0'; });
+
+          const dashboard = EventAccountingDomain.summarizeDashboard(state.activity, state.expenses);
+          const settlement = EventAccountingDomain.summarizePettyCashSettlement(state.activity, state.expenses);
+          const numberText = value => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value || 0));
+          const summaryRow1 = finalRow + 2;
+          const summaryRow2 = finalRow + 3;
+          sheet.mergeCells(`A${summaryRow1}:I${summaryRow1}`);
+          sheet.getCell(`A${summaryRow1}`).value = `${state.activity.name || state.activityId}-總計支出總額：$${numberText(dashboard.actualExpense)}元整，費用明細詳附件。`;
+          sheet.mergeCells(`A${summaryRow2}:I${summaryRow2}`);
+          if (settlement.settlementAmount > 0) {
+            sheet.getCell(`A${summaryRow2}`).value = `費用支付說明：暫支撥款$${numberText(settlement.advance)}元整-支付金額$${numberText(settlement.deductionTotal)}元=$${numberText(settlement.settlementAmount)}元整(回沖款項)`;
+          } else if (settlement.settlementAmount < 0) {
+            sheet.getCell(`A${summaryRow2}`).value = `費用支付說明：支付金額$${numberText(settlement.deductionTotal)}元整-暫支撥款$${numberText(settlement.advance)}元=$${numberText(Math.abs(settlement.settlementAmount))}元整(補款款項)`;
+          } else {
+            sheet.getCell(`A${summaryRow2}`).value = `費用支付說明：暫支撥款$${numberText(settlement.advance)}元整-支付金額$${numberText(settlement.deductionTotal)}元=$0元整(無需沖銷)`;
+          }
+          [summaryRow1, summaryRow2].forEach((rowNumber, index) => {
+            const cell = sheet.getCell(`A${rowNumber}`);
+            cell.font = { name: 'Microsoft JhengHei', size: 11, bold: index === 0 };
+            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+            sheet.getRow(rowNumber).height = 28;
+          });
+          sheet.pageSetup.printArea = `A1:I${summaryRow2}`;
+        }
+        return originalWriteBuffer(...writeArgs);
+      };
+    }
+  };
+})();
+</script>
 </body></html>
