@@ -17,6 +17,7 @@
       date: String(input.date || '').trim(),
       item: String(input.item || '').trim(),
       category: String(input.category || '').trim(),
+      budget_item: String(input.budget_item || '').trim(),
       amount: normalizeAmount(input.amount),
       payment_method: String(input.payment_method || '').trim(),
       payer: String(input.payer || '').trim(),
@@ -25,6 +26,7 @@
     if (!expense.activity_id) throw new Error('缺少活動');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(expense.date)) throw new Error('支出日期格式錯誤');
     if (!expense.item) throw new Error('請填寫項目');
+    if (!expense.budget_item) throw new Error('請選擇預算項目');
     if (!PAYMENT_METHODS.includes(expense.payment_method)) throw new Error('支付方式不正確');
     if (expense.payment_method === '個人代墊' && !expense.payer) throw new Error('個人代墊必須填寫支付人');
     return expense;
@@ -66,9 +68,15 @@
         expense_id: String(row.expense_id || ''),
         date: String(row.date || ''),
         item: String(row.item || ''),
+        category: String(row.category || ''),
+        budget_item: String(row.budget_item || ''),
         payment_method: String(row.payment_method || ''),
         payer: String(row.payer || ''),
         reimbursement_status: String(row.reimbursement_status || ''),
+        vendor: String(row.vendor || ''),
+        tax_id: String(row.tax_id || ''),
+        invoice_no: String(row.invoice_no || ''),
+        note: String(row.note || ''),
         amount: expenseAmount(row)
       }));
     const deductionTotal = items.reduce((sum, row) => sum + row.amount, 0);
@@ -80,11 +88,43 @@
     };
   }
 
+  function summarizeBudgetBreakdown(activity, expenses) {
+    const configured = Array.isArray(activity && activity.budget_items) ? activity.budget_items : [];
+    const items = configured.map(item => ({
+      name: String(item && item.name || '').trim(),
+      budget: optionalNonNegativeNumber(item && item.amount, '預算項目'),
+      actual: 0,
+      remaining: 0
+    })).filter(item => item.name && item.budget !== null);
+
+    const byName = new Map(items.map(item => [item.name, item]));
+    let unassignedTotal = 0;
+    (expenses || []).forEach(row => {
+      const amount = expenseAmount(row);
+      const name = String(row && row.budget_item || '').trim();
+      const target = byName.get(name);
+      if (target) target.actual += amount;
+      else unassignedTotal += amount;
+    });
+
+    items.forEach(item => {
+      item.remaining = item.budget - item.actual;
+    });
+
+    return {
+      items,
+      unassignedTotal,
+      totalBudget: items.reduce((sum, item) => sum + item.budget, 0),
+      totalActual: items.reduce((sum, item) => sum + item.actual, 0) + unassignedTotal
+    };
+  }
+
   function expenseEditableFieldsEqual(left, right) {
     if (!left || !right) return false;
     return String(left.date || '') === String(right.date || '') &&
       String(left.item || '').trim() === String(right.item || '').trim() &&
       String(left.category || '').trim() === String(right.category || '').trim() &&
+      String(left.budget_item || '').trim() === String(right.budget_item || '').trim() &&
       expenseAmount(left) === normalizeAmount(right.amount) &&
       String(left.payment_method || '') === String(right.payment_method || '') &&
       String(left.payer || '').trim() === String(right.payer || '').trim() &&
@@ -110,6 +150,7 @@
     const budget = optionalNonNegativeNumber(activity && activity.budget, '活動預算');
     const actualExpense = summarizeExpenses(rows);
     const settlement = summarizePettyCashSettlement(activity, rows);
+    const budgetBreakdown = summarizeBudgetBreakdown(activity, rows);
 
     const pendingByPayer = new Map();
     rows.forEach(row => {
@@ -126,6 +167,7 @@
       pettyCashAdvance: settlement.advance,
       pettyCashUsed: settlement.deductionTotal,
       pettyCashRemaining: settlement.settlementAmount,
+      budgetBreakdown,
       pendingAdvances: Array.from(pendingByPayer, ([payer, amount]) => ({ payer, amount }))
     };
   }
@@ -136,6 +178,7 @@
     validateExpense,
     summarizeExpenses,
     summarizePettyCashSettlement,
+    summarizeBudgetBreakdown,
     summarizeDashboard,
     expenseEditableFieldsEqual,
     findDuplicateExpense
