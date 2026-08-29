@@ -1,11 +1,12 @@
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycby7m4fJywm-J0Nm3bUtYVgVt2oGOzn-XaE4AvVMDRh-AWMFy6gZY69bZxMnykUE3JNP1Q/exec';
+const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
 const state = { apiUrl: DEFAULT_API_URL, token: '', activityId: 'midyear2026' };
 const $ = (sel) => document.querySelector(sel);
 
 function loadConfig() {
   const params = new URLSearchParams(location.search);
   state.activityId = params.get('activity_id') || 'midyear2026';
-  state.token = sessionStorage.getItem('eventAccountingToken') || '';
+  state.token = sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
   const configured = Boolean(state.token);
   $('#configPanel').hidden = configured;
   $('#appContent').hidden = !configured;
@@ -16,11 +17,29 @@ function saveConfig() {
   const token = $('#tokenInput').value.trim();
   if (!token) return;
   state.token = token;
-  sessionStorage.setItem('eventAccountingToken', token);
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
   $('#tokenInput').value = '';
   $('#configPanel').hidden = true;
   $('#appContent').hidden = false;
   refresh();
+}
+
+function requestToken(message) {
+  state.token = '';
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  $('#configPanel').hidden = false;
+  $('#appContent').hidden = true;
+  const note = $('#configPanel .config-note');
+  if (message && note) note.textContent = message;
+  $('#tokenInput').focus();
+}
+
+function handleError(err) {
+  if (err && err.message === '無權限') {
+    requestToken('存取碼不正確，請重新輸入。');
+    return;
+  }
+  setStatus(err && err.message ? err.message : '發生錯誤', true);
 }
 
 function apiRead(action, args = {}) {
@@ -86,7 +105,7 @@ async function refresh() {
     render(data);
     setStatus('');
   } catch (err) {
-    setStatus(err.message, true);
+    handleError(err);
   }
 }
 
@@ -119,7 +138,7 @@ async function submitExpense(event) {
     await refresh();
     setStatus('已登記');
   } catch (err) {
-    setStatus(err.message, true);
+    handleError(err);
   }
 }
 
