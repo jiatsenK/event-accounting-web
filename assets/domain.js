@@ -172,6 +172,85 @@
     };
   }
 
+  function summarizePaymentMethods(expenses) {
+    const totals = new Map(PAYMENT_METHODS.map(name => [name, 0]));
+    const extras = [];
+    (expenses || []).forEach(row => {
+      const method = String(row && row.payment_method || '').trim() || '未設定';
+      const amount = expenseAmount(row);
+      if (!totals.has(method)) {
+        totals.set(method, 0);
+        extras.push(method);
+      }
+      totals.set(method, totals.get(method) + amount);
+    });
+    const order = PAYMENT_METHODS.concat(extras);
+    const items = order.filter(name => totals.has(name) && totals.get(name) !== 0)
+      .map(name => ({ payment_method: name, amount: totals.get(name) }));
+    return { total: items.reduce((sum, item) => sum + item.amount, 0), items };
+  }
+
+  function isAlreadySubmittedExpense(row) {
+    const status = String(row && row.reimbursement_status || '').trim();
+    return status === '已請款' || status === '已核銷';
+  }
+
+  function summarizeCurrentClaim(expenses) {
+    let actualTotal = 0;
+    let alreadySubmittedTotal = 0;
+    (expenses || []).forEach(row => {
+      const amount = expenseAmount(row);
+      actualTotal += amount;
+      if (isAlreadySubmittedExpense(row)) alreadySubmittedTotal += amount;
+    });
+    return {
+      actualTotal,
+      alreadySubmittedTotal,
+      currentClaimTotal: actualTotal - alreadySubmittedTotal
+    };
+  }
+
+  function allocateAmount(totalValue, allocation) {
+    const total = Number(totalValue);
+    if (!Number.isFinite(total) || total < 0) throw new Error('分攤總額資料異常');
+    const rawMethod = String(allocation && allocation.method || '').trim();
+    const method = rawMethod === '每單位均分' ? '單位均分' : rawMethod;
+    if (!['單位均分', '人數比例'].includes(method)) throw new Error('分攤方式不正確');
+    const units = Array.isArray(allocation && allocation.units) ? allocation.units : [];
+    if (!units.length) throw new Error('尚未設定分攤單位');
+
+    const seen = new Set();
+    const normalized = units.map(unit => {
+      const name = String(unit && unit.name || '').trim();
+      if (!name) throw new Error('分攤單位名稱不可空白');
+      if (seen.has(name)) throw new Error('分攤單位重複：' + name);
+      seen.add(name);
+      const headcount = unit && unit.headcount !== '' && unit.headcount !== null && unit.headcount !== undefined
+        ? Number(unit.headcount) : null;
+      if (method === '人數比例' && (!Number.isFinite(headcount) || headcount <= 0)) {
+        throw new Error('分攤單位人數異常：' + name);
+      }
+      return { name, headcount: Number.isFinite(headcount) ? headcount : null };
+    });
+
+    const weights = normalized.map(unit => method === '人數比例' ? unit.headcount : 1);
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+    const rows = normalized.map((unit, index) => {
+      const ratio = weights[index] / weightTotal;
+      const raw = total * ratio;
+      const rounded = Math.round(raw);
+      return { name: unit.name, headcount: unit.headcount, ratio, raw, amount: rounded, adjustment: 0 };
+    });
+    const roundedTotal = rows.reduce((sum, row) => sum + row.amount, 0);
+    const tail = total - roundedTotal;
+    if (tail !== 0) {
+      const target = rows[rows.length - 1];
+      target.amount += tail;
+      target.adjustment = tail;
+    }
+    return { method, total, weightTotal, rows };
+  }
+
   return {
     PAYMENT_METHODS,
     normalizeAmount,
@@ -180,6 +259,10 @@
     summarizePettyCashSettlement,
     summarizeBudgetBreakdown,
     summarizeDashboard,
+    summarizePaymentMethods,
+    summarizeCurrentClaim,
+    isAlreadySubmittedExpense,
+    allocateAmount,
     expenseEditableFieldsEqual,
     findDuplicateExpense
   };
