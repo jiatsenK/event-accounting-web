@@ -1,0 +1,90 @@
+name: Fix export acceptance defects
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-export-acceptance.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch export generator
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          index = Path('index.html')
+          text = index.read_text(encoding='utf-8')
+          replacements = {
+              "LM='#,##0;[Red](#,##0);-'": "LM='#,##0;[Red](#,##0);0'",
+              "return m?new Date(+m[1],+m[2]-1,+m[3]):t": "return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):t",
+              "s.mergeCells(`A${sr1}:J${sr1}`)": "s.mergeCells(`A${sr1}:I${sr1}`)",
+              "s.mergeCells(`A${sr2}:J${sr2}`)": "s.mergeCells(`A${sr2}:I${sr2}`)",
+              "s.pageSetup.printArea=`A1:J${sr2}`": "s.pageSetup.printArea=`A1:I${sr2}`",
+              "assets/domain.js?v=20260830-9": "assets/domain.js?v=20260830-10",
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'index patch target count={count}: {old}')
+              text = text.replace(old, new)
+          index.write_text(text, encoding='utf-8')
+
+          domain = Path('assets/domain.js')
+          text = domain.read_text(encoding='utf-8')
+          old = "    const generic = new Set(['', '活動經費', '餐飲費用', '車資', '活動零用金']);"
+          new = "    if (category === '車資') return '車資';\n    const generic = new Set(['', '活動經費', '餐飲費用', '活動零用金']);"
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'domain patch target count={count}')
+          domain.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+      - name: Verify JavaScript and grouping
+        run: |
+          node --check assets/domain.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('index.html').read_text(encoding='utf-8')
+          blocks = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', text, flags=re.S | re.I)
+          Path('/tmp/event-inline.js').write_text('\n'.join(block for block in blocks if block.strip()), encoding='utf-8')
+          PY
+          node --check /tmp/event-inline.js
+          if [ -f tests/domain.test.js ]; then node --test tests/domain.test.js; fi
+          node - <<'JS'
+          const assert = require('node:assert/strict');
+          const D = require('./assets/domain.js');
+          const rows = [
+            { expense_id:'t1', item:'Uber 車資', category:'車資', amount:143, payment_method:'個人代墊', reimbursement_status:'待核銷', payer:'佳岑' },
+            { expense_id:'t2', item:'Uber 車資', category:'車資', amount:141, payment_method:'個人代墊', reimbursement_status:'待核銷', payer:'佳岑' },
+            { expense_id:'t3', item:'車資', category:'車資', amount:203, payment_method:'個人代墊', reimbursement_status:'待核銷', payer:'佳岑' },
+            { expense_id:'b1', item:'識別證帶', category:'活動經費', amount:5565, payment_method:'個人代墊', reimbursement_status:'待核銷', payer:'佳岑' },
+            { expense_id:'b2', item:'識別證印刷', category:'活動經費', amount:5124, payment_method:'個人代墊', reimbursement_status:'待核銷', payer:'佳岑' }
+          ];
+          const result = D.buildReimbursementOverview(rows, {});
+          const totals = Object.fromEntries(result.pettyCash.items.map(item => [item.label, item.total]));
+          assert.equal(totals['車資'], 487);
+          assert.equal(totals['識別證'], 10689);
+          assert.equal(totals['Uber 車資'], undefined);
+          JS
+          grep -F "new Date(Date.UTC(+m[1],+m[2]-1,+m[3]))" index.html
+          grep -F "LM='#,##0;[Red](#,##0);0'" index.html
+          grep -F 's.pageSetup.printArea=`A1:I${sr2}`' index.html
+
+      - name: Commit fixes and remove helper
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/fix-export-acceptance.yml
+          git add index.html assets/domain.js
+          git commit -m 'Fix reimbursement export acceptance defects'
+          git push origin HEAD:main
