@@ -24,68 +24,10 @@
 </div>
 <div class="card section"><h2>預算執行情況</h2><div id="budgetAlert" class="budget-alert warning">讀取中…</div><div style="overflow:auto"><table><thead><tr><th>預算項目</th><th class="num">核准預算</th><th class="num">實際支出</th><th class="num">差異</th></tr></thead><tbody id="budgetRows"><tr><td colspan="4" class="empty">讀取中…</td></tr></tbody></table></div></div>
 <div class="card section"><h2>待核銷代墊</h2><div id="pendingAdvances"><div class="empty compact">讀取中…</div></div></div>
-<div class="card section"><h2>下載表單</h2><p class="muted">依照過去零用金費用明細格式產生流水帳；列印固定 A4；分類與備註保留在 Excel 裡，但不列入列印範圍。</p><div class="form-actions"><button id="generatePettyCashReport" type="button">下載零用金支出表（Excel）</button></div><div id="reportStatus" class="status form-status" aria-live="polite"></div></div>
+<div class="card section"><h2>下載表單</h2><p class="muted">完整核銷資料會下載為單一 Excel，包含核銷總覽、預算與結算、核銷憑證、零用金使用明細與分攤表。零用金頁與獨立零用金支出表共用同一套計算與版型。</p><div class="form-actions"><button id="generateReimbursementReport" type="button">下載完整核銷資料（Excel）</button><button id="generatePettyCashReport" class="secondary" type="button">下載零用金支出表（Excel）</button></div><div id="reportStatus" class="status form-status" aria-live="polite"></div></div>
 <div id="expenseEditor" class="card section"><h2 id="expenseFormTitle">新增支出</h2><form id="expenseForm"><div class="row"><input name="date" type="date" required><input name="amount" type="number" min="1" step="1" placeholder="金額" required></div><div class="row"><input name="item" placeholder="項目，例如：車資" required><input name="category" placeholder="分類（選填）"></div><div class="row"><select name="budget_item" required><option value="">選擇預算項目</option></select><select name="payment_method" required><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select></div><input name="payer" placeholder="支付人，個人代墊時必填"><textarea name="note" placeholder="備註（選填）"></textarea><div class="form-actions"><button id="submitExpenseButton" type="submit">登記支出</button><button id="cancelEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="expenseStatus" class="status form-status" aria-live="polite"></div></form></div>
 <div class="card section"><h2>支出明細</h2><div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>預算項目</th><th>支付方式</th><th>支付人</th><th>核銷狀態</th><th class="num">金額</th><th></th></tr></thead><tbody id="expenseRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="assets/domain.js?v=20260830-7"></script><script src="assets/app.js?v=20260830-16"></script>
-<script>
-(() => {
-  const OriginalWorkbook = ExcelJS.Workbook;
-  ExcelJS.Workbook = class extends OriginalWorkbook {
-    constructor(...args) {
-      super(...args);
-      const originalWriteBuffer = this.xlsx.writeBuffer.bind(this.xlsx);
-      this.xlsx.writeBuffer = async (...writeArgs) => {
-        const sheet = this.getWorksheet('零用金費用');
-        if (sheet) {
-          const match = /A1:I(\d+)/.exec(String(sheet.pageSetup.printArea || ''));
-          const finalRow = match ? Number(match[1]) : sheet.rowCount;
-          for (let row = 3; row <= finalRow; row += 1) {
-            if (sheet.getCell(`G${row}`).value === '' || sheet.getCell(`G${row}`).value == null) sheet.getCell(`G${row}`).value = 0;
-            if (sheet.getCell(`H${row}`).value === '' || sheet.getCell(`H${row}`).value == null) sheet.getCell(`H${row}`).value = 0;
-          }
-          ['G', 'H', 'I'].forEach(column => { sheet.getColumn(column).numFmt = '#,##0;[Red](#,##0);0'; });
-
-          const lastExpenseRow = finalRow - 1;
-          if (lastExpenseRow >= 3) {
-            for (let column = 1; column <= 9; column += 1) {
-              const cell = sheet.getRow(lastExpenseRow).getCell(column);
-              cell.border = {
-                ...(cell.border || {}),
-                bottom: { style: 'double', color: { argb: 'FF000000' } }
-              };
-            }
-          }
-
-          const dashboard = EventAccountingDomain.summarizeDashboard(state.activity, state.expenses);
-          const settlement = EventAccountingDomain.summarizePettyCashSettlement(state.activity, state.expenses);
-          const numberText = value => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value || 0));
-          const summaryRow1 = finalRow + 2;
-          const summaryRow2 = finalRow + 3;
-          sheet.mergeCells(`A${summaryRow1}:I${summaryRow1}`);
-          sheet.getCell(`A${summaryRow1}`).value = `${state.activity.name || state.activityId}-總計支出總額：$${numberText(dashboard.actualExpense)}元整，費用明細詳附件。`;
-          sheet.mergeCells(`A${summaryRow2}:I${summaryRow2}`);
-          if (settlement.settlementAmount > 0) {
-            sheet.getCell(`A${summaryRow2}`).value = `費用支付說明：暫支撥款$${numberText(settlement.advance)}元整-支付金額$${numberText(settlement.deductionTotal)}元=$${numberText(settlement.settlementAmount)}元整(回沖款項)`;
-          } else if (settlement.settlementAmount < 0) {
-            sheet.getCell(`A${summaryRow2}`).value = `費用支付說明：支付金額$${numberText(settlement.deductionTotal)}元整-暫支撥款$${numberText(settlement.advance)}元=$${numberText(Math.abs(settlement.settlementAmount))}元整(補款款項)`;
-          } else {
-            sheet.getCell(`A${summaryRow2}`).value = `費用支付說明：暫支撥款$${numberText(settlement.advance)}元整-支付金額$${numberText(settlement.deductionTotal)}元=$0元整(無需沖銷)`;
-          }
-          [summaryRow1, summaryRow2].forEach((rowNumber, index) => {
-            const cell = sheet.getCell(`A${rowNumber}`);
-            cell.font = { name: 'Microsoft JhengHei', size: 11, bold: index === 0 };
-            cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-            sheet.getRow(rowNumber).height = 28;
-          });
-          sheet.pageSetup.printArea = `A1:I${summaryRow2}`;
-        }
-        return originalWriteBuffer(...writeArgs);
-      };
-    }
-  };
-})();
-</script>
+<script src="assets/domain.js?v=20260830-8"></script><script src="assets/app.js?v=20260830-17"></script>
 </body></html>
