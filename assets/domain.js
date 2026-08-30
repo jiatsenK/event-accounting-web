@@ -210,7 +210,6 @@
     };
   }
 
-
   function isPettyCashExportExpense(row) {
     const method = String(row && row.payment_method || '').trim();
     return method === '活動零用金' || method === '個人代墊';
@@ -249,6 +248,26 @@
     };
   }
 
+  function normalizeStructuredSettlement(value) {
+    if (!value || typeof value !== 'object') return null;
+    const rows = Array.isArray(value.rows) ? value.rows.map(row => {
+      const item = String(row && row.item || '').trim();
+      const unitPrice = Number(row && row.unitPrice);
+      const quantity = Number(row && row.quantity);
+      const amount = Number(row && row.amount);
+      if (!item || ![unitPrice, quantity, amount].every(Number.isFinite) || unitPrice < 0 || quantity <= 0 || amount < 0) {
+        throw new Error('結算明細資料異常');
+      }
+      return { item, unitPrice, quantity, amount };
+    }) : [];
+    if (!rows.length) throw new Error('結算明細不可空白');
+    return {
+      vendor: String(value.vendor || '').trim(),
+      note: String(value.note || '').trim(),
+      rows
+    };
+  }
+
   function cleanPaymentStageItem(value) {
     const cleaned = String(value || '')
       .replace(/桌錢匯款/g, '')
@@ -263,7 +282,9 @@
   }
 
   function enrichMainVendorGroup(group) {
-    const settlements = group.rows.map(row => parseSettlementDetail(row.note)).filter(Boolean);
+    const structured = group.rows.map(row => normalizeStructuredSettlement(row.structured_settlement)).filter(Boolean);
+    const legacy = structured.length ? [] : group.rows.map(row => parseSettlementDetail(row.note)).filter(Boolean);
+    const settlements = structured.length ? structured : legacy;
     if (settlements.length > 1) throw new Error('同一廠商有多筆結算明細：' + group.vendor);
     if (settlements.length === 1) {
       const settlement = settlements[0];
