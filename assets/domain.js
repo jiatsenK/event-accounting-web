@@ -210,6 +210,156 @@
     };
   }
 
+
+  function isPettyCashExportExpense(row) {
+    const method = String(row && row.payment_method || '').trim();
+    return method === '活動零用金' || method === '個人代墊';
+  }
+
+  function defaultPettyCashExportLabel(row) {
+    const category = String(row && row.category || '').trim();
+    const item = String(row && row.item || '').trim();
+    const generic = new Set(['', '活動經費', '餐飲費用', '車資', '活動零用金']);
+    if (!generic.has(category)) return category;
+    if (item.includes('識別證')) return '識別證';
+    return item || '零用金';
+  }
+
+  function parseSettlementDetail(note) {
+    const lines = String(note || '').split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+    const detailLine = lines.find(value => value.startsWith('結算明細：'));
+    if (!detailLine) return null;
+    const vendorLine = lines.find(value => value.startsWith('結算廠商：'));
+    const noteLine = lines.find(value => value.startsWith('結算備註：'));
+    const rows = detailLine.slice('結算明細：'.length).split(/[；;]/).filter(Boolean).map(value => {
+      const [item, unitPriceText, quantityText, amountText] = value.split('|').map(part => String(part || '').trim());
+      const unitPrice = Number(unitPriceText);
+      const quantity = Number(quantityText);
+      const amount = Number(amountText);
+      if (!item || ![unitPrice, quantity, amount].every(Number.isFinite)) {
+        throw new Error('結算明細格式錯誤，請檢查帳務備註');
+      }
+      return { item, unitPrice, quantity, amount };
+    });
+    if (!rows.length) throw new Error('結算明細不可空白');
+    return {
+      vendor: vendorLine ? vendorLine.slice('結算廠商：'.length).trim() : '',
+      note: noteLine ? noteLine.slice('結算備註：'.length).trim() : '',
+      rows
+    };
+  }
+
+  function cleanPaymentStageItem(value) {
+    const cleaned = String(value || '')
+      .replace(/桌錢匯款/g, '')
+      .replace(/預付款/g, '')
+      .replace(/訂金/g, '')
+      .replace(/尾款/g, '')
+      .replace(/全款/g, '')
+      .replace(/匯款/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned || String(value || '').trim() || '未填品項';
+  }
+
+  function enrichMainVendorGroup(group) {
+    const settlements = group.rows.map(row => parseSettlementDetail(row.note)).filter(Boolean);
+    if (settlements.length > 1) throw new Error('同一廠商有多筆結算明細：' + group.vendor);
+    if (settlements.length === 1) {
+      const settlement = settlements[0];
+      const settlementTotal = settlement.rows.reduce((sum, row) => sum + row.amount, 0);
+      if (settlementTotal !== group.total) throw new Error('結算明細與帳務金額不一致：' + group.vendor);
+      if (settlement.vendor) group.vendor = settlement.vendor;
+      group.items = settlement.rows;
+      group.settlementNote = settlement.note;
+      return group;
+    }
+
+    const itemsByLabel = new Map();
+    group.rows.forEach(row => {
+      const label = cleanPaymentStageItem(row.item);
+      if (!itemsByLabel.has(label)) {
+        itemsByLabel.set(label, { item: label, unitPrice: 0, quantity: 1, amount: 0 });
+      }
+      const item = itemsByLabel.get(label);
+      item.amount += row.amount;
+      item.unitPrice = item.amount;
+    });
+    group.items = Array.from(itemsByLabel.values());
+    group.settlementNote = '';
+    return group;
+  }
+
+  function buildReimbursementOverview(expenses, overrides) {
+    const rows = (expenses || []).map(row => ({ ...row, amount: expenseAmount(row) }));
+    const custom = overrides && typeof overrides === 'object' ? overrides : {};
+    const directRows = rows.filter(row => !isPettyCashExportExpense(row));
+    const taxIdByVendor = new Map();
+    directRows.forEach(row => {
+      const vendor = String(row.vendor || '').trim();
+      const taxId = String(row.tax_id || '').trim();
+      if (vendor && taxId) taxIdByVendor.set(vendor, taxId);
+    });
+
+    const mainByKey = new Map();
+    const vendorToMainKey = new Map();
+    const taxIdToMainKey = new Map();
+    function mainKeyForDirect(row) {
+      const vendor = String(row.vendor || '').trim();
+      const taxId = String(row.tax_id || '').trim() || taxIdByVendor.get(vendor) || '';
+      if (taxId) return `tax:${taxId}`;
+      return `vendor:${vendor || String(row.item || '').trim() || '未填廠商'}`;
+    }
+    function addMainRow(key, row) {
+      const vendor = String(row.vendor || '').trim();
+      const fallback = vendor || String(row.item || '').trim() || '未填廠商';
+      if (!mainByKey.has(key)) mainByKey.set(key, { id: key, vendor: fallback, rows: [], total: 0 });
+      const group = mainByKey.get(key);
+      if (vendor && vendor.length > String(group.vendor || '').length) group.vendor = vendor;
+      group.rows.push(row);
+      group.total += row.amount;
+      if (vendor) vendorToMainKey.set(vendor, key);
+      const taxId = String(row.tax_id || '').trim();
+      if (taxId) taxIdToMainKey.set(taxId, key);
+    }
+
+    directRows.forEach(row => addMainRow(mainKeyForDirect(row), row));
+
+    const pettyRows = [];
+    rows.filter(isPettyCashExportExpense).forEach(row => {
+      const vendor = String(row.vendor || '').trim();
+      const taxId = String(row.tax_id || '').trim();
+      const mainKey = (taxId && taxIdToMainKey.get(taxId)) || (vendor && vendorToMainKey.get(vendor)) || null;
+      if (mainKey) addMainRow(mainKey, row);
+      else pettyRows.push(row);
+    });
+
+    const pettyByGroup = new Map();
+    pettyRows.forEach(row => {
+      const expenseId = String(row.expense_id || '').trim();
+      const override = expenseId && custom[expenseId] && typeof custom[expenseId] === 'object' ? custom[expenseId] : null;
+      const defaultLabel = defaultPettyCashExportLabel(row);
+      const label = String(override && override.label || defaultLabel).trim() || defaultLabel;
+      const groupId = String(override && override.group_id || `petty:${defaultLabel}`).trim() || `petty:${defaultLabel}`;
+      if (!pettyByGroup.has(groupId)) pettyByGroup.set(groupId, { id: groupId, label, rows: [], total: 0 });
+      const group = pettyByGroup.get(groupId);
+      if (override && override.label) group.label = label;
+      group.rows.push(row);
+      group.total += row.amount;
+    });
+
+    const mainVendors = Array.from(mainByKey.values()).map(enrichMainVendorGroup);
+    const pettyItems = Array.from(pettyByGroup.values());
+    const pettyCash = pettyItems.length ? {
+      id: 'petty-cash',
+      vendor: 'JDC活動零用金',
+      items: pettyItems,
+      total: pettyItems.reduce((sum, item) => sum + item.total, 0)
+    } : null;
+    const total = mainVendors.reduce((sum, group) => sum + group.total, 0) + (pettyCash ? pettyCash.total : 0);
+    return { mainVendors, pettyCash, total };
+  }
+
   function allocateAmount(totalValue, allocation) {
     const total = Number(totalValue);
     if (!Number.isFinite(total) || total < 0) throw new Error('分攤總額資料異常');
@@ -261,6 +411,7 @@
     summarizeDashboard,
     summarizePaymentMethods,
     summarizeCurrentClaim,
+    buildReimbursementOverview,
     isAlreadySubmittedExpense,
     allocateAmount,
     expenseEditableFieldsEqual,
