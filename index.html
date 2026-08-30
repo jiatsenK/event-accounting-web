@@ -4,30 +4,62 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>活動帳務</title>
 <style>
-:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#252525;background:#f7f7f5}body{max-width:980px;margin:0 auto;padding:28px 16px 56px}h1{font-size:28px;margin:2px 0 6px}h2{font-size:20px;margin:0 0 14px}.muted{color:#777;font-size:14px}.section-label{font-size:13px;color:#777;font-weight:650;letter-spacing:.02em}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.card{background:white;border:1px solid #e5e5e0;border-radius:12px;padding:16px}.label{font-size:13px;color:#777}.value{font-size:24px;font-weight:700;margin-top:5px}.value.danger{color:#a12d2d}.status{min-height:24px;margin:12px 0;color:#3b6650}.status.error{color:#9b2c2c}.form-status{margin:8px 0 0}.advance-row{display:flex;justify-content:space-between;gap:20px;padding:9px 0;border-bottom:1px solid #eee}.advance-row:last-child{border-bottom:0}form{display:grid;gap:10px}input,select,textarea,button{font:inherit;padding:10px;border:1px solid #d8d8d2;border-radius:8px;background:white}button{background:#2f4858;color:white;border:none;font-weight:600;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.secondary{background:white;color:#2f4858;border:1px solid #bfc8ce}.form-actions{display:flex;gap:10px}.form-actions button{flex:1}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #eee;white-space:nowrap}.num{text-align:right}.table-action{padding:6px 9px;background:white;color:#2f4858;border:1px solid #bfc8ce;font-size:13px}.empty{text-align:center;color:#888;padding:24px}.empty.compact{padding:8px 0}.config-note{margin:0 0 10px;color:#666;font-size:14px}.section{margin-top:14px}.budget-alert{padding:10px 12px;border-radius:8px;margin-bottom:10px;font-weight:650}.budget-alert.danger{background:#fff2f0;color:#9b2c2c}.budget-alert.ok{background:#f0f7f2;color:#35634a}.budget-alert.warning{background:#fff8e6;color:#7a5a00}.budget-over{color:#a12d2d;font-weight:700}.budget-under{color:#35634a;font-weight:650}.budget-even{color:#666}.preview-block{margin-top:14px;padding-top:14px;border-top:1px solid #eee}.preview-block:first-child{margin-top:0;padding-top:0;border-top:0}.preview-heading{font-weight:750;margin-bottom:5px}.preview-actions{display:flex;gap:8px;margin:10px 0}.preview-actions button{width:auto;padding:7px 10px}.preview-scroll{overflow:auto;margin-top:8px}.preview-source{margin-top:4px;color:#777;font-size:12px;white-space:normal;line-height:1.45}.preview-fixed{display:inline-block;font-size:12px;color:#35634a;background:#f0f7f2;padding:3px 7px;border-radius:999px}.preview-total{text-align:right;margin-top:12px;font-size:16px}.export-group-name{min-width:150px;padding:7px 8px}.export-preview-note{margin:0 0 10px}.preview-scroll input[type="checkbox"]{width:18px;height:18px;padding:0}.preview-scroll td{vertical-align:top}@media(max-width:720px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){.grid,.row{grid-template-columns:1fr}body{padding-top:20px}.form-actions{flex-direction:column}}
+:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#252525;background:#f5f6f4}*{box-sizing:border-box}body{max-width:1120px;margin:0 auto;padding:28px 18px 64px}h1{font-size:30px;margin:2px 0 6px;letter-spacing:-.02em}h2{font-size:20px;margin:0}.muted{color:#73736d;font-size:14px;line-height:1.55}.section-label{font-size:13px;color:#777;font-weight:700;letter-spacing:.04em}.page-header{margin-bottom:16px}.tabs{display:flex;gap:6px;padding:5px;background:#e9ebe7;border:1px solid #dde0da;border-radius:12px;position:sticky;top:8px;z-index:8;margin:16px 0 18px}.tab-button{flex:1;background:transparent;color:#565a55;border:0;border-radius:8px;padding:10px 12px;font-weight:700}.tab-button.active{background:#fff;color:#23333d;box-shadow:0 1px 4px rgba(25,35,30,.08)}.tab-panel[hidden]{display:none}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 14px}.card{background:#fff;border:1px solid #e1e4de;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(20,30,25,.02)}.metric-card{min-height:126px}.label{font-size:13px;color:#777}.value{font-size:26px;font-weight:760;margin-top:7px;letter-spacing:-.02em}.value.danger{color:#a12d2d}.petty-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.petty-stat{padding-right:8px;border-right:1px solid #eceee9}.petty-stat:last-child{border-right:0}.petty-stat .label{font-size:12px}.petty-stat .value{font-size:16px;margin-top:4px}.status{min-height:24px;margin:10px 0;color:#3b6650}.status.error{color:#9b2c2c}.form-status{margin:8px 0 0}.section{margin-top:14px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.section-heading .muted{margin-top:4px}.overview-split{display:grid;grid-template-columns:1fr 1.25fr;gap:14px}.advance-row{display:flex;justify-content:space-between;gap:20px;padding:10px 0;border-bottom:1px solid #eee}.advance-row:last-child{border-bottom:0}.pending-total{display:flex;align-items:end;justify-content:space-between;gap:12px;padding:2px 0 10px;border-bottom:1px solid #eee;margin-bottom:3px}.pending-total .value{font-size:22px;margin:0}.progress-wrap{margin:6px 0 16px}.progress-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.progress-track{height:12px;border-radius:999px;background:#eceee9;overflow:hidden}.progress-bar{height:100%;width:0;background:#4b6657;border-radius:999px;transition:width .2s ease}.progress-bar.over{background:#a65f53}.budget-alert{padding:10px 12px;border-radius:8px;margin-bottom:10px;font-weight:650}.budget-alert.danger{background:#fff2f0;color:#9b2c2c}.budget-alert.ok{background:#f0f7f2;color:#35634a}.budget-alert.warning{background:#fff8e6;color:#7a5a00}.budget-over{color:#a12d2d;font-weight:700}.budget-under{color:#35634a;font-weight:650}.budget-even{color:#666}details{border-top:1px solid #eceee9;padding-top:10px}summary{cursor:pointer;font-weight:700;color:#4a4f4a}form{display:grid;gap:10px}input,select,textarea,button{font:inherit;padding:10px;border:1px solid #d8d8d2;border-radius:8px;background:white}button{background:#2f4858;color:white;border:none;font-weight:650;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.secondary{background:white;color:#2f4858;border:1px solid #bfc8ce}.form-actions{display:flex;gap:10px}.form-actions button{flex:1}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.editor-panel{margin:12px 0 18px;padding:16px;border:1px solid #dfe3dc;border-radius:12px;background:#f9faf8}.table-tools{display:flex;gap:8px;margin-bottom:10px}.table-tools input{flex:1;min-width:180px}.table-tools select{min-width:150px}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 6px;border-bottom:1px solid #eee;white-space:nowrap}.num{text-align:right}.table-action{padding:6px 9px;background:white;color:#2f4858;border:1px solid #bfc8ce;font-size:13px}.empty{text-align:center;color:#888;padding:24px}.empty.compact{padding:8px 0}.config-note{margin:0 0 10px;color:#666;font-size:14px}.preview-block{margin-top:14px;padding-top:14px;border-top:1px solid #eee}.preview-block:first-child{margin-top:0;padding-top:0;border-top:0}.preview-heading{font-weight:750;margin-bottom:5px}.preview-actions{display:flex;gap:8px;margin:10px 0}.preview-actions button{width:auto;padding:7px 10px}.preview-scroll{overflow:auto;margin-top:8px}.preview-source{margin-top:4px;color:#777;font-size:12px;white-space:normal;line-height:1.45}.preview-fixed{display:inline-block;font-size:12px;color:#35634a;background:#f0f7f2;padding:3px 7px;border-radius:999px}.preview-total{text-align:right;margin-top:12px;font-size:16px}.export-group-name{min-width:150px;padding:7px 8px}.export-preview-note{margin:0 0 10px}.preview-scroll input[type="checkbox"]{width:18px;height:18px;padding:0}.preview-scroll td{vertical-align:top}.download-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.download-option{border:1px solid #e3e5df;border-radius:12px;padding:16px}.download-option h3{margin:0 0 6px;font-size:17px}.download-option button{width:100%;margin-top:12px}.recent-table th,.recent-table td{padding:8px 6px}.link-button{background:transparent;color:#2f4858;padding:0;border:0;font-weight:700}.spacer-top{margin-top:12px}@media(max-width:900px){.summary-grid{grid-template-columns:1fr 1fr}.overview-split{grid-template-columns:1fr}}@media(max-width:620px){body{padding:18px 12px 48px}.tabs{overflow:auto;position:static}.tab-button{min-width:92px}.summary-grid,.row,.download-grid{grid-template-columns:1fr}.petty-grid{grid-template-columns:1fr}.petty-stat{border-right:0;border-bottom:1px solid #eceee9;padding:7px 0}.petty-stat:last-child{border-bottom:0}.form-actions,.table-tools{flex-direction:column}.value{font-size:24px}}
 </style>
 </head>
 <body>
-<div class="section-label">活動帳務</div>
-<h1 id="activityName">讀取活動中…</h1>
-<div id="activityMeta" class="muted"></div>
+<div class="page-header">
+  <div class="section-label">活動帳務</div>
+  <h1 id="activityName">讀取活動中…</h1>
+  <div id="activityMeta" class="muted"></div>
+</div>
 <div id="configPanel" class="card section" hidden><h2>第一次設定</h2><p class="config-note">輸入活動帳務存取碼。存取碼只保留在這次瀏覽器工作階段，不會寫進網址或 GitHub。</p><input id="tokenInput" type="password" autocomplete="off" placeholder="存取碼"><button id="saveConfig" type="button" style="margin-top:10px">開始使用</button></div>
 <div id="appContent">
-<div id="status" class="status"></div>
-<div class="grid">
-  <div class="card"><div class="label">活動預算</div><div id="budget" class="value">讀取中…</div></div>
-  <div class="card"><div class="label">目前實際支出</div><div id="actualExpense" class="value">讀取中…</div></div>
-  <div class="card"><div class="label">預算剩餘</div><div id="budgetRemaining" class="value">讀取中…</div></div>
-  <div class="card"><div class="label">零用金暫支</div><div id="pettyCashAdvance" class="value">讀取中…</div></div>
-  <div class="card"><div class="label">零用金扣抵合計</div><div id="pettyCashUsed" class="value">讀取中…</div></div>
-  <div class="card"><div class="label">需沖銷金額</div><div id="pettyCashRemaining" class="value">讀取中…</div></div>
-</div>
-<div class="card section"><h2>預算執行情況</h2><div id="budgetAlert" class="budget-alert warning">讀取中…</div><div style="overflow:auto"><table><thead><tr><th>預算項目</th><th class="num">核准預算</th><th class="num">實際支出</th><th class="num">差異</th></tr></thead><tbody id="budgetRows"><tr><td colspan="4" class="empty">讀取中…</td></tr></tbody></table></div></div>
-<div class="card section"><h2>待核銷代墊</h2><div id="pendingAdvances"><div class="empty compact">讀取中…</div></div></div>
-<div class="card section"><h2>核銷匯出預覽</h2><p class="muted export-preview-note">這裡顯示「核銷總覽」實際會怎麼彙總。主要廠商依廠商合併；JDC 活動零用金可在下載前直接調整用途分組。</p><div id="exportPreview"><div class="empty compact">讀取中…</div></div></div>
-<div class="card section"><h2>下載表單</h2><p class="muted">完整核銷資料會下載為單一 Excel，包含核銷總覽、預算與結算、核銷憑證、零用金使用明細與分攤表。零用金頁與獨立零用金支出表共用同一套計算與版型。</p><div class="form-actions"><button id="generateReimbursementReport" type="button">下載完整核銷資料（Excel）</button><button id="generatePettyCashReport" class="secondary" type="button">下載零用金支出表（Excel）</button></div><div id="reportStatus" class="status form-status" aria-live="polite"></div></div>
-<div id="expenseEditor" class="card section"><h2 id="expenseFormTitle">新增支出</h2><form id="expenseForm"><div class="row"><input name="date" type="date" required><input name="amount" type="number" min="1" step="1" placeholder="金額" required></div><div class="row"><input name="item" placeholder="項目，例如：車資" required><input name="category" placeholder="分類（選填）"></div><div class="row"><select name="budget_item" required><option value="">選擇預算項目</option></select><select name="payment_method" required><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select></div><input name="payer" placeholder="支付人，個人代墊時必填"><textarea name="note" placeholder="備註（選填）"></textarea><div class="form-actions"><button id="submitExpenseButton" type="submit">登記支出</button><button id="cancelEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="expenseStatus" class="status form-status" aria-live="polite"></div></form></div>
-<div class="card section"><h2>支出明細</h2><div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>預算項目</th><th>支付方式</th><th>支付人</th><th>核銷狀態</th><th class="num">金額</th><th></th></tr></thead><tbody id="expenseRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div></div>
+  <div id="status" class="status"></div>
+  <nav class="tabs" role="tablist" aria-label="帳務功能">
+    <button type="button" class="tab-button active" data-tab="overview" role="tab" aria-selected="true">總覽</button>
+    <button type="button" class="tab-button" data-tab="expenses" role="tab" aria-selected="false">支出明細</button>
+    <button type="button" class="tab-button" data-tab="reimbursement" role="tab" aria-selected="false">核銷整理</button>
+    <button type="button" class="tab-button" data-tab="downloads" role="tab" aria-selected="false">下載</button>
+  </nav>
+
+  <section class="tab-panel" data-tab-panel="overview" role="tabpanel">
+    <div class="summary-grid">
+      <div class="card metric-card"><div class="label">活動預算</div><div id="budget" class="value">讀取中…</div></div>
+      <div class="card metric-card"><div class="label">目前實際支出</div><div id="actualExpense" class="value">讀取中…</div></div>
+      <div class="card metric-card"><div class="label">預算剩餘</div><div id="budgetRemaining" class="value">讀取中…</div></div>
+      <div class="card metric-card"><div class="label">零用金</div><div class="petty-grid"><div class="petty-stat"><div class="label">暫支</div><div id="pettyCashAdvance" class="value">…</div></div><div class="petty-stat"><div class="label">已使用</div><div id="pettyCashUsed" class="value">…</div></div><div class="petty-stat"><div class="label">剩餘／待沖銷</div><div id="pettyCashRemaining" class="value">…</div></div></div></div>
+    </div>
+
+    <div class="card section">
+      <div class="section-heading"><div><h2>預算使用進度</h2><div class="muted" id="budgetProgressText">讀取中…</div></div><strong id="budgetProgressLabel">—</strong></div>
+      <div class="progress-wrap"><div class="progress-track"><div id="budgetProgressBar" class="progress-bar"></div></div></div>
+      <div id="budgetAlert" class="budget-alert warning">讀取中…</div>
+      <details><summary>查看各預算項目</summary><div style="overflow:auto" class="spacer-top"><table><thead><tr><th>預算項目</th><th class="num">核准預算</th><th class="num">實際支出</th><th class="num">差異</th></tr></thead><tbody id="budgetRows"><tr><td colspan="4" class="empty">讀取中…</td></tr></tbody></table></div></details>
+    </div>
+
+    <div class="overview-split section">
+      <div class="card"><div class="section-heading"><div><h2>待核銷代墊</h2><div class="muted">尚未完成核銷的個人代墊</div></div></div><div class="pending-total"><span class="label">待核銷合計</span><div id="pendingAdvanceTotal" class="value">…</div></div><div id="pendingAdvances"><div class="empty compact">讀取中…</div></div></div>
+      <div class="card"><div class="section-heading"><div><h2>最近支出</h2><div class="muted">最新 5 筆帳務記錄</div></div><button type="button" class="link-button" data-open-tab="expenses">查看全部</button></div><div style="overflow:auto"><table class="recent-table"><thead><tr><th>日期</th><th>項目</th><th class="num">金額</th></tr></thead><tbody id="recentExpenseRows"><tr><td colspan="3" class="empty compact">讀取中…</td></tr></tbody></table></div></div>
+    </div>
+  </section>
+
+  <section class="tab-panel" data-tab-panel="expenses" role="tabpanel" hidden>
+    <div class="card">
+      <div class="section-heading"><div><h2>支出明細</h2><div class="muted">查詢、篩選或修正已登記的支出</div></div><button id="showExpenseEditor" type="button">新增支出</button></div>
+      <div id="expenseEditor" class="editor-panel" hidden><div class="section-heading"><h2 id="expenseFormTitle">新增支出</h2><button id="closeExpenseEditor" class="secondary" type="button">關閉</button></div><form id="expenseForm"><div class="row"><input name="date" type="date" required><input name="amount" type="number" min="1" step="1" placeholder="金額" required></div><div class="row"><input name="item" placeholder="項目，例如：車資" required><input name="category" placeholder="分類（選填）"></div><div class="row"><select name="budget_item" required><option value="">選擇預算項目</option></select><select name="payment_method" required><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select></div><input name="payer" placeholder="支付人，個人代墊時必填"><textarea name="note" placeholder="備註（選填）"></textarea><div class="form-actions"><button id="submitExpenseButton" type="submit">登記支出</button><button id="cancelEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="expenseStatus" class="status form-status" aria-live="polite"></div></form></div>
+      <div class="table-tools"><input id="expenseSearch" type="search" placeholder="搜尋日期、項目、預算或支付人"><select id="expensePaymentFilter"><option value="">全部支付方式</option><option value="公司轉帳">公司轉帳</option><option value="活動零用金">活動零用金</option><option value="個人代墊">個人代墊</option></select></div>
+      <div style="overflow:auto"><table><thead><tr><th>日期</th><th>項目</th><th>預算項目</th><th>支付方式</th><th>支付人</th><th>核銷狀態</th><th class="num">金額</th><th></th></tr></thead><tbody id="expenseRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="tab-panel" data-tab-panel="reimbursement" role="tabpanel" hidden>
+    <div class="card"><div class="section-heading"><div><h2>核銷整理</h2><div class="muted">下載前先確認最後會如何合併與顯示</div></div></div><p class="muted export-preview-note">這裡顯示「核銷總覽」實際會怎麼彙總。主要廠商依廠商合併；JDC 活動零用金可在下載前直接調整用途分組。</p><div id="exportPreview"><div class="empty compact">讀取中…</div></div><div id="exportPreviewStatus" class="status form-status" aria-live="polite"></div></div>
+  </section>
+
+  <section class="tab-panel" data-tab-panel="downloads" role="tabpanel" hidden>
+    <div class="card"><div class="section-heading"><div><h2>下載表單</h2><div class="muted">核銷整理完成後，在這裡取得最終檔案</div></div></div><div class="download-grid"><div class="download-option"><h3>完整核銷資料</h3><div class="muted">單一 Excel，包含核銷總覽、預算與結算、核銷憑證、零用金使用明細與分攤表。</div><button id="generateReimbursementReport" type="button">下載完整核銷資料</button></div><div class="download-option"><h3>零用金明細</h3><div class="muted">只需零用金流水帳時，可單獨下載。</div><button id="generatePettyCashReport" class="secondary" type="button">下載零用金明細</button></div></div><div id="reportStatus" class="status form-status" aria-live="polite"></div></div>
+  </section>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="assets/domain.js?v=20260830-9"></script><script src="assets/app.js?v=20260830-18"></script>
@@ -64,6 +96,13 @@ function exportSourceSummary(rows) {
     const item = String(row.item || '').trim() || '未命名支出';
     return `${vendor ? `${vendor}／` : ''}${item} ${money(row.amount)}`;
   }).join('、');
+}
+
+function setExportPreviewStatus(text, error = false) {
+  const el = $('#exportPreviewStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.className = error ? 'status form-status error' : 'status form-status';
 }
 
 function renderExportPreview() {
@@ -146,7 +185,7 @@ function splitExportGroup(groupId) {
 function mergeSelectedExportGroups() {
   const selectedIds = Array.from(document.querySelectorAll('[data-export-group-select]:checked')).map(input => input.dataset.exportGroupSelect);
   if (selectedIds.length < 2) {
-    setReportStatus('請先勾選至少兩個零用金項目再合併', true);
+    setExportPreviewStatus('請先勾選至少兩個零用金項目再合併', true);
     return;
   }
   const overview = EventAccountingDomain.buildReimbursementOverview(state.expenses || [], state.exportGroupOverrides || {});
@@ -161,19 +200,47 @@ function mergeSelectedExportGroups() {
     if (expenseId) state.exportGroupOverrides[expenseId] = { group_id: groupId, label };
   });
   persistExportGroupOverrides();
-  setReportStatus('已更新匯出預覽，原始帳務沒有變更');
+  setExportPreviewStatus('已更新匯出預覽，原始帳務沒有變更');
   renderExportPreview();
 }
 
 function resetExportGroups() {
   state.exportGroupOverrides = {};
   persistExportGroupOverrides();
-  setReportStatus('已還原系統預設彙總規則');
+  setExportPreviewStatus('已還原系統預設彙總規則');
   renderExportPreview();
 }
 
-const renderWithoutExportPreview=render;
-render=function(data){renderWithoutExportPreview(data);loadExportGroupOverrides();renderExportPreview()}
+const renderWithoutFrontendEnhancements=render;
+function renderFrontendSummary(data) {
+  const activity = data.activity || {};
+  const expenses = data.expenses || [];
+  const summary = EventAccountingDomain.summarizeDashboard(activity, expenses);
+  const pendingAdvanceTotal = summary.pendingAdvances.reduce((total, row) => total + Number(row.amount || 0), 0);
+  setMoneyMetric('#pendingAdvanceTotal', pendingAdvanceTotal);
+  const budgetNumber = Number(summary.budget);
+  const actualNumber = Number(summary.actualExpense || 0);
+  const budgetPercent = Number.isFinite(budgetNumber) && budgetNumber > 0 ? (actualNumber / budgetNumber) * 100 : null;
+  const progressBar = $('#budgetProgressBar');
+  if (budgetPercent === null) {
+    $('#budgetProgressLabel').textContent = '\u2014';
+    $('#budgetProgressText').textContent = '\u5c1a\u672a\u8a2d\u5b9a\u6d3b\u52d5\u9810\u7b97';
+    progressBar.style.width = '0%';
+    progressBar.classList.remove('over');
+  } else {
+    const roundedPercent = Math.round(budgetPercent);
+    $('#budgetProgressLabel').textContent = `${roundedPercent}%`;
+    $('#budgetProgressText').textContent = `${money(actualNumber)} / ${money(budgetNumber)}`;
+    progressBar.style.width = `${Math.min(Math.max(budgetPercent, 0), 100)}%`;
+    progressBar.classList.toggle('over', budgetPercent > 100);
+  }
+  const recentExpenses = expenses.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 5);
+  $('#recentExpenseRows').innerHTML = recentExpenses.length ? recentExpenses.map(row => `
+    <tr><td>${escapeHtml(row.date)}</td><td>${escapeHtml(row.item)}</td><td class="num">${money(row.amount)}</td></tr>
+  `).join('') : '<tr><td colspan="3" class="empty compact">\u76ee\u524d\u6c92\u6709\u652f\u51fa</td></tr>';
+  if (typeof window.applyExpenseFilters === 'function') window.applyExpenseFilters();
+}
+render=function(data){renderWithoutFrontendEnhancements(data);renderFrontendSummary(data);loadExportGroupOverrides();renderExportPreview()}
 function sg(expenses,overrides){
   let o=EventAccountingDomain.buildReimbursementOverview(expenses,overrides||{}),gs=[];
   for(let base of o.mainVendors){
@@ -200,5 +267,52 @@ $('#exportPreview').addEventListener('change', (event) => {
   const input = event.target.closest('[data-export-group-label]');
   if (input) renameExportGroup(input.dataset.exportGroupLabel, input.value);
 });
+
+function activateAccountingTab(name) {
+  const valid = ['overview', 'expenses', 'reimbursement', 'downloads'];
+  const target = valid.includes(name) ? name : 'overview';
+  document.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === target; button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active)); });
+  document.querySelectorAll('[data-tab-panel]').forEach(panel => { panel.hidden = panel.dataset.tabPanel !== target; });
+  try { sessionStorage.setItem('eventAccountingActiveTab', target); } catch (_) {}
+}
+
+document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => activateAccountingTab(button.dataset.tab)));
+document.addEventListener('click', event => {
+  const opener = event.target.closest('[data-open-tab]');
+  if (opener) activateAccountingTab(opener.dataset.openTab);
+});
+try { activateAccountingTab(sessionStorage.getItem('eventAccountingActiveTab') || 'overview'); } catch (_) { activateAccountingTab('overview'); }
+
+const expenseEditorPanel = $('#expenseEditor');
+$('#showExpenseEditor').addEventListener('click', () => {
+  resetExpenseForm();
+  setExpenseStatus('');
+  expenseEditorPanel.hidden = false;
+  expenseEditorPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('#cancelEdit').addEventListener('click', () => { expenseEditorPanel.hidden = true; });
+$('#closeExpenseEditor').addEventListener('click', () => { resetExpenseForm(); setExpenseStatus(''); expenseEditorPanel.hidden = true; });
+$('#expenseRows').addEventListener('click', event => {
+  if (!event.target.closest('[data-edit-expense]')) return;
+  activateAccountingTab('expenses');
+  expenseEditorPanel.hidden = false;
+  setTimeout(() => expenseEditorPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+}, true);
+
+window.applyExpenseFilters = function applyExpenseFilters() {
+  const query = String($('#expenseSearch').value || '').trim().toLowerCase();
+  const payment = String($('#expensePaymentFilter').value || '').trim();
+  document.querySelectorAll('#expenseRows tr').forEach(row => {
+    const cells = row.querySelectorAll('td');
+    if (!cells.length || row.querySelector('.empty')) return;
+    const matchesQuery = !query || row.textContent.toLowerCase().includes(query);
+    const paymentText = cells[3] ? cells[3].textContent.trim() : '';
+    const matchesPayment = !payment || paymentText === payment;
+    row.hidden = !(matchesQuery && matchesPayment);
+  });
+};
+$('#expenseSearch').addEventListener('input', window.applyExpenseFilters);
+$('#expensePaymentFilter').addEventListener('change', window.applyExpenseFilters);
+
 </script>
 </body></html>
