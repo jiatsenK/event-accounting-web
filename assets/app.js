@@ -176,7 +176,7 @@ function render(data) {
 
   setMoneyMetric('#budget', summary.budget);
   setMoneyMetric('#actualExpense', summary.actualExpense);
-  setBalanceMetric('#budgetRemaining', summary.budgetRemaining);
+  setSignedMoneyMetric('#budgetRemaining', summary.budgetRemaining);
   setMoneyMetric('#pettyCashAdvance', summary.pettyCashAdvance);
   setMoneyMetric('#pettyCashUsed', summary.pettyCashUsed);
   setSignedMoneyMetric('#pettyCashRemaining', summary.pettyCashRemaining);
