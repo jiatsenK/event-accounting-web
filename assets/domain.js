@@ -218,7 +218,8 @@
   function defaultPettyCashExportLabel(row) {
     const category = String(row && row.category || '').trim();
     const item = String(row && row.item || '').trim();
-    const generic = new Set(['', '活動經費', '餐飲費用', '車資', '活動零用金']);
+    if (category === '車資') return '車資';
+    const generic = new Set(['', '活動經費', '餐飲費用', '活動零用金']);
     if (!generic.has(category)) return category;
     if (item.includes('識別證')) return '識別證';
     return item || '零用金';
