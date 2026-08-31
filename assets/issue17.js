@@ -1,43 +1,24 @@
 // Issue #17 frontend compatibility layer. Runs after the inline enhancements in index.html are defined.
 document.addEventListener('DOMContentLoaded', () => {
   const reimbursementStatuses = ['待核銷', '已核銷', '已請款', '已支付'];
-  state.activityStatusFilter = '全部';
 
-  const switcher = document.querySelector('.activity-switcher');
-  if (switcher && !document.querySelector('#activityStatusFilters')) {
-    const filters = document.createElement('div');
-    filters.id = 'activityStatusFilters';
-    filters.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:3px';
-    ['全部', '進行中', '已結案'].forEach(status => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.activityStatusFilter = status;
-      button.textContent = status;
-      button.className = 'secondary';
-      button.style.cssText = 'padding:5px 9px;font-size:12px';
-      filters.appendChild(button);
-    });
-    switcher.insertBefore(filters, switcher.querySelector('select'));
-  }
+  const oldFilters = document.querySelector('#activityStatusFilters');
+  if (oldFilters) oldFilters.remove();
 
   const pettyDownload = document.querySelector('#generatePettyCashReport');
   if (pettyDownload) pettyDownload.textContent = '下載零用金明細';
 
   const hint = document.querySelector('.inline-hint');
-  if (hint) hint.textContent = '直接點表格欄位即可原地修改；核銷狀態也可逐筆調整。完成全部核銷後可一鍵鎖定帳務。';
+  if (hint) hint.textContent = '直接點表格欄位即可原地修改；核銷狀態也可逐筆調整。完成全部核銷後可在總覽鎖定帳務。';
 
-  const expenseHeading = document.querySelector('[data-tab-panel="expenses"] .section-heading');
-  if (expenseHeading && !document.querySelector('#finalizeReimbursements')) {
-    const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap';
-    const addButton = document.querySelector('#showExpenseEditor');
-    if (addButton && addButton.parentNode === expenseHeading) actions.appendChild(addButton);
-    const finalize = document.createElement('button');
-    finalize.id = 'finalizeReimbursements';
-    finalize.type = 'button';
-    finalize.textContent = '一鍵核銷所有內容';
-    actions.appendChild(finalize);
-    expenseHeading.appendChild(actions);
+  const overviewPanel = document.querySelector('[data-tab-panel="overview"]');
+  if (overviewPanel && !document.querySelector('#reimbursementStateBar')) {
+    const bar = document.createElement('div');
+    bar.id = 'reimbursementStateBar';
+    bar.className = 'card';
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:14px 18px';
+    bar.innerHTML = '<div><div class="section-label">核銷狀態</div><div id="reimbursementStateText" style="font-size:18px;font-weight:760;margin-top:3px">尚未完成核銷</div><div id="reimbursementStateNote" class="muted" style="margin-top:2px"></div></div><button id="finalizeReimbursements" type="button">完成核銷並鎖定</button>';
+    overviewPanel.insertBefore(bar, overviewPanel.firstChild);
   }
 
   function sortedExpenses(expenses) {
@@ -47,47 +28,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }).map(entry => entry.row);
   }
 
-  function filteredActivities() {
-    const all = Array.isArray(state.activities) ? state.activities : [];
-    if (state.activityStatusFilter === '全部') return all;
-    return all.filter(activity => String(activity.status || '').trim() === state.activityStatusFilter);
-  }
-
-  window.applyActivityStatusFilter = async function applyActivityStatusFilter(status, allowSwitch = true) {
-    state.activityStatusFilter = status || '全部';
-    document.querySelectorAll('[data-activity-status-filter]').forEach(button => {
-      const active = button.dataset.activityStatusFilter === state.activityStatusFilter;
-      button.style.background = active ? '#2f4858' : 'white';
-      button.style.color = active ? 'white' : '#2f4858';
-    });
+  function renderSimpleActivitySelector() {
     const select = document.querySelector('#activitySelector');
     if (!select) return;
-    const list = filteredActivities();
+    const list = Array.isArray(state.activities) && state.activities.length
+      ? state.activities
+      : (state.activity && state.activity.activity_id ? [state.activity] : []);
     select.innerHTML = list.length ? list.map(activity => {
       const id = String(activity.activity_id || '');
-      const suffix = [activity.date, activity.status].filter(Boolean).join(' · ');
-      const label = `${activity.name || id}${suffix ? ` (${suffix})` : ''}`;
+      const date = String(activity.date || '').trim();
+      const label = `${activity.name || id}${date ? ` (${date})` : ''}`;
       return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
-    }).join('') : `<option value="">目前沒有${state.activityStatusFilter === '全部' ? '' : state.activityStatusFilter}活動</option>`;
-    const currentIncluded = list.some(activity => String(activity.activity_id || '') === String(state.activityId || ''));
-    if (currentIncluded) select.value = state.activityId;
-    select.disabled = !list.length;
-    if (allowSwitch && !currentIncluded && list.length && typeof window.switchActivity === 'function') {
-      await window.switchActivity(list[0].activity_id);
-    }
-  };
-
-  document.querySelector('#activityStatusFilters')?.addEventListener('click', event => {
-    const button = event.target.closest('[data-activity-status-filter]');
-    if (!button) return;
-    window.applyActivityStatusFilter(button.dataset.activityStatusFilter).catch(handleError);
-  });
+    }).join('') : '<option value="">目前沒有可選活動</option>';
+    if (list.some(activity => String(activity.activity_id || '') === String(state.activityId || ''))) select.value = state.activityId;
+    select.disabled = list.length <= 1;
+  }
 
   if (typeof window.loadActivityList === 'function') {
     const originalLoadActivityList = window.loadActivityList;
     window.loadActivityList = async function issue17LoadActivityList(fallbackActivity) {
       await originalLoadActivityList(fallbackActivity);
-      await window.applyActivityStatusFilter(state.activityStatusFilter, false);
+      renderSimpleActivitySelector();
     };
   }
 
@@ -206,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function finalizeAllReimbursements() {
     if (state.activity && state.activity.reimbursement_locked) return;
     if (!state.capabilities.includes('finalize_reimbursements')) {
-      setInlineExpenseStatus('新版核銷後端尚未部署，暫時不能一鍵核銷。', true);
+      setInlineExpenseStatus('新版核銷後端尚未部署，暫時不能完成核銷。', true);
       return;
     }
     const pending = (state.expenses || []).filter(row => String(row.reimbursement_status || '') === '待核銷');
@@ -220,14 +181,45 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const confirmed = await postReimbursementAction({ action: 'finalize_reimbursements', activity_id: state.activityId }, after => Boolean(after.activity && after.activity.reimbursement_locked));
       render(confirmed);
-      setInlineExpenseStatus('已完成全部核銷，帳務已鎖定。');
+      setInlineExpenseStatus('已核銷完成，帳務已鎖定。');
     } catch (err) {
-      setInlineExpenseStatus(err && err.message ? err.message : '一鍵核銷失敗', true);
+      setInlineExpenseStatus(err && err.message ? err.message : '完成核銷失敗', true);
       if (button) button.disabled = false;
     }
   }
 
   document.querySelector('#finalizeReimbursements')?.addEventListener('click', finalizeAllReimbursements);
+
+  function renderAdvanceCardForState() {
+    const container = document.querySelector('#pendingAdvances');
+    if (!container) return;
+    const card = container.closest('.card');
+    const heading = card && card.querySelector('.section-heading');
+    const title = heading && heading.querySelector('h2');
+    const subtitle = heading && heading.querySelector('.muted');
+    const totalLabel = card && card.querySelector('.pending-total .label');
+    const totalValue = document.querySelector('#pendingAdvanceTotal');
+    const locked = Boolean(state.activity && state.activity.reimbursement_locked);
+    if (!locked) {
+      if (title) title.textContent = '待核銷代墊';
+      if (subtitle) subtitle.textContent = '尚未完成核銷的個人代墊';
+      if (totalLabel) totalLabel.textContent = '待核銷合計';
+      return;
+    }
+    if (title) title.textContent = '已核銷代墊';
+    if (subtitle) subtitle.textContent = '本活動已完成核銷的個人代墊';
+    if (totalLabel) totalLabel.textContent = '代墊核銷合計';
+    const groups = new Map();
+    (state.expenses || []).filter(row => String(row.payment_method || '') === '個人代墊').forEach(row => {
+      const payer = String(row.payer || '').trim() || '未填支付人';
+      groups.set(payer, (groups.get(payer) || 0) + Number(row.amount || 0));
+    });
+    const total = Array.from(groups.values()).reduce((sum, amount) => sum + amount, 0);
+    if (totalValue) setMoneyMetric('#pendingAdvanceTotal', total);
+    container.innerHTML = groups.size
+      ? Array.from(groups, ([payer, amount]) => `<div class="advance-row"><span>${escapeHtml(payer)}</span><strong>${money(amount)}</strong></div>`).join('')
+      : '<div class="empty compact">本活動沒有個人代墊</div>';
+  }
 
   function applyReimbursementLockState() {
     const locked = Boolean(state.activity && state.activity.reimbursement_locked);
@@ -236,26 +228,54 @@ document.addEventListener('DOMContentLoaded', () => {
       addButton.disabled = locked;
       addButton.title = locked ? '此活動核銷已鎖定' : '';
     }
+    const stateText = document.querySelector('#reimbursementStateText');
+    const stateNote = document.querySelector('#reimbursementStateNote');
     const finalize = document.querySelector('#finalizeReimbursements');
-    if (finalize) {
-      finalize.disabled = locked || !state.capabilities.includes('finalize_reimbursements');
-      finalize.textContent = locked ? '核銷已鎖定' : '一鍵核銷所有內容';
-      finalize.title = !locked && !state.capabilities.includes('finalize_reimbursements') ? '需先部署新版 GAS 後端' : '';
+    if (locked) {
+      if (stateText) stateText.textContent = '已核銷完成';
+      if (stateNote) stateNote.textContent = state.activity.reimbursement_locked_at ? `帳務已鎖定：${state.activity.reimbursement_locked_at}` : '帳務已鎖定，支出資料不可再修改。';
+      if (finalize) {
+        finalize.disabled = true;
+        finalize.textContent = '已核銷完成';
+        finalize.title = '此活動帳務已鎖定';
+      }
+    } else {
+      if (stateText) stateText.textContent = '尚未完成核銷';
+      if (stateNote) stateNote.textContent = '確認所有核銷狀態後，再完成核銷並鎖定帳務。';
+      if (finalize) {
+        finalize.disabled = !state.capabilities.includes('finalize_reimbursements');
+        finalize.textContent = '完成核銷並鎖定';
+        finalize.title = !state.capabilities.includes('finalize_reimbursements') ? '需先部署新版 GAS 後端' : '';
+      }
     }
     const editor = document.querySelector('#expenseEditor');
     if (locked && editor) editor.hidden = true;
     if (typeof window.renderInlineExpenseRows === 'function') window.renderInlineExpenseRows(state.expenses || []);
+    renderAdvanceCardForState();
+  }
+
+  if (typeof window.buildAllocationSheet === 'function') {
+    const originalBuildAllocationSheet = window.buildAllocationSheet;
+    window.buildAllocationSheet = function issue17BuildAllocationSheet(...args) {
+      const sheet = originalBuildAllocationSheet(...args);
+      if (sheet && sheet.pageSetup) {
+        sheet.pageSetup.fitToPage = true;
+        sheet.pageSetup.fitToWidth = 1;
+        sheet.pageSetup.fitToHeight = 0;
+      }
+      return sheet;
+    };
   }
 
   const currentRender = window.render;
   if (typeof currentRender === 'function') {
     window.render = function issue17Render(data) {
       currentRender(data);
+      renderSimpleActivitySelector();
       applyReimbursementLockState();
-      void window.applyActivityStatusFilter(state.activityStatusFilter, false);
     };
   }
 
-  window.applyActivityStatusFilter('全部', false).catch(() => {});
+  renderSimpleActivitySelector();
   applyReimbursementLockState();
 });
