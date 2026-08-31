@@ -12,7 +12,7 @@
 <div class="app">
   <header class="top">
     <div><div class="eyebrow">EVENT PLANNING · VERIFY</div><h1>活動酒水規劃</h1><div class="muted">先看過去實際發生什麼，再進入下一場活動的預測。</div></div>
-    <div class="snapshot"><strong>目前是只讀驗證版</strong><br>資料來自正式「JDC 活動規劃資料」，快照日期 2026-08-31。公開驗證頁只放活動層級與飲品類別摘要，不公開原始品項、來源網址或 Sheet ID。</div>
+    <div class="snapshot"><strong>目前是只讀驗證版</strong><br>資料主要來自正式「JDC 活動規劃資料」；2026 年中聚餐另核對帳務後台是否已有酒類採購。公開頁不公開原始付款明細、來源網址或 Sheet ID。</div>
   </header>
 
   <nav class="tabs" aria-label="頁面功能">
@@ -50,6 +50,7 @@ const fmt=v=>Number.isFinite(v)?`${v.toFixed(1).replace(/\.0$/,'')} L`:'—';
 const ratio=(v,c)=>Number.isFinite(v)?`${v.toFixed(c==='低'?2:3)} L/人`:'—';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLabel=s=>s.replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1/$2/$3');
+const accountingPurchaseActivities=new Set(['midyear2026']);
 
 function switchTab(name){
   document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===name));
@@ -74,14 +75,21 @@ function historyRow(row){
 }
 function eventCard(event,index){
   const hasData=event.categories.length>0;
+  const hasAccountingPurchase=accountingPurchaseActivities.has(event.activity_id);
   const totals=eventTotals(event);
-  const shouldOpen=hasData && index===PlanningPreview.getHistory($('historyType').value).findIndex(row=>row.categories.length>0);
-  return `<details class="event"${shouldOpen?' open':''}><summary><div class="date">${dateLabel(event.activity_date)}</div><div><div class="event-title">${esc(event.activity_name)}</div><div class="meta">${esc(event.activity_type)} · 實際 ${event.actual_headcount} 人${hasData?` · ${event.categories.length} 類飲品`:''}</div></div><div class="badges">${event.warning_count?`<span class="badge warn">${event.warning_count} 筆需注意</span>`:''}${!hasData?'<span class="badge empty">尚無酒水實績</span>':'<span class="badge">查看明細</span>'}</div></summary><div class="event-body">${hasData?`<div class="totals"><div class="total">可換算採購<strong>${fmt(totals.ordered)}</strong></div><div class="total">可換算消耗<strong>${fmt(totals.consumed)}</strong></div><div class="total">可換算剩餘<strong>${fmt(totals.remaining)}</strong></div></div><table class="history-table"><thead><tr><th>飲品類別</th><th class="num">採購</th><th class="num">消耗</th><th class="num">剩餘</th><th>資料狀態</th></tr></thead><tbody>${event.categories.map(historyRow).join('')}</tbody></table>`:'<div class="no-data">這場活動目前只有活動日期與實際人數，drink_items 尚未登記可供檢視的酒水實績。</div>'}</div></details>`;
+  const visibleRows=PlanningPreview.getHistory($('historyType').value);
+  const shouldOpen=(hasData||hasAccountingPurchase)&&index===visibleRows.findIndex(row=>row.categories.length>0||accountingPurchaseActivities.has(row.activity_id));
+  const badges=event.warning_count?`<span class="badge warn">${event.warning_count} 筆需注意</span>`:'';
+  const dataBadge=hasData?'<span class="badge">查看明細</span>':hasAccountingPurchase?'<span class="badge">帳務已有採購</span><span class="badge empty">消耗待補</span>':'<span class="badge empty">尚無飲品資料</span>';
+  const body=hasData?`<div class="totals"><div class="total">可換算採購<strong>${fmt(totals.ordered)}</strong></div><div class="total">可換算消耗<strong>${fmt(totals.consumed)}</strong></div><div class="total">可換算剩餘<strong>${fmt(totals.remaining)}</strong></div></div><table class="history-table"><thead><tr><th>飲品類別</th><th class="num">採購</th><th class="num">消耗</th><th class="num">剩餘</th><th>資料狀態</th></tr></thead><tbody>${event.categories.map(historyRow).join('')}</tbody></table>`:hasAccountingPurchase?'<div class="no-data"><strong>帳務後台已有酒類採購紀錄。</strong><br>目前缺的是 planning 的 drink_items 實際消耗與剩餘紀錄。帳務付款／採購只能證明「有買」，不能直接當成「喝掉多少」；消耗資料補入前，這場活動不會被納入 L/人 baseline。</div>':'<div class="no-data">這場活動目前只有活動日期與實際人數，planning 與帳務來源都尚未提供可供檢視的飲品資料。</div>';
+  return `<details class="event"${shouldOpen?' open':''}><summary><div class="date">${dateLabel(event.activity_date)}</div><div><div class="event-title">${esc(event.activity_name)}</div><div class="meta">${esc(event.activity_type)} · 實際 ${event.actual_headcount} 人${hasData?` · ${event.categories.length} 類飲品`:''}</div></div><div class="badges">${badges}${dataBadge}</div></summary><div class="event-body">${body}</div></details>`;
 }
 function renderHistory(){
   const type=$('historyType').value;
   const rows=PlanningPreview.getHistory(type);
-  $('historyCount').textContent=`${type==='全部'?'全部':type}共 ${rows.length} 場；${rows.filter(row=>row.categories.length).length} 場已有酒水實績。`;
+  const completed=rows.filter(row=>row.categories.length).length;
+  const accountingOnly=rows.filter(row=>!row.categories.length&&accountingPurchaseActivities.has(row.activity_id)).length;
+  $('historyCount').textContent=`${type==='全部'?'全部':type}共 ${rows.length} 場；${completed} 場已有飲品消耗實績${accountingOnly?`，${accountingOnly} 場帳務已有採購但消耗待補`:''}。`;
   $('historyList').innerHTML=rows.map(eventCard).join('');
 }
 $('historyType').addEventListener('change',renderHistory);
