@@ -440,3 +440,67 @@
     findDuplicateExpense
   };
 });
+
+// UI/export compatibility layer for the current single-page frontend.
+// Keep core accounting math signed; translate signs only at presentation/export boundaries.
+if (typeof window !== 'undefined') {
+  window.setTimeout(() => {
+    function applySemanticBudgetDisplay() {
+      try {
+        if (typeof state === 'undefined' || !state.activity) return;
+        const summary = EventAccountingDomain.summarizeDashboard(state.activity, state.expenses || []);
+        const remaining = summary.budgetRemaining;
+        const wrapper = document.querySelector('.budget-delta');
+        const value = document.querySelector('#budgetRemaining');
+        if (!wrapper || !value || remaining === null || remaining === undefined) return;
+        const label = remaining < 0 ? '超支' : '剩餘預算';
+        if (wrapper.firstChild && wrapper.firstChild.nodeType === 3) wrapper.firstChild.nodeValue = `${label} `;
+        value.textContent = typeof money === 'function' ? money(Math.abs(remaining)) : String(Math.abs(remaining));
+        value.style.color = remaining < 0 ? '#a12d2d' : '';
+      } catch (_) {
+        // The normal render path remains authoritative if enhancement data is unavailable.
+      }
+    }
+
+    if (typeof render === 'function') {
+      const baseRender = render;
+      render = function (data) {
+        baseRender(data);
+        applySemanticBudgetDisplay();
+      };
+      applySemanticBudgetDisplay();
+    }
+
+    // The full reimbursement workbook no longer needs a separate budget/settlement worksheet.
+    if (typeof buildBudgetSheet === 'function') {
+      buildBudgetSheet = function () { return null; };
+    }
+
+    // Company transfers and other already-submitted rows stay in total spend, but not in reimbursement vouchers.
+    if (typeof buildInvoiceSheet === 'function') {
+      const baseBuildInvoiceSheet = buildInvoiceSheet;
+      buildInvoiceSheet = function (workbook, activity, expenses) {
+        const rows = (expenses || []).filter(row =>
+          String(row.payment_method || '').trim() !== '公司轉帳' &&
+          !EventAccountingDomain.isAlreadySubmittedExpense(row)
+        );
+        return baseBuildInvoiceSheet(workbook, activity, rows);
+      };
+    }
+
+    // Columns J:K remain internal classification/note data; the formal petty-cash sheet is A:I.
+    if (typeof buildPettyCashSheet === 'function') {
+      const baseBuildPettyCashSheet = buildPettyCashSheet;
+      buildPettyCashSheet = function (workbook, activity, expenses, options) {
+        const result = baseBuildPettyCashSheet(workbook, activity, expenses, options);
+        const sheet = result && result.sheet;
+        if (!sheet) return result;
+        try { sheet.unMergeCells('A1:K1'); } catch (_) {}
+        try { sheet.mergeCells('A1:I1'); } catch (_) {}
+        ['G', 'H', 'I'].forEach(column => { sheet.getColumn(column).numFmt = '#,##0;-#,##0;0'; });
+        if (result.summaryRow2) sheet.pageSetup.printArea = `A1:I${result.summaryRow2}`;
+        return result;
+      };
+    }
+  }, 0);
+}
