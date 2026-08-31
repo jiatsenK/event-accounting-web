@@ -183,10 +183,29 @@ function render(data) {
   renderBudgetOptions(activity);
   renderBudgetBreakdown(summary.budgetBreakdown);
 
+  const pendingItems = expenses.filter(row =>
+    row && row.payment_method === '個人代墊' && String(row.reimbursement_status || '').trim() === '待核銷'
+  );
   $('#pendingAdvances').innerHTML = summary.pendingAdvances.length
-    ? summary.pendingAdvances.map(row => `
-      <div class="advance-row"><span>${escapeHtml(row.payer)}</span><strong>${money(row.amount)}</strong></div>
-    `).join('')
+    ? summary.pendingAdvances.map(row => {
+      const detailRows = pendingItems
+        .filter(item => String(item.payer || '').trim() === String(row.payer || '').trim())
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      return `
+        <div>
+          <div class="advance-row" style="border-bottom:0;padding-bottom:4px"><span>${escapeHtml(row.payer)}</span><strong>${money(row.amount)}</strong></div>
+          <details style="border-bottom:1px solid #eee;padding:0 0 8px;margin-bottom:2px">
+            <summary style="color:#777;font-size:12px;cursor:pointer;padding:2px 0 4px">查看 ${detailRows.length} 筆明細</summary>
+            ${detailRows.map(item => `
+              <div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0 4px 16px;color:#73736d;font-size:12px;line-height:1.4">
+                <span>${escapeHtml([item.date, item.item].filter(Boolean).join(' · '))}</span>
+                <span style="white-space:nowrap">${money(item.amount)}</span>
+              </div>
+            `).join('')}
+          </details>
+        </div>
+      `;
+    }).join('')
     : '<div class="empty compact">目前沒有待核銷代墊</div>';
 
   $('#expenseRows').innerHTML = expenses.length ? expenses.map(r => `
