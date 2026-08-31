@@ -442,7 +442,7 @@
 });
 
 // UI/export compatibility layer for the current single-page frontend.
-// Keep core accounting math signed; translate signs only at presentation/export boundaries.
+// The submitted reimbursement workbook is the formatting contract for generated Excel files.
 if (typeof window !== 'undefined') {
   window.setTimeout(() => {
     function applySemanticBudgetDisplay() {
@@ -457,9 +457,7 @@ if (typeof window !== 'undefined') {
         if (wrapper.firstChild && wrapper.firstChild.nodeType === 3) wrapper.firstChild.nodeValue = `${label} `;
         value.textContent = typeof money === 'function' ? money(Math.abs(remaining)) : String(Math.abs(remaining));
         value.style.color = remaining < 0 ? '#a12d2d' : '';
-      } catch (_) {
-        // The normal render path remains authoritative if enhancement data is unavailable.
-      }
+      } catch (_) {}
     }
 
     if (typeof render === 'function') {
@@ -471,35 +469,413 @@ if (typeof window !== 'undefined') {
       applySemanticBudgetDisplay();
     }
 
-    // The full reimbursement workbook no longer needs a separate budget/settlement worksheet.
-    if (typeof buildBudgetSheet === 'function') {
-      buildBudgetSheet = function () { return null; };
-    }
+    const moneyFormat = '_-"$"* #,##0_-;\\-"$"* #,##0_-;_-"$"* "-"??_-;_-@_-';
+    const plainNumberFormat = '#,##0;[Red]\\(#,##0\\);0';
+    const black = { argb: 'FF000000' };
+    const thin = () => ({ style: 'thin', color: black });
+    const hair = () => ({ style: 'hair', color: black });
+    const medium = () => ({ style: 'medium', color: black });
+    const double = () => ({ style: 'double', color: black });
+    const noBorder = () => ({});
+    const nf = value => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value || 0));
+    const excelDate = value => {
+      const text = String(value || '').trim();
+      const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : text;
+    };
+    const reportCategoryValue = row => String(row && (row.category || row.budget_item) || '').trim();
+    const reportNoteValue = row => {
+      if (String(row && row.payment_method || '').trim() !== '個人代墊') return String(row && row.note || '').trim();
+      const payer = String(row && row.payer || '').trim();
+      return payer ? `${payer}代墊` : '個人代墊';
+    };
+    const setFont = (cell, size = 16, bold = false, light = false) => {
+      cell.font = { name: light ? 'Microsoft JhengHei Light' : 'Microsoft JhengHei', size, bold };
+    };
+    const setCenter = (cell, wrap = true) => {
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: wrap };
+    };
+    const setThinBox = cell => {
+      cell.border = { left: thin(), right: thin(), top: thin(), bottom: thin() };
+    };
 
-    // Company transfers and other already-submitted rows stay in total spend, but not in reimbursement vouchers.
-    if (typeof buildInvoiceSheet === 'function') {
-      const baseBuildInvoiceSheet = buildInvoiceSheet;
-      buildInvoiceSheet = function (workbook, activity, expenses) {
-        const rows = (expenses || []).filter(row =>
-          String(row.payment_method || '').trim() !== '公司轉帳' &&
-          !EventAccountingDomain.isAlreadySubmittedExpense(row)
-        );
-        return baseBuildInvoiceSheet(workbook, activity, rows);
+    if (typeof buildBudgetSheet === 'function') buildBudgetSheet = function () { return null; };
+    if (typeof buildInvoiceSheet === 'function') buildInvoiceSheet = function () { return null; };
+
+    if (typeof buildOverviewSheet === 'function') {
+      buildOverviewSheet = function (workbook, activity, expenses, overrides) {
+        const sheet = workbook.addWorksheet('核銷總覽', { views: [{ zoomScale: 60 }] });
+        Object.assign(sheet.pageSetup, {
+          paperSize: 9,
+          orientation: 'landscape',
+          horizontalCentered: true,
+          verticalCentered: false,
+          fitToPage: true,
+          fitToHeight: 0,
+          scale: 59,
+          margins: { left: 0.7087, right: 0.7087, top: 0.748, bottom: 0.748, header: 0.315, footer: 0.315 }
+        });
+
+        const reimbursement = EventAccountingDomain.buildReimbursementOverview(expenses || [], overrides || {});
+        const payment = EventAccountingDomain.summarizePaymentMethods(expenses || []);
+        const claim = EventAccountingDomain.summarizeCurrentClaim(expenses || []);
+        const pettySettlement = EventAccountingDomain.summarizePettyCashSettlement(activity || {}, expenses || []);
+        const groups = reimbursement.mainVendors.map(group => {
+          const notes = [];
+          if (group.settlementNote) notes.push(group.settlementNote);
+          else (group.rows || []).forEach(row => {
+            const note = typeof paymentExplanation === 'function' ? paymentExplanation(row) : String(row.reimbursement_status || '').trim();
+            if (note && !notes.includes(note)) notes.push(note);
+          });
+          return { vendor: group.vendor, rows: group.items || [], total: group.total, notes };
+        });
+        if (reimbursement.pettyCash) {
+          const moved = reimbursement.mainVendors.flatMap(group => (group.rows || [])
+            .filter(row => ['活動零用金', '個人代墊'].includes(String(row.payment_method || '').trim()))
+            .map(row => ({ row, vendor: group.vendor })));
+          let pettyNote = '零用金付款';
+          if (pettySettlement && pettySettlement.deductionTotal != null) {
+            const movedText = moved.map(item => `${String(item.row.item || '零用金支出').trim()} ${nf(item.row.amount)} 已計入${item.vendor}`).join('、');
+            pettyNote = movedText
+              ? `零用金實際支出 ${nf(pettySettlement.deductionTotal)}，其中${movedText}，本列計 ${nf(reimbursement.pettyCash.total)}。`
+              : `零用金實際支出 ${nf(pettySettlement.deductionTotal)}，本列計 ${nf(reimbursement.pettyCash.total)}。`;
+          }
+          groups.push({
+            vendor: reimbursement.pettyCash.vendor,
+            rows: reimbursement.pettyCash.items.map(item => ({ item: item.label, unitPrice: item.total, quantity: 1, amount: item.total })),
+            total: reimbursement.pettyCash.total,
+            notes: [pettyNote]
+          });
+        }
+
+        sheet.mergeCells('A1:H1');
+        const title = sheet.getCell('A1');
+        title.value = `${activity.name || state.activityId} 結算費用`;
+        setFont(title, 22, true);
+        setCenter(title, false);
+        sheet.getRow(1).height = 40.8;
+
+        const headers = ['活動名稱', '廠商', '品項', '單價(加服務費)', '數量', '金額(含稅)', '總額', '備註'];
+        const headerRow = sheet.getRow(3);
+        headerRow.height = 60;
+        headers.forEach((value, index) => {
+          const cell = headerRow.getCell(index + 1);
+          cell.value = value;
+          setFont(cell, 16, true);
+          setCenter(cell, true);
+          cell.border = { left: index === 0 ? medium() : thin(), right: index === headers.length - 1 ? medium() : thin(), top: medium(), bottom: medium() };
+        });
+
+        let rowNumber = 4;
+        groups.forEach(group => {
+          const start = rowNumber;
+          const rows = group.rows && group.rows.length ? group.rows : [{ item: '', unitPrice: group.total, quantity: 1, amount: group.total }];
+          rows.forEach((row, itemIndex) => {
+            const current = sheet.getRow(rowNumber);
+            current.height = 60;
+            current.values = ['', group.vendor, row.item || '', row.unitPrice, row.quantity, row.amount, '', ''];
+            for (let column = 1; column <= 8; column += 1) {
+              const cell = current.getCell(column);
+              setFont(cell, 16, false);
+              setCenter(cell, true);
+              if (column === 4 || column === 6) cell.numFmt = moneyFormat;
+              const isFirst = itemIndex === 0;
+              const isLast = itemIndex === rows.length - 1;
+              cell.border = column === 1
+                ? { left: medium(), right: thin(), top: thin(), bottom: thin() }
+                : { left: thin(), right: column === 8 ? medium() : thin(), top: isFirst ? double() : thin(), bottom: isLast ? double() : thin() };
+            }
+            rowNumber += 1;
+          });
+          const end = rowNumber - 1;
+          if (end > start) {
+            sheet.mergeCells(`B${start}:B${end}`);
+            sheet.mergeCells(`G${start}:G${end}`);
+            sheet.mergeCells(`H${start}:H${end}`);
+          }
+          sheet.getCell(`B${start}`).value = group.vendor;
+          sheet.getCell(`G${start}`).value = group.total;
+          sheet.getCell(`G${start}`).numFmt = moneyFormat;
+          sheet.getCell(`H${start}`).value = (group.notes || []).join('\n');
+          setCenter(sheet.getCell(`H${start}`), true);
+        });
+
+        const lastDataRow = Math.max(4, rowNumber - 1);
+        if (groups.length) sheet.mergeCells(`A4:A${lastDataRow}`);
+        const activityCell = sheet.getCell('A4');
+        activityCell.value = activity.name || state.activityId;
+        setFont(activityCell, 16, false);
+        setCenter(activityCell, true);
+
+        const totalRowNumber = rowNumber;
+        const totalRow = sheet.getRow(totalRowNumber);
+        totalRow.height = 40.8;
+        for (let column = 1; column <= 8; column += 1) {
+          const cell = totalRow.getCell(column);
+          setFont(cell, 16, true);
+          setCenter(cell, true);
+          cell.border = { left: column === 1 ? medium() : thin(), right: column === 8 ? medium() : thin(), top: thin(), bottom: medium() };
+        }
+        sheet.mergeCells(`B${totalRowNumber}:F${totalRowNumber}`);
+        sheet.getCell(`B${totalRowNumber}`).value = '總計';
+        sheet.getCell(`G${totalRowNumber}`).value = claim.actualTotal;
+        sheet.getCell(`G${totalRowNumber}`).numFmt = moneyFormat;
+
+        sheet.mergeCells('K3:M3');
+        const summaryTitle = sheet.getCell('K3');
+        summaryTitle.value = `${activity.name || state.activityId} 費用彙總`;
+        setFont(summaryTitle, 16, false);
+        setCenter(summaryTitle, false);
+        ['K3', 'L3', 'M3'].forEach(address => setThinBox(sheet.getCell(address)));
+        sheet.getRow(3).height = 60;
+        const summaryRows = [
+          ['活動總支出', claim.actualTotal],
+          ['已另行提報', claim.alreadySubmittedTotal],
+          ['本次請款', claim.currentClaimTotal],
+          ...payment.items.map(item => [`${item.payment_method}小計`, item.amount])
+        ];
+        summaryRows.forEach((entry, index) => {
+          const targetRow = 4 + index;
+          sheet.mergeCells(`K${targetRow}:L${targetRow}`);
+          sheet.getCell(`K${targetRow}`).value = entry[0];
+          sheet.getCell(`M${targetRow}`).value = entry[1];
+          ['K', 'L', 'M'].forEach(column => {
+            const cell = sheet.getCell(`${column}${targetRow}`);
+            setFont(cell, 16, false);
+            setCenter(cell, true);
+            setThinBox(cell);
+          });
+          sheet.getCell(`M${targetRow}`).numFmt = moneyFormat;
+          sheet.getRow(targetRow).height = 60;
+        });
+
+        [14.9375, 30.5859375, 38.87890625, 25.703125, 30.5859375, 13, 19.76171875, 48.1171875, 13, 6.1171875, 20.87890625, 10.87890625, 23.1171875]
+          .forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+        sheet.pageSetup.printArea = `A1:H${totalRowNumber}`;
+        return sheet;
       };
     }
 
-    // Columns J:K remain internal classification/note data; the formal petty-cash sheet is A:I.
     if (typeof buildPettyCashSheet === 'function') {
-      const baseBuildPettyCashSheet = buildPettyCashSheet;
-      buildPettyCashSheet = function (workbook, activity, expenses, options) {
-        const result = baseBuildPettyCashSheet(workbook, activity, expenses, options);
-        const sheet = result && result.sheet;
-        if (!sheet) return result;
-        try { sheet.unMergeCells('A1:K1'); } catch (_) {}
-        try { sheet.mergeCells('A1:I1'); } catch (_) {}
-        ['G', 'H', 'I'].forEach(column => { sheet.getColumn(column).numFmt = '#,##0;-#,##0;0'; });
-        if (result.summaryRow2) sheet.pageSetup.printArea = `A1:I${result.summaryRow2}`;
-        return result;
+      buildPettyCashSheet = function (workbook, activity, expenses, options = {}) {
+        const applicationDate = String(activity && activity.petty_cash_application_date || '').trim();
+        if (!applicationDate) throw new Error('尚未讀到零用金申請日，請先更新 GAS 後端');
+        const settlement = EventAccountingDomain.summarizePettyCashSettlement(activity, expenses || []);
+        if (settlement.advance === null) throw new Error('尚未登記零用金金額');
+        const rows = settlement.items.slice().sort((left, right) =>
+          String(left.date || '').localeCompare(String(right.date || '')) || String(left.item || '').localeCompare(String(right.item || ''))
+        );
+        const sheet = workbook.addWorksheet(options.sheetName || '零用金使用明細', { views: [{ showGridLines: false, zoomScale: 70 }] });
+        Object.assign(sheet.pageSetup, {
+          paperSize: 9,
+          orientation: 'portrait',
+          horizontalCentered: true,
+          verticalCentered: false,
+          scale: 55,
+          margins: { left: 0.2362204724409449, right: 0.2362204724409449, top: 0.4330708661417323, bottom: 0.4330708661417323, header: 0.1968503937007874, footer: 0.1968503937007874 }
+        });
+
+        sheet.mergeCells('A1:I1');
+        const title = sheet.getCell('A1');
+        title.value = `${activity.name || state.activityId}零用金費用明細`;
+        setFont(title, 22, true);
+        setCenter(title, false);
+        title.numFmt = plainNumberFormat;
+        sheet.getRow(1).height = 80.4;
+
+        const headers = ['編號', '日期', '廠商名稱', '發票號碼', '廠商統編', '項目摘要', '支出', '收入', '結餘', '分類', '備註'];
+        const headerRow = sheet.getRow(2);
+        headerRow.height = 60;
+        headers.forEach((value, index) => {
+          const cell = headerRow.getCell(index + 1);
+          cell.value = value;
+          setFont(cell, 16, true);
+          setCenter(cell, true);
+          if (index === 1) cell.numFmt = 'yyyy/mm/dd';
+          if ([6, 7, 8].includes(index)) cell.numFmt = plainNumberFormat;
+          if (index <= 8) cell.border = { left: index === 6 ? noBorder() : thin(), right: thin(), top: thin(), bottom: thin() };
+        });
+
+        const firstRow = sheet.getRow(3);
+        firstRow.height = 60;
+        firstRow.values = ['', excelDate(applicationDate), '', '', '', '零用金請款', 0, settlement.advance, '', '', ''];
+        firstRow.getCell(9).value = { formula: 'H3-G3', result: settlement.advance };
+
+        let balance = settlement.advance;
+        const dataRows = [{ row: firstRow, isFirstFunding: true }];
+        rows.forEach((row, index) => {
+          const rowNumber = 4 + index;
+          balance -= row.amount;
+          const target = sheet.getRow(rowNumber);
+          target.height = 60;
+          target.values = [index + 1, excelDate(row.date), row.vendor || row.item, String(row.invoice_no || ''), String(row.tax_id || ''), row.item, row.amount, 0, '', reportCategoryValue(row), reportNoteValue(row)];
+          target.getCell(9).value = { formula: `I${rowNumber - 1}-G${rowNumber}+H${rowNumber}`, result: balance };
+          dataRows.push({ row: target, isFirstFunding: false });
+        });
+
+        const lastDataRowNumber = 3 + rows.length;
+        dataRows.forEach(({ row, isFirstFunding }) => {
+          const rowNumber = row.number;
+          const last = rowNumber === lastDataRowNumber;
+          for (let column = 1; column <= 11; column += 1) {
+            const cell = row.getCell(column);
+            setFont(cell, 16, false);
+            if (column >= 7 && column <= 9) {
+              cell.alignment = { horizontal: 'right', vertical: 'middle' };
+              cell.numFmt = moneyFormat;
+            } else setCenter(cell, true);
+            if (column === 2) cell.numFmt = 'yyyy/mm/dd';
+            if (column <= 9) {
+              cell.border = { left: column === 7 ? noBorder() : thin(), right: thin(), top: isFirstFunding ? noBorder() : hair(), bottom: last ? thin() : hair() };
+            } else if (column === 10) cell.border = { left: noBorder(), right: thin(), top: thin(), bottom: thin() };
+            else cell.border = { left: thin(), right: thin(), top: thin(), bottom: thin() };
+          }
+        });
+
+        const summaryRowNumber = lastDataRowNumber + 3;
+        sheet.getRow(summaryRowNumber - 1).height = 45.9;
+        sheet.getRow(summaryRowNumber).height = 45.9;
+        sheet.mergeCells(`A${summaryRowNumber}:I${summaryRowNumber}`);
+        const summary = sheet.getCell(`A${summaryRowNumber}`);
+        const settlementLabel = settlement.settlementAmount < 0
+          ? `應補款 $${nf(Math.abs(settlement.settlementAmount))}`
+          : settlement.settlementAmount > 0 ? `應回沖 $${nf(settlement.settlementAmount)}` : '無需補款／回沖 $0';
+        summary.value = `零用金暫支 $${nf(settlement.advance)}／實際支出 $${nf(settlement.deductionTotal)}／${settlementLabel}`;
+        setFont(summary, 16, true);
+        summary.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+
+        [7.64453125, 19.8203125, 29.76171875, 22.17578125, 21.17578125, 22.41015625, 23.5859375, 13, 24.64453125, 20, 62.9375]
+          .forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+        sheet.pageSetup.printArea = `A1:I${summaryRowNumber}`;
+        return { sheet, settlement, finalRowNumber: lastDataRowNumber, summaryRow2: summaryRowNumber };
+      };
+    }
+
+    if (typeof buildAllocationSheet === 'function') {
+      buildAllocationSheet = function (workbook, activity, expenses, allocation) {
+        if (!allocation || !Array.isArray(allocation.units) || !allocation.units.length) throw new Error('尚未讀到分攤資料，請先更新 GAS 後端');
+        if (String(allocation.method || '').trim() !== '人數比例') throw new Error('正式分攤表目前使用人數比例');
+        const units = allocation.units.map(unit => ({ name: String(unit.name || '').trim(), headcount: Number(unit.headcount) }));
+        if (units.some(unit => !unit.name || !Number.isFinite(unit.headcount) || unit.headcount <= 0)) throw new Error('分攤單位資料異常');
+        const total = EventAccountingDomain.summarizeExpenses(expenses || []);
+        const headcountTotal = units.reduce((sum, unit) => sum + unit.headcount, 0);
+        const netTotalRaw = total / 1.05;
+        const netTotalDisplayed = Math.round(netTotalRaw);
+        const grossRounded = units.map(unit => Math.round(total / headcountTotal * unit.headcount));
+        const netRounded = units.map(unit => Math.round(netTotalRaw / headcountTotal * unit.headcount));
+        const grossTail = total - grossRounded.reduce((sum, amount) => sum + amount, 0);
+        const netTail = netTotalDisplayed - netRounded.reduce((sum, amount) => sum + amount, 0);
+        const tailIndex = units.length > 1 ? 1 : 0;
+        grossRounded[tailIndex] += grossTail;
+        netRounded[tailIndex] += netTail;
+
+        const sheet = workbook.addWorksheet('分攤表 ');
+        Object.assign(sheet.pageSetup, {
+          paperSize: 9,
+          orientation: 'landscape',
+          horizontalCentered: true,
+          verticalCentered: true,
+          margins: { left: 0.25, right: 0.25, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 }
+        });
+
+        sheet.mergeCells('B3:E3');
+        const title = sheet.getCell('B3');
+        title.value = `${String(activity.name || state.activityId).replace(/\s+/g, '')} 分攤表`;
+        sheet.getRow(3).height = 23.4;
+        for (let column = 2; column <= 5; column += 1) {
+          const cell = sheet.getRow(3).getCell(column);
+          setFont(cell, 12, false, true);
+          setCenter(cell, false);
+          setThinBox(cell);
+        }
+        const note = sheet.getCell('G3');
+        note.value = '零用金未稅=零用金的總費用合計未稅價/總人數*各單位人數';
+        setFont(note, 12, false, true);
+        note.font = { ...note.font, color: { argb: 'FFFF0000' } };
+        note.alignment = { vertical: 'middle' };
+
+        sheet.mergeCells('B4:B5');
+        sheet.mergeCells('C4:D4');
+        sheet.mergeCells('C5:D5');
+        sheet.getCell('B4').value = '總計';
+        sheet.getCell('C4').value = '含稅';
+        sheet.getCell('E4').value = '未稅';
+        const overviewSheet = workbook.getWorksheet('核銷總覽');
+        let overviewTotalRow = overviewSheet ? overviewSheet.rowCount : 1;
+        if (overviewSheet) {
+          for (let rowIndex = 1; rowIndex <= overviewSheet.rowCount; rowIndex += 1) {
+            if (String(overviewSheet.getCell(`B${rowIndex}`).value || '').trim() === '總計') overviewTotalRow = rowIndex;
+          }
+        }
+        sheet.getCell('C5').value = { formula: `核銷總覽!G${overviewTotalRow}`, result: total };
+        sheet.getCell('E5').value = { formula: 'C5/1.05', result: netTotalRaw };
+        ['B4', 'C4', 'D4', 'E4', 'B5', 'C5', 'D5', 'E5'].forEach(address => {
+          const cell = sheet.getCell(address);
+          setFont(cell, 12, false, true);
+          setCenter(cell, false);
+          setThinBox(cell);
+        });
+        sheet.getCell('C5').numFmt = moneyFormat;
+        sheet.getCell('E5').numFmt = moneyFormat;
+        sheet.getRow(4).height = 25;
+        sheet.getRow(5).height = 25;
+
+        const firstUnitRow = 8;
+        const lastUnitRow = firstUnitRow + units.length - 1;
+        const totalRowNumber = lastUnitRow + 1;
+        sheet.mergeCells(`A7:A${lastUnitRow}`);
+        sheet.mergeCells('B7:C7');
+        sheet.getCell('A7').value = '分攤表';
+        sheet.getCell('B7').value = '分攤單位';
+        sheet.getCell('D7').value = '各單位小計-含稅';
+        sheet.getCell('E7').value = '各單位小計-未稅';
+        for (let column = 1; column <= 5; column += 1) {
+          const cell = sheet.getRow(7).getCell(column);
+          setFont(cell, 12, false, true);
+          setCenter(cell, false);
+          setThinBox(cell);
+        }
+        sheet.getRow(7).height = 25;
+
+        units.forEach((unit, index) => {
+          const rowNumber = firstUnitRow + index;
+          const row = sheet.getRow(rowNumber);
+          row.height = 25;
+          row.getCell(2).value = unit.name;
+          row.getCell(3).value = unit.headcount;
+          const grossAdjustment = index === tailIndex && grossTail ? `${grossTail > 0 ? '+' : ''}${grossTail}` : '';
+          const netAdjustment = index === tailIndex && netTail ? `${netTail > 0 ? '+' : ''}${netTail}` : '';
+          row.getCell(4).value = { formula: `ROUND($C$5/$C$${totalRowNumber}*C${rowNumber}, 0)${grossAdjustment}`, result: grossRounded[index] };
+          row.getCell(5).value = { formula: `ROUND($E$5/$C$${totalRowNumber}*C${rowNumber},0)${netAdjustment}`, result: netRounded[index] };
+          for (let column = 2; column <= 5; column += 1) {
+            const cell = row.getCell(column);
+            setFont(cell, 12, false, true);
+            cell.alignment = column === 2 ? { vertical: 'middle' } : { horizontal: 'center', vertical: 'middle' };
+            setThinBox(cell);
+          }
+          row.getCell(4).numFmt = moneyFormat;
+          row.getCell(5).numFmt = moneyFormat;
+        });
+
+        sheet.mergeCells(`A${totalRowNumber}:B${totalRowNumber}`);
+        sheet.getCell(`A${totalRowNumber}`).value = '合計';
+        sheet.getCell(`C${totalRowNumber}`).value = { formula: `SUM(C${firstUnitRow}:C${lastUnitRow})`, result: headcountTotal };
+        sheet.getCell(`D${totalRowNumber}`).value = { formula: `SUM(D${firstUnitRow}:D${lastUnitRow})`, result: total };
+        sheet.getCell(`E${totalRowNumber}`).value = { formula: `SUM(E${firstUnitRow}:E${lastUnitRow})`, result: netTotalDisplayed };
+        for (let column = 1; column <= 5; column += 1) {
+          const cell = sheet.getRow(totalRowNumber).getCell(column);
+          setFont(cell, 12, false, true);
+          setCenter(cell, false);
+          setThinBox(cell);
+        }
+        sheet.getCell(`D${totalRowNumber}`).numFmt = moneyFormat;
+        sheet.getCell(`E${totalRowNumber}`).numFmt = moneyFormat;
+        sheet.getRow(totalRowNumber).height = 25;
+
+        [9.05859375, 16.87890625, 10.9375, 20, 21.8203125, 8.9375, 13]
+          .forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+        sheet.pageSetup.printArea = `A3:E${totalRowNumber + 4}`;
+        return sheet;
       };
     }
   }, 0);
