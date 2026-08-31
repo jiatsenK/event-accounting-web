@@ -444,7 +444,7 @@
 // UI/export compatibility layer for the current single-page frontend.
 // The submitted reimbursement workbook is the formatting contract for generated Excel files.
 if (typeof window !== 'undefined') {
-  window.setTimeout(() => {
+  const applyFrontendCompatibility = () => {
     function applySemanticBudgetDisplay() {
       try {
         if (typeof state === 'undefined' || !state.activity) return;
@@ -878,5 +878,8 @@ if (typeof window !== 'undefined') {
         return sheet;
       };
     }
-  }, 0);
+  };
+
+  if (document.readyState === 'complete') applyFrontendCompatibility();
+  else window.addEventListener('load', applyFrontendCompatibility, { once: true });
 }
