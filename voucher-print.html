@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>憑證排版列印</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#252525;background:#f5f6f4}*{box-sizing:border-box}body{margin:0}.app{max-width:1180px;margin:0 auto;padding:28px 18px 56px}.header{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:18px}.eyebrow{font-size:13px;color:#777;font-weight:700;letter-spacing:.04em}.header h1{margin:3px 0 5px;font-size:30px}.muted{color:#73736d;font-size:14px;line-height:1.55}.card{background:#fff;border:1px solid #e1e4de;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(20,30,25,.02)}.toolbar{display:grid;grid-template-columns:2fr repeat(3,minmax(140px,1fr));gap:10px;align-items:end}.field{display:grid;gap:5px}.field label{font-size:12px;color:#777}.field input,.field select,.button{font:inherit;padding:10px;border:1px solid #d8d8d2;border-radius:8px;background:#fff}.button{background:#2f4858;color:#fff;border:0;font-weight:700;cursor:pointer}.button.secondary{background:#fff;color:#2f4858;border:1px solid #bfc8ce}.button.danger{background:#fff;color:#9b2c2c;border:1px solid #d9b8b8}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.privacy{margin-top:10px;padding:10px 12px;border-radius:9px;background:#f3f7f4;color:#466252;font-size:13px}.workspace{display:grid;grid-template-columns:360px 1fr;gap:16px;margin-top:16px}.queue h2,.preview h2{margin:0 0 12px;font-size:19px}.empty{padding:28px 12px;text-align:center;color:#888}.item{display:grid;grid-template-columns:52px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid #eee}.item:last-child{border-bottom:0}.thumb{width:52px;height:72px;object-fit:contain;background:#f4f4f2;border:1px solid #e1e1dc;border-radius:6px}.item-main{min-width:0}.item-top{display:flex;gap:6px;align-items:center}.num-input{width:70px;padding:7px;border:1px solid #d8d8d2;border-radius:7px;font:inherit;font-weight:750}.filename{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#555}.item-actions{display:flex;gap:5px;margin-top:7px}.item-actions button{padding:5px 7px;font-size:12px;border:1px solid #cbd1cc;border-radius:6px;background:#fff;color:#334b58;cursor:pointer}.item-actions button.remove{color:#9b2c2c}.sheet-stack{display:grid;gap:16px;justify-content:center}.sheet{width:210mm;min-height:297mm;background:#fff;box-shadow:0 3px 14px rgba(0,0,0,.08);padding:10mm;display:grid;gap:7mm;align-content:start}.sheet.mode-1{grid-template-columns:1fr}.sheet.mode-2{grid-template-columns:1fr 1fr}.sheet.mode-3{grid-template-columns:repeat(3,1fr)}.voucher{position:relative;display:flex;align-items:flex-start;justify-content:center;min-width:0;break-inside:avoid}.voucher img{max-width:100%;max-height:250mm;object-fit:contain;display:block}.sheet.mode-2 .voucher img{max-height:125mm}.sheet.mode-3 .voucher img{max-height:100mm}.voucher-label{position:absolute;right:2mm;top:0;transform:translateY(-30%);min-width:26mm;padding:3mm 6mm;background:#f47fa5;color:#111;text-align:center;font-size:18px;font-weight:800;line-height:1;border-radius:1px;z-index:2}.voucher-label::before{content:'憑證 ';font-size:10px;font-weight:700}.page-no{text-align:right;color:#aaa;font-size:11px;grid-column:1/-1}.status{min-height:22px;margin-top:10px;font-size:13px;color:#3b6650}.status.error{color:#9b2c2c}@media(max-width:900px){.toolbar{grid-template-columns:1fr 1fr}.workspace{grid-template-columns:1fr}.sheet{transform-origin:top center;transform:scale(.74);margin-bottom:-77mm}}@media(max-width:620px){.app{padding:18px 12px 40px}.header{display:grid}.toolbar{grid-template-columns:1fr}.sheet{transform:scale(.48);margin-bottom:-154mm}}
+@media print{
+  @page{size:A4 portrait;margin:0}
+  body{background:#fff}.app{max-width:none;padding:0}.screen-only,.queue{display:none!important}.workspace{display:block;margin:0}.preview.card{border:0;box-shadow:none;padding:0}.preview h2{display:none}.sheet-stack{display:block}.sheet{width:210mm;height:297mm;min-height:297mm;box-shadow:none;padding:10mm;page-break-after:always;break-after:page;overflow:hidden}.sheet:last-child{page-break-after:auto;break-after:auto}.page-no{display:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header screen-only">
+    <div><div class="eyebrow">活動帳務工具</div><h1>憑證排版列印</h1><div class="muted">把憑證整理成 A4，標註憑證編號後直接列印或另存 PDF。</div></div>
+    <a class="button secondary" href="./index.html">回活動帳務</a>
+  </div>
+
+  <section class="card screen-only">
+    <div class="toolbar">
+      <div class="field"><label>加入憑證（圖片或 PDF）</label><input id="files" type="file" accept="image/*,application/pdf" multiple></div>
+      <div class="field"><label>起始編號</label><input id="startNo" type="number" min="1" step="1" value="1"></div>
+      <div class="field"><label>每頁張數</label><select id="perPage"><option value="auto">自動</option><option value="1">1 張</option><option value="2">2 張</option><option value="3">3 張</option></select></div>
+      <div class="field"><label>標籤文字</label><select id="labelStyle"><option value="voucher">憑證 1</option><option value="number">只顯示 1</option></select></div>
+    </div>
+    <div class="actions"><button id="renumber" class="button secondary" type="button">依目前順序重新連號</button><button id="print" class="button" type="button">列印／另存 PDF</button><button id="clear" class="button danger" type="button">全部清除</button></div>
+    <div class="privacy">憑證只在目前瀏覽器本機處理，不會上傳到 GitHub、Google Sheet 或其他後端。</div>
+    <div id="status" class="status"></div>
+  </section>
+
+  <div class="workspace">
+    <section class="card queue screen-only"><h2>憑證順序</h2><div id="queue"><div class="empty">尚未加入憑證</div></div></section>
+    <section class="card preview"><h2 class="screen-only">A4 預覽</h2><div id="sheets" class="sheet-stack"><div class="sheet mode-1"><div class="empty">加入憑證後會在這裡預覽</div></div></div></section>
+  </div>
+</div>
+<script>
+const state={items:[]};
+const el=id=>document.getElementById(id);
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+el('files').addEventListener('change',async e=>{
+  const files=[...e.target.files];
+  if(!files.length)return;
+  setStatus('讀取憑證中…');
+  try{
+    for(const file of files){
+      if(file.type==='application/pdf') await addPdf(file);
+      else if(file.type.startsWith('image/')) await addImage(file);
+    }
+    renumber(); render(); setStatus(`已加入 ${state.items.length} 張憑證`);
+  }catch(err){setStatus(err.message||String(err),true)}
+  e.target.value='';
+});
+el('startNo').addEventListener('change',()=>{renumber();render()});
+el('perPage').addEventListener('change',render);
+el('labelStyle').addEventListener('change',render);
+el('renumber').addEventListener('click',()=>{renumber();render()});
+el('print').addEventListener('click',()=>window.print());
+el('clear').addEventListener('click',()=>{state.items.forEach(i=>i.url&&URL.revokeObjectURL(i.url));state.items=[];render();setStatus('已清除')});
+
+async function addImage(file){
+  const url=URL.createObjectURL(file);
+  const size=await imageSize(url);
+  state.items.push({id:crypto.randomUUID(),name:file.name,url,width:size.width,height:size.height,no:0});
+}
+function imageSize(url){return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve({width:img.naturalWidth,height:img.naturalHeight});img.onerror=()=>reject(new Error('圖片讀取失敗'));img.src=url})}
+
+async function addPdf(file){
+  const data=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data}).promise;
+  for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
+    const page=await pdf.getPage(pageNo);
+    const viewport=page.getViewport({scale:1.8});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width); canvas.height=Math.ceil(viewport.height);
+    await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+    const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',.92));
+    const url=URL.createObjectURL(blob);
+    state.items.push({id:crypto.randomUUID(),name:`${file.name} p.${pageNo}`,url,width:canvas.width,height:canvas.height,no:0});
+  }
+}
+
+function renumber(){
+  const start=Math.max(1,Number(el('startNo').value)||1);
+  state.items.forEach((item,i)=>item.no=start+i);
+}
+function move(index,delta){
+  const target=index+delta;if(target<0||target>=state.items.length)return;
+  [state.items[index],state.items[target]]=[state.items[target],state.items[index]];render();
+}
+function removeItem(index){
+  const [removed]=state.items.splice(index,1);if(removed&&removed.url)URL.revokeObjectURL(removed.url);render();
+}
+function updateNo(index,value){state.items[index].no=Math.max(1,Number(value)||1);renderSheets()}
+
+function render(){renderQueue();renderSheets()}
+function renderQueue(){
+  const q=el('queue');
+  if(!state.items.length){q.innerHTML='<div class="empty">尚未加入憑證</div>';return}
+  q.innerHTML=state.items.map((item,i)=>`<div class="item"><img class="thumb" src="${item.url}" alt=""><div class="item-main"><div class="item-top"><input class="num-input" type="number" min="1" value="${item.no}" onchange="updateNo(${i},this.value)"><div class="filename" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div></div><div class="item-actions"><button onclick="move(${i},-1)" ${i===0?'disabled':''}>上移</button><button onclick="move(${i},1)" ${i===state.items.length-1?'disabled':''}>下移</button><button class="remove" onclick="removeItem(${i})">刪除</button></div></div></div>`).join('');
+}
+function renderSheets(){
+  const root=el('sheets');
+  if(!state.items.length){root.innerHTML='<div class="sheet mode-1"><div class="empty">加入憑證後會在這裡預覽</div></div>';return}
+  const setting=el('perPage').value;
+  const chunks=paginate(state.items,setting);
+  root.innerHTML=chunks.map((items,pageIndex)=>{
+    const cols=setting==='auto'?autoCols(items):Number(setting);
+    const mode=Math.max(1,Math.min(3,cols));
+    return `<div class="sheet mode-${mode}">${items.map(item=>voucherHtml(item)).join('')}<div class="page-no">第 ${pageIndex+1} 頁</div></div>`;
+  }).join('');
+}
+function paginate(items,setting){
+  if(setting!=='auto'){const n=Number(setting);const out=[];for(let i=0;i<items.length;i+=n)out.push(items.slice(i,i+n));return out}
+  const out=[];let page=[];let score=0;
+  for(const item of items){
+    const ratio=item.height/item.width;
+    const weight=ratio>1.8?1.5:ratio>1.2?1:0.8;
+    if(page.length&&((score+weight)>3||page.length>=3)){out.push(page);page=[];score=0}
+    page.push(item);score+=weight;
+  }
+  if(page.length)out.push(page);return out;
+}
+function autoCols(items){return items.length>=3?3:items.length===2?2:1}
+function voucherHtml(item){
+  const text=el('labelStyle').value==='number'?String(item.no):`憑證 ${item.no}`;
+  return `<div class="voucher"><div class="voucher-label" data-style="${el('labelStyle').value}">${escapeHtml(text)}</div><img src="${item.url}" alt="憑證 ${item.no}"></div>`;
+}
+function escapeHtml(value){return String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function setStatus(message,error=false){const s=el('status');s.textContent=message;s.className='status'+(error?' error':'')}
+window.move=move;window.removeItem=removeItem;window.updateNo=updateNo;
+render();
+</script>
+</body>
+</html>
