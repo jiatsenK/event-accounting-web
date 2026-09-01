@@ -37,6 +37,10 @@
     return query ? '?' + query : '';
   }
 
+  function embeddedEnhancementUrl(area) {
+    return area === 'planning' ? 'drink-inventory-panel.js?v=20260901-01' : '';
+  }
+
   function canonicalActivityName(activity) {
     const id = String(activity && activity.activity_id || '').trim();
     const raw = String(activity && activity.name || '').trim().replace(/\s+/g, ' ');
@@ -135,11 +139,20 @@
     }
 
     function syncEmbeddedArea() {
-      if (route.area !== 'accounting') return;
       try {
         const innerDoc = frame.contentDocument;
-        const childSwitcher = innerDoc && innerDoc.querySelector('.activity-switcher');
-        if (childSwitcher) childSwitcher.hidden = true;
+        if (!innerDoc) return;
+        if (route.area === 'accounting') {
+          const childSwitcher = innerDoc.querySelector('.activity-switcher');
+          if (childSwitcher) childSwitcher.hidden = true;
+          return;
+        }
+        const enhancementUrl = embeddedEnhancementUrl(route.area);
+        if (!enhancementUrl || innerDoc.querySelector('script[data-activity-manager-enhancement]')) return;
+        const script = innerDoc.createElement('script');
+        script.dataset.activityManagerEnhancement = 'drink-inventory';
+        script.src = enhancementUrl;
+        innerDoc.body.appendChild(script);
       } catch (_) {}
     }
 
@@ -223,6 +236,7 @@
     parseRoute,
     buildAreaUrl,
     buildShellQuery,
+    embeddedEnhancementUrl,
     canonicalActivityName,
     init
   };
