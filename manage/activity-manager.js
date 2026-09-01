@@ -25,7 +25,7 @@
     if (!VALID_AREAS.has(area)) return '';
     const id = String(activityId || '').trim();
     if (!id) return '';
-    const target = area === 'planning' ? '../planning-preview/' : '../';
+    const target = area === 'planning' ? '../planning/' : '../';
     return target + '?activity_id=' + encodeURIComponent(id);
   }
 

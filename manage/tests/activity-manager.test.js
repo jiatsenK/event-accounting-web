@@ -8,7 +8,7 @@ assert.equal(
 );
 assert.equal(
   manager.buildAreaUrl('planning', 'midyear2026'),
-  '../planning-preview/?activity_id=midyear2026'
+  '../planning/?activity_id=midyear2026'
 );
 assert.deepEqual(
   manager.parseRoute('?activity_id=yearend2025&area=planning'),

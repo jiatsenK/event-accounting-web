@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>活動酒水規劃</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",system-ui,sans-serif;background:#f5f3ee;color:#1e2420}*{box-sizing:border-box}body{margin:0}.app{width:min(1120px,calc(100% - 30px));margin:auto;padding:38px 0 70px}.top{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:20px}body.embedded .top{display:none}body.embedded .app{padding-top:12px}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;color:#647068}.top h1{margin:5px 0 7px;font-size:clamp(34px,5vw,54px);letter-spacing:-.04em}.muted{color:#68716c;line-height:1.65;font-size:14px}.page-status{margin:0 0 16px;padding:13px 15px;border:1px solid #e5d28b;border-radius:12px;background:#fff7d9;color:#715d19;font-size:13px;line-height:1.55}.page-status.error{border-color:#e4b8ae;background:#fff2ef;color:#8b2f24}.tabs{display:flex;gap:8px;margin:24px 0}.tab{min-height:42px;border:1px solid #d4d0c6;border-radius:999px;padding:0 17px;background:#fff;color:#465049;font:inherit;font-weight:800;cursor:pointer}.tab.active{background:#204d3b;color:#fff;border-color:#204d3b}.view[hidden]{display:none}.section-head{display:flex;justify-content:space-between;gap:20px;align-items:end;margin:0 0 14px}.section-head h2{margin:0;font-size:26px}.filter{display:grid;gap:5px;min-width:170px}.filter span{font-size:12px;font-weight:750;color:#58635d}.filter select,.field input,.field select,button{min-height:44px;border:1px solid #ccc8bf;border-radius:10px;padding:0 11px;font:inherit;background:#fbfaf7}.history-list{display:grid;gap:12px}.event{background:#fff;border:1px solid #dedbd2;border-radius:16px;box-shadow:0 6px 20px rgba(30,40,34,.035);overflow:hidden}.event summary{list-style:none;display:grid;grid-template-columns:110px 1fr auto;gap:16px;align-items:center;padding:17px 18px;cursor:pointer}.event summary::-webkit-details-marker{display:none}.date{font-size:13px;color:#748078}.event-title{font-size:18px;font-weight:850}.meta{margin-top:4px;font-size:12px;color:#707973}.badges{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.badge{font-size:12px;font-weight:800;background:#edf4ef;color:#345947;padding:6px 9px;border-radius:999px;white-space:nowrap}.badge.warn{background:#fff1cd;color:#7d5a09}.badge.empty{background:#f0efec;color:#6b6e6c}.event-body{border-top:1px solid #ece8df;padding:16px 18px 18px}.totals{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:13px}.total{background:#f7f6f2;border-radius:10px;padding:9px 11px;font-size:12px;color:#6d756f}.total strong{display:block;color:#26302a;font-size:15px;margin-top:2px}.history-table{width:100%;border-collapse:collapse;font-size:13px}.history-table th{text-align:left;color:#78817c;font-size:11px;font-weight:750;padding:8px 9px;border-bottom:1px solid #e9e5dc}.history-table td{padding:10px 9px;border-bottom:1px solid #f0ede6;vertical-align:middle}.history-table tr:last-child td{border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums}.quality{font-size:12px;color:#715d19}.no-data{padding:18px;border-radius:12px;background:#f7f6f2;color:#68716c;font-size:13px;line-height:1.6}.panel,.card{background:#fff;border:1px solid #dedbd2;border-radius:18px;box-shadow:0 8px 24px rgba(30,40,34,.04)}.panel{padding:18px}.form{display:grid;grid-template-columns:1.1fr 1fr .8fr .9fr auto;gap:11px;align-items:end}.field{display:grid;gap:6px}.field span{font-size:12px;font-weight:750;color:#58635d}.form button{background:#204d3b;color:white;border:0;font-weight:800;padding:0 18px;cursor:pointer}.error{margin:12px 0 0;color:#9b3428;font-size:13px}.summary{display:flex;justify-content:space-between;gap:18px;align-items:end;margin:30px 0 14px}.summary h2{margin:0;font-size:25px}.summary .muted{max-width:560px}.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:18px}.cardhead{display:flex;justify-content:space-between;gap:10px;align-items:center}.card h3{margin:0;font-size:20px}.badge.low{background:#fff2cf;color:#775a10}.value{font-size:34px;font-weight:850;letter-spacing:-.035em;margin:16px 0 2px}.small{font-size:13px;color:#6d756f;line-height:1.55}.breakdown{display:grid;grid-template-columns:1fr 1fr;gap:9px 15px;background:#f7f6f2;border-radius:12px;padding:12px;margin-top:14px}.breakdown div{font-size:12px;color:#6b746e}.breakdown strong{display:block;color:#2d3631;font-size:14px;margin-top:2px}dl{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;border-top:1px solid #ece8df;margin:15px 0 0;padding-top:14px}dt{font-size:11px;color:#7a827d}dd{margin:3px 0 0;font-size:13px;font-weight:750}.plan-quality{border-top:1px dashed #e1ddd4;margin-top:14px;padding-top:12px;color:#786958;font-size:12px;line-height:1.55}.card.empty{padding:30px 18px;text-align:center}@media(max-width:900px){.form{grid-template-columns:1fr 1fr}.form button{grid-column:1/-1}.top,.section-head{align-items:start;flex-direction:column}.cards{grid-template-columns:1fr}.event summary{grid-template-columns:90px 1fr}.badges{grid-column:1/-1;justify-content:flex-start}}@media(max-width:640px){.form,.breakdown,dl{grid-template-columns:1fr}.app{padding-top:24px}body.embedded .app{padding-top:8px}.event summary{grid-template-columns:1fr;gap:6px}.date{font-weight:750}.history-table{display:block;overflow-x:auto}.tabs{position:sticky;top:0;background:#f5f3ee;padding:8px 0;z-index:3}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div><div class="eyebrow">EVENT PLANNING</div><h1>活動酒水規劃</h1><div class="muted">先看過去實際發生什麼，再進入下一場活動的預測。</div></div>
+  </header>
+
+  <div id="pageStatus" class="page-status" role="status">正在讀取活動規劃資料…</div>
+
+  <nav class="tabs" aria-label="頁面功能">
+    <button class="tab active" type="button" data-tab="history">歷史紀錄</button>
+    <button class="tab" type="button" data-tab="plan">規劃試算</button>
+  </nav>
+
+  <section id="historyView" class="view">
+    <div class="section-head">
+      <div><div class="eyebrow">HISTORY</div><h2>歷史活動</h2><div id="historyCount" class="muted"></div></div>
+      <label class="filter"><span>活動類型</span><select id="historyType"><option value="全部">全部</option><option value="尾牙">尾牙</option><option value="年中聚餐">年中聚餐</option></select></label>
+    </div>
+    <div id="historyList" class="history-list"></div>
+  </section>
+
+  <section id="planView" class="view" hidden>
+    <div class="section-head"><div><div class="eyebrow">FORECAST</div><h2>規劃試算</h2><div class="muted">確認歷史紀錄後，再用歷史 L/人基準做下一場活動試算。</div></div></div>
+    <section class="panel">
+      <div id="planNotice" class="no-data" role="status" hidden></div>
+      <form id="form" class="form">
+        <label class="field"><span>活動類型</span><select id="type"><option value="尾牙">尾牙</option><option value="年中聚餐">年中聚餐</option></select></label>
+        <label class="field"><span>預估人數</span><input id="headcount" type="number" min="1" step="1" value="200"></label>
+        <label class="field"><span>安全率（%）</span><input id="rate" type="number" min="0" step="0.1" value="10"></label>
+        <label class="field"><span>每類別固定安全量（L）</span><input id="fixed" type="number" min="0" step="0.1" value="2"></label>
+        <button type="submit">重新計算</button>
+      </form>
+      <div id="error" class="error" role="alert"></div>
+    </section>
+    <section id="results"></section>
+  </section>
+</div>
+<script src="./core.js?v=20260901-live1"></script>
+<script>
+const $=id=>document.getElementById(id);
+const fmt=v=>Number.isFinite(v)?`${v.toFixed(1).replace(/\.0$/,'')} L`:'—';
+const ratio=(v,c)=>Number.isFinite(v)?`${v.toFixed(c==='低'?2:3)} L/人`:'—';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dateLabel=s=>String(s??'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$1/$2/$3');
+let history=[];
+const forecastCache=new Map();
+
+if(window.top!==window.self)document.body.classList.add('embedded');
+
+function setPageStatus(message,isError=false){
+  $('pageStatus').hidden=!message;
+  $('pageStatus').textContent=message||'';
+  $('pageStatus').classList.toggle('error',Boolean(isError));
+  $('pageStatus').setAttribute('role',isError?'alert':'status');
+}
+
+function setPlanNotice(message){
+  $('planNotice').hidden=!message;
+  $('planNotice').textContent=message||'';
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.tab===name));
+  $('historyView').hidden=name!=='history';
+  $('planView').hidden=name!=='plan';
+}
+document.querySelectorAll('.tab').forEach(button=>button.addEventListener('click',()=>switchTab(button.dataset.tab)));
+
+function eventTotals(event){
+  return event.categories.reduce((sum,row)=>{
+    if(Number.isFinite(row.ordered_liters))sum.ordered=(sum.ordered??0)+row.ordered_liters;
+    if(Number.isFinite(row.consumed_liters))sum.consumed=(sum.consumed??0)+row.consumed_liters;
+    if(Number.isFinite(row.remaining_liters))sum.remaining=(sum.remaining??0)+row.remaining_liters;
+    return sum;
+  },{ordered:null,consumed:null,remaining:null});
+}
+function hasAccountingPurchasePending(event){
+  return Array.isArray(event.categories)&&event.categories.some(row=>row.ordered_liters!=null&&row.consumed_liters==null);
+}
+function historyRow(row){
+  let quality='正常';
+  if(row.ordered_liters!=null&&row.consumed_liters==null)quality='帳務已有採購，消耗待補';
+  else if(row.missing_capacity_count)quality=`${row.missing_capacity_count} 項缺容量，無法換算 L`;
+  else if(row.warning_count)quality=`${row.warning_count} 項異常：消耗量大於採購量`;
+  return `<tr><td><strong>${esc(row.drink_category)}</strong><div class="meta">${row.item_count} 個品項</div></td><td class="num">${fmt(row.ordered_liters)}</td><td class="num">${fmt(row.consumed_liters)}</td><td class="num">${fmt(row.remaining_liters)}</td><td class="quality">${esc(quality)}</td></tr>`;
+}
+function eventCard(event,index){
+  const hasData=Array.isArray(event.categories)&&event.categories.length>0;
+  const hasAccountingPurchase=hasAccountingPurchasePending(event);
+  const totals=eventTotals(event);
+  const visibleRows=PlanningCore.getHistory(history,$('historyType').value);
+  const shouldOpen=hasData&&index===visibleRows.findIndex(row=>Array.isArray(row.categories)&&row.categories.length>0);
+  const badges=event.warning_count?`<span class="badge warn">${event.warning_count} 筆需注意</span>`:'';
+  const dataBadge=hasData?`<span class="badge">查看明細</span>${hasAccountingPurchase?'<span class="badge">帳務已有採購</span><span class="badge empty">消耗待補</span>':''}`:'<span class="badge empty">尚無飲品資料</span>';
+  const pendingNotice=hasAccountingPurchase?'<div class="no-data"><strong>帳務已有採購，部分消耗紀錄待補。</strong><br>消耗資料補入前，相關類別不會被納入 L/人 baseline。</div>':'';
+  const body=hasData?`${pendingNotice}<div class="totals"><div class="total">可換算採購<strong>${fmt(totals.ordered)}</strong></div><div class="total">可換算消耗<strong>${fmt(totals.consumed)}</strong></div><div class="total">可換算剩餘<strong>${fmt(totals.remaining)}</strong></div></div><table class="history-table"><thead><tr><th>飲品類別</th><th class="num">採購</th><th class="num">消耗</th><th class="num">剩餘</th><th>資料狀態</th></tr></thead><tbody>${event.categories.map(historyRow).join('')}</tbody></table>`:'<div class="no-data">這場活動目前只有活動日期與實際人數，尚未提供可供檢視的飲品資料。</div>';
+  return `<details class="event"${shouldOpen?' open':''}><summary><div class="date">${dateLabel(event.activity_date)}</div><div><div class="event-title">${esc(event.activity_name)}</div><div class="meta">${esc(event.activity_type)} · 實際 ${event.actual_headcount} 人${hasData?` · ${event.categories.length} 類飲品`:''}</div></div><div class="badges">${badges}${dataBadge}</div></summary><div class="event-body">${body}</div></details>`;
+}
+function renderHistory(){
+  const type=$('historyType').value;
+  const rows=PlanningCore.getHistory(history,type);
+  const completed=rows.filter(row=>Array.isArray(row.categories)&&row.categories.some(category=>category.consumed_liters!=null)).length;
+  const accountingOnly=rows.filter(hasAccountingPurchasePending).length;
+  $('historyCount').textContent=`${type==='全部'?'全部':type}共 ${rows.length} 場；${completed} 場已有飲品消耗實績${accountingOnly?`，${accountingOnly} 場帳務已有採購但消耗待補`:''}。`;
+  $('historyList').innerHTML=rows.length?rows.map(eventCard).join(''):'<div class="no-data">目前沒有符合條件的歷史活動。</div>';
+}
+$('historyType').addEventListener('change',renderHistory);
+
+async function baselinesFor(activityType){
+  if(!forecastCache.has(activityType)){
+    const forecast=await PlanningCore.fetchPlanningForecast(activityType);
+    forecastCache.set(activityType,forecast.baselines);
+  }
+  return forecastCache.get(activityType);
+}
+async function renderPlan(){
+  $('error').textContent='';
+  try{
+    const type=$('type').value, head=Number($('headcount').value), rate=Number($('rate').value), fixed=Number($('fixed').value);
+    const baselines=await baselinesFor(type);
+    const rows=PlanningCore.calculateRows(baselines,type,head,rate,fixed);
+    const cards=rows.length?rows.map(planCard).join(''):'<div class="no-data">目前沒有可供試算的 baseline。</div>';
+    $('results').innerHTML=`<div class="summary"><div><div class="eyebrow">本次規劃</div><h2>${esc(type)} · 預估 ${head} 人</h2></div><div class="muted">安全設定：${rate}% ＋ 每類別固定 ${fmt(fixed)}。安全量與歷史 baseline 分開顯示。</div></div><div class="cards">${cards}</div>`;
+  }catch(err){$('results').innerHTML='';$('error').textContent=err.message||String(err)}
+}
+function planCard(r){
+  if(!Number.isFinite(r.system_recommended_liters))return `<article class="card empty"><div><div class="cardhead"><h3>${esc(r.drink_category)}</h3><span class="badge low">資料不足</span></div><div class="value">—</div><div class="small">沒有足夠的可用 L/人 baseline，因此不輸出假的精準建議量。</div><div class="plan-quality">排除 ${r.excluded} 個歷史活動資料群組</div></div></article>`;
+  const low=r.confidence==='低';
+  return `<article class="card"><div class="cardhead"><h3>${esc(r.drink_category)}</h3><span class="badge${low?' low':''}">信心：${esc(r.confidence)}${low?' · 樣本少':''}</span></div><div class="value">${fmt(r.system_recommended_liters)}</div><div class="small">系統建議 = 基準需求 + 透明安全量</div><div class="breakdown"><div>基準需求<strong>${fmt(r.baseline_liters)}</strong></div><div>比例安全量<strong>${fmt(r.safety_from_rate_liters)}</strong></div><div>固定安全量<strong>${fmt(r.fixed_safety_liters)}</strong></div><div>總安全量<strong>${fmt(r.total_safety_liters)}</strong></div></div><dl><div><dt>歷史平均</dt><dd>${ratio(r.average,r.confidence)}</dd></div><div><dt>樣本</dt><dd>${r.sample_count} 次</dd></div><div><dt>中位數</dt><dd>${ratio(r.median,r.confidence)}</dd></div><div><dt>歷史範圍</dt><dd>${ratio(r.min,r.confidence)} ～ ${ratio(r.max,r.confidence)}</dd></div></dl><div class="plan-quality">來源活動：${(r.sources||[]).map(esc).join('、')}${r.excluded?` · 另排除 ${r.excluded} 個異常／缺資料群組`:''}</div></article>`;
+}
+$('form').addEventListener('submit',async e=>{e.preventDefault();await renderPlan()});
+
+async function initialize(){
+  switchTab('history');
+  try{
+    const activityId=String(new URLSearchParams(location.search).get('activity_id')||'').trim();
+    if(!activityId)throw new Error('網址缺少 activity_id，無法判斷要規劃哪一場活動。');
+    const activities=await PlanningCore.fetchActivities();
+    const activity=activities.find(item=>String(item.activity_id||'')===activityId);
+    if(!activity)throw new Error(`找不到 activity_id=${activityId} 對應的活動，請回到活動管理頁重新選擇。`);
+    const activityType=String(activity.activity_type||'').trim();
+    const canForecast=Array.from($('type').options).some(option=>option.value===activityType);
+    const actualHeadcount=Number(activity.actual_headcount);
+    if(canForecast)$('type').value=activityType;
+    if(Number.isFinite(actualHeadcount)&&actualHeadcount>0)$('headcount').value=String(actualHeadcount);
+    const [historyRows,forecast]=await Promise.all([
+      PlanningCore.fetchPlanningHistory(),
+      canForecast?PlanningCore.fetchPlanningForecast(activityType):Promise.resolve(null)
+    ]);
+    history=historyRows;
+    renderHistory();
+    if(canForecast){
+      $('form').hidden=false;
+      forecastCache.set(activityType,forecast.baselines);
+      setPlanNotice(Number.isFinite(actualHeadcount)&&actualHeadcount>0?'':'此活動尚無實際人數，已用預設預估值，請自行調整。');
+      await renderPlan();
+    }else{
+      $('form').hidden=true;
+      $('error').textContent='';
+      $('results').innerHTML='';
+      setPlanNotice(`活動類型「${activityType||'未設定'}」目前無法試算。`);
+    }
+    setPageStatus('');
+  }catch(err){
+    let message=err&&err.message||String(err);
+    if(message==='尚未輸入存取碼')message='尚未輸入存取碼。請回到活動管理頁輸入存取碼後再開啟活動規劃。';
+    if(message==='無權限'){
+      sessionStorage.removeItem(PlanningCore.TOKEN_STORAGE_KEY);
+      message='存取碼不正確，請回到活動管理頁重新輸入。';
+    }
+    $('historyCount').textContent='資料尚未載入。';
+    $('historyList').innerHTML='';
+    $('results').innerHTML='';
+    setPageStatus(message,true);
+  }
+}
+initialize();
+</script>
+</body>
+</html>
