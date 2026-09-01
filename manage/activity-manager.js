@@ -41,6 +41,13 @@
     return area === 'planning' ? 'drink-inventory-panel.js?v=20260901-01' : '';
   }
 
+  function embeddedCleanupSelectors(area) {
+    return area === 'accounting' ? [
+      '[data-tab="drink-inventory"]',
+      '[data-tab-panel="drink-inventory"]'
+    ] : [];
+  }
+
   function canonicalActivityName(activity) {
     const id = String(activity && activity.activity_id || '').trim();
     const raw = String(activity && activity.name || '').trim().replace(/\s+/g, ' ');
@@ -145,6 +152,10 @@
         if (route.area === 'accounting') {
           const childSwitcher = innerDoc.querySelector('.activity-switcher');
           if (childSwitcher) childSwitcher.hidden = true;
+          embeddedCleanupSelectors(route.area).forEach(selector => {
+            const element = innerDoc.querySelector(selector);
+            if (element) element.remove();
+          });
           return;
         }
         const enhancementUrl = embeddedEnhancementUrl(route.area);
@@ -237,6 +248,7 @@
     buildAreaUrl,
     buildShellQuery,
     embeddedEnhancementUrl,
+    embeddedCleanupSelectors,
     canonicalActivityName,
     init
   };
