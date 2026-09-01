@@ -9,6 +9,7 @@
   const VALID_AREAS = new Set(['planning', 'accounting']);
   const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
   const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
+  const API_TIMEOUT_MS = 12000;
 
   function parseRoute(search) {
     const params = new URLSearchParams(search || '');
@@ -60,6 +61,14 @@
     return year && title ? year + '年度 ' + title : (raw || id || '未命名活動');
   }
 
+  function fallbackActivity(activityId) {
+    const id = String(activityId || '').trim() || DEFAULT_ACTIVITY_ID;
+    return {
+      activity_id: id,
+      name: canonicalActivityName({ activity_id: id })
+    };
+  }
+
   function init(doc, win) {
     if (!doc || !win) return;
     const route = parseRoute(win.location.search);
@@ -103,7 +112,9 @@
         const callback = '__activityManager_' + Date.now() + '_' + Math.random().toString(36).slice(2);
         const script = doc.createElement('script');
         const params = new URLSearchParams({ action, token: accessToken, callback, ...(args || {}) });
+        let timer = null;
         const cleanup = () => {
+          if (timer) win.clearTimeout(timer);
           delete win[callback];
           script.remove();
         };
@@ -115,6 +126,10 @@
           cleanup();
           reject(new Error('無法連線到活動資料'));
         };
+        timer = win.setTimeout(() => {
+          cleanup();
+          reject(new Error('活動資料連線逾時'));
+        }, API_TIMEOUT_MS);
         script.src = DEFAULT_API_URL + '?' + params.toString();
         doc.body.appendChild(script);
       });
@@ -169,7 +184,26 @@
 
     function updateActivityLabel() {
       const selected = activities.find(item => String(item.activity_id || '') === route.activityId);
-      currentActivity.textContent = selected ? canonicalActivityName(selected) : route.activityId;
+      currentActivity.textContent = canonicalActivityName(selected || fallbackActivity(route.activityId));
+    }
+
+    function renderActivitySelector(list, disabled) {
+      activitySelector.innerHTML = list.map(item => {
+        const id = String(item.activity_id || '');
+        return '<option value="' + escapeHtml(id) + '">' + escapeHtml(canonicalActivityName(item)) + '</option>';
+      }).join('');
+      activitySelector.value = route.activityId;
+      activitySelector.disabled = Boolean(disabled);
+    }
+
+    function useCurrentActivityFallback(message) {
+      activities = [fallbackActivity(route.activityId)];
+      renderActivitySelector(activities, true);
+      updateActivityLabel();
+      updateRoute();
+      updateAreaView();
+      showShell();
+      setStatus(message || '活動清單暫時無法更新；目前活動仍可使用。', true);
     }
 
     function chooseActivity(nextActivityId) {
@@ -194,11 +228,7 @@
         if (!activities.length) throw new Error('目前沒有可使用的活動');
         const hasCurrent = activities.some(item => String(item.activity_id || '') === route.activityId);
         if (!hasCurrent) route.activityId = String(activities[0].activity_id || DEFAULT_ACTIVITY_ID);
-        activitySelector.innerHTML = activities.map(item => {
-          const id = String(item.activity_id || '');
-          return '<option value="' + escapeHtml(id) + '">' + escapeHtml(canonicalActivityName(item)) + '</option>';
-        }).join('');
-        activitySelector.value = route.activityId;
+        renderActivitySelector(activities, activities.length <= 1);
         updateActivityLabel();
         updateRoute();
         updateAreaView();
@@ -209,8 +239,7 @@
           win.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
           showConfig('存取碼不正確，請重新輸入。');
         } else {
-          showShell();
-          setStatus(err && err.message ? err.message : '活動讀取失敗', true);
+          useCurrentActivityFallback('活動清單暫時無法更新；目前活動仍可使用。');
         }
       }
     }
@@ -226,6 +255,8 @@
       if (!value) return;
       win.sessionStorage.setItem(TOKEN_STORAGE_KEY, value);
       tokenInput.value = '';
+      showShell();
+      useCurrentActivityFallback('正在嘗試更新活動清單…');
       loadActivities();
     });
     tokenInput.addEventListener('keydown', event => {
@@ -237,6 +268,7 @@
 
     if (token()) {
       showShell();
+      useCurrentActivityFallback('正在嘗試更新活動清單…');
       loadActivities();
     } else {
       showConfig();
@@ -250,6 +282,7 @@
     embeddedEnhancementUrl,
     embeddedCleanupSelectors,
     canonicalActivityName,
+    fallbackActivity,
     init
   };
 });
