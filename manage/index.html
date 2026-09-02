@@ -4,53 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>活動管理</title>
-<style>
-:root{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#252525;background:#f5f6f4}*{box-sizing:border-box}body{margin:0;background:#f5f6f4}.shell{max-width:1180px;margin:0 auto;padding:22px 18px 28px}.topbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,320px);gap:18px;align-items:end}.eyebrow{font-size:13px;font-weight:750;letter-spacing:.04em;color:#73736d}.title{font-size:30px;font-weight:760;letter-spacing:-.02em;margin:4px 0 2px}.current{font-size:14px;color:#73736d}.activity-picker{display:grid;gap:5px}.label{font-size:12px;color:#777}.activity-picker select,input,button{font:inherit}.activity-picker select,#tokenInput{width:100%;padding:10px;border:1px solid #d8d8d2;border-radius:8px;background:#fff}.area-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0 12px;padding:5px;background:#e9ebe7;border:1px solid #dde0da;border-radius:12px}.area-switch button{padding:11px 14px;border:0;border-radius:8px;background:transparent;color:#565a55;font-weight:750;cursor:pointer}.area-switch button.active{background:#fff;color:#23333d;box-shadow:0 1px 4px rgba(25,35,30,.08)}.card{background:#fff;border:1px solid #e1e4de;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(20,30,25,.02)}.config{max-width:520px;margin:72px auto 0}.config h1{font-size:24px;margin:0 0 8px}.config-note,.muted{font-size:14px;line-height:1.6;color:#73736d}.config-actions{display:flex;gap:8px;margin-top:10px}.config-actions button{padding:10px 16px;border:0;border-radius:8px;background:#2f4858;color:#fff;font-weight:700;cursor:pointer}.status{min-height:22px;margin:4px 0 10px;color:#35634a;font-size:13px}.status.error{color:#9b2c2c}.empty{min-height:360px;display:grid;place-items:center;text-align:center}.empty-inner{max-width:520px}.empty h2{margin:0 0 8px;font-size:22px}.frame-wrap{background:#fff;border:1px solid #e1e4de;border-radius:14px;overflow:hidden}.area-frame{display:block;width:100%;height:calc(100vh - 190px);min-height:720px;border:0;background:#fff}@media(max-width:680px){.shell{padding:16px 10px 18px}.topbar{grid-template-columns:1fr}.title{font-size:25px}.area-frame{height:calc(100vh - 230px);min-height:620px}}
-</style>
+<link rel="stylesheet" href="styles.css?v=20260902-02">
+<link rel="stylesheet" href="accounting.css?v=20260902-01">
+<link rel="stylesheet" href="planning.css?v=20260902-01">
 </head>
 <body>
 <main class="shell">
-  <section id="configPanel" class="card config" hidden>
-    <div class="eyebrow">活動管理</div>
-    <h1>第一次設定</h1>
-    <p class="config-note">輸入活動管理存取碼。存取碼只保留在這次瀏覽器工作階段，不會寫進網址或 GitHub。</p>
-    <input id="tokenInput" type="password" autocomplete="off" placeholder="存取碼">
-    <div class="config-actions"><button id="saveConfig" type="button">開始使用</button></div>
-  </section>
-
-  <section id="shellContent" hidden>
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">活動管理</div>
-        <div class="title" id="currentActivity">讀取活動中…</div>
-        <div class="current">目前活動</div>
-      </div>
-      <label class="activity-picker">
-        <span class="label">切換活動</span>
-        <select id="activitySelector" aria-label="切換活動"><option value="">讀取活動清單中…</option></select>
-      </label>
-    </header>
-
-    <nav class="area-switch" aria-label="活動區域">
-      <button type="button" data-area="planning" aria-pressed="false">活動規劃</button>
-      <button type="button" data-area="accounting" aria-pressed="false">活動帳務</button>
-    </nav>
-
-    <div id="status" class="status" aria-live="polite"></div>
-
-    <section id="areaEmpty" class="card empty">
-      <div class="empty-inner">
-        <h2>選擇要處理的區域</h2>
-        <p class="muted">同一場活動可在「活動規劃」與「活動帳務」之間切換，活動不會跟著重選。</p>
-      </div>
-    </section>
-
-    <div id="frameWrap" class="frame-wrap" hidden>
-      <iframe id="areaFrame" class="area-frame" hidden title="活動功能"></iframe>
+  <section id="platformConfigPanel" class="config" hidden>
+    <div>
+      <h2>設定存取碼</h2>
+      <p class="config-note">存取碼只保留在這次瀏覽器工作階段，不會寫進網址或 GitHub。</p>
+    </div>
+    <div class="config-actions">
+      <input id="platformTokenInput" type="password" autocomplete="off" placeholder="活動平台存取碼" aria-label="活動平台存取碼">
+      <button id="platformSaveConfig" type="button">套用</button>
     </div>
   </section>
+  <div id="platformStatus" class="status" aria-live="polite"></div>
+  <section id="entryView" aria-label="活動管理"></section>
+  <section id="sectionView" aria-label="活動區塊" hidden></section>
 </main>
-<script src="activity-manager.js?v=20260901-02"></script>
-<script>ActivityManager.init(document, window);</script>
+<script src="app-router.js?v=20260902-01"></script>
+<script src="accounting-views.js?v=20260902-01"></script>
+<script src="../planning/core.js?v=20260902-01"></script>
+<script src="planning-views.js?v=20260902-01"></script>
+<script src="app-views.js?v=20260902-01"></script>
+<script src="activity-app.js?v=20260902-01"></script>
+<script>EventActivityApp.init(document, window);</script>
 </body>
 </html>

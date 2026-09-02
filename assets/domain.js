@@ -499,9 +499,6 @@ if (typeof window !== 'undefined') {
       cell.border = { left: thin(), right: thin(), top: thin(), bottom: thin() };
     };
 
-    if (typeof buildBudgetSheet === 'function') buildBudgetSheet = function () { return null; };
-    if (typeof buildInvoiceSheet === 'function') buildInvoiceSheet = function () { return null; };
-
     if (typeof buildOverviewSheet === 'function') {
       buildOverviewSheet = function (workbook, activity, expenses, overrides) {
         const sheet = workbook.addWorksheet('核銷總覽', { views: [{ zoomScale: 60 }] });
