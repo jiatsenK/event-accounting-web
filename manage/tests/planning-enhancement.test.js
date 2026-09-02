@@ -1,8 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict');
-const manager = require('../activity-manager.js');
+const views = require('../app-views.js');
 
-assert.equal(manager.embeddedEnhancementUrl('planning'), 'drink-inventory-panel.js?v=20260901-01');
-assert.equal(manager.embeddedEnhancementUrl('accounting'), '');
-assert.equal(manager.embeddedEnhancementUrl('unknown'), '');
-console.log('planning enhancement hook tests PASS');
+assert.deepEqual(views.AREAS.planning.views.map(item => item.id), ['history', 'forecast']);
+assert.equal(views.viewKey('planning', 'history'), 'planning:history');
+assert.equal(views.viewKey('accounting', 'overview'), 'accounting:overview');
+console.log('planning view registry tests PASS');

@@ -1,5 +1,5 @@
-// Issue #17 frontend compatibility layer. Runs after the inline enhancements in index.html are defined.
-document.addEventListener('DOMContentLoaded', () => {
+// Issue #17 frontend compatibility layer. Loaded after accounting-ui.js by the accounting mount.
+(function applyIssue17Compatibility() {
   const reimbursementStatuses = ['待核銷', '已核銷', '已請款', '已支付'];
 
   const oldFilters = document.querySelector('#activityStatusFilters');
@@ -278,4 +278,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderSimpleActivitySelector();
   applyReimbursementLockState();
-});
+})();

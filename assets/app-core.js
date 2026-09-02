@@ -625,61 +625,6 @@ function buildOverviewSheet(workbook, activity, expenses) {
   return sheet;
 }
 
-function buildBudgetSheet(workbook, activity, expenses) {
-  const sheet = workbook.addWorksheet('預算與結算', { views: [{ showGridLines: false }] });
-  const breakdown = EventAccountingDomain.summarizeBudgetBreakdown(activity, expenses);
-  addSheetTitle(sheet, `${activity.name || state.activityId}｜預算與結算`, 5);
-  const headers = ['預算項目', '核准預算', '實際支出', '差異', '結果'];
-  applyTableHeader(sheet.getRow(3), headers);
-  let rowNumber = 4;
-  breakdown.items.forEach(item => {
-    const row = sheet.getRow(rowNumber++);
-    row.values = [item.name, item.budget, item.actual, item.budget - item.actual, item.actual > item.budget ? '超支' : item.actual < item.budget ? '節省' : '剛好'];
-    applySimpleRow(row, headers.length);
-  });
-  if (breakdown.unassignedTotal > 0) {
-    const row = sheet.getRow(rowNumber++);
-    row.values = ['尚未歸類', 0, breakdown.unassignedTotal, -breakdown.unassignedTotal, '超支'];
-    applySimpleRow(row, headers.length);
-  }
-  const totalBudget = activity.budget == null ? breakdown.totalBudget : Number(activity.budget);
-  const total = sheet.getRow(rowNumber);
-  total.values = ['合計', totalBudget, breakdown.totalActual, totalBudget - breakdown.totalActual, breakdown.totalActual > totalBudget ? '超支' : breakdown.totalActual < totalBudget ? '節省' : '剛好'];
-  applySimpleRow(total, headers.length);
-  total.font = { name: 'Microsoft JhengHei', size: 11, bold: true };
-  ['B', 'C', 'D'].forEach(col => { sheet.getColumn(col).numFmt = '#,##0;[Red](#,##0);0'; });
-  [24, 16, 16, 16, 14].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
-  return sheet;
-}
-
-function buildInvoiceSheet(workbook, activity, expenses) {
-  const sheet = workbook.addWorksheet('核銷憑證', { views: [{ showGridLines: false }] });
-  addSheetTitle(sheet, `${activity.name || state.activityId}｜核銷憑證`, 12);
-  const headers = ['項次', '憑證編號', '憑證日期', '廠商', '廠商統編', '憑證類別', '未稅額', '稅額', '憑證金額', '項目', '核銷狀態', '本次請款'];
-  applyTableHeader(sheet.getRow(3), headers);
-  expenses.forEach((row, index) => {
-    const excelRow = sheet.getRow(4 + index);
-    excelRow.values = [
-      index + 1,
-      row.invoice_no || '',
-      reportDate(row.invoice_date || ''),
-      row.vendor || '',
-      String(row.tax_id || ''),
-      row.invoice_type || '',
-      row.net_amount == null ? '' : Number(row.net_amount),
-      row.tax_amount == null ? '' : Number(row.tax_amount),
-      row.invoice_amount == null ? Number(row.amount) : Number(row.invoice_amount),
-      row.item || '',
-      row.reimbursement_status || '',
-      EventAccountingDomain.isAlreadySubmittedExpense(row) ? '否（已另行提報）' : '是'
-    ];
-    applySimpleRow(excelRow, headers.length);
-  });
-  ['G', 'H', 'I'].forEach(col => { sheet.getColumn(col).numFmt = '#,##0;[Red](#,##0);0'; });
-  [7, 16, 13, 26, 13, 14, 13, 13, 13, 34, 14, 18].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
-  return sheet;
-}
-
 function completeNetTotal(expenses) {
   if (!expenses.length) return null;
   if (!expenses.every(row => row.net_amount !== null && row.net_amount !== undefined && row.net_amount !== '')) return null;
@@ -784,8 +729,6 @@ async function generateReimbursementReport() {
     const expenses = state.expenses || [];
     const workbook = createWorkbook();
     buildOverviewSheet(workbook, activity, expenses);
-    buildBudgetSheet(workbook, activity, expenses);
-    buildInvoiceSheet(workbook, activity, expenses);
     buildPettyCashSheet(workbook, activity, expenses, { sheetName: '零用金使用明細' });
     buildAllocationSheet(workbook, activity, expenses, state.allocation);
     const buffer = await workbook.xlsx.writeBuffer();
@@ -859,14 +802,20 @@ function escapeHtml(v) {
   return String(v ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }
 
-$('#saveConfig').addEventListener('click', saveConfig);
-$('#tokenInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') saveConfig(); });
-$('#expenseForm').addEventListener('submit', submitExpense);
-$('#cancelEdit').addEventListener('click', () => { resetExpenseForm(); setExpenseStatus(''); });
-$('#generatePettyCashReport').addEventListener('click', generatePettyCashReport);
-$('#generateReimbursementReport').addEventListener('click', generateReimbursementReport);
-$('#expenseRows').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-edit-expense]');
-  if (button) startEditExpense(button.dataset.editExpense);
-});
-loadConfig();
+let accountingCoreInitialized = false;
+function initializeAccountingCore() {
+  if (accountingCoreInitialized) return;
+  accountingCoreInitialized = true;
+  $('#saveConfig').addEventListener('click', saveConfig);
+  $('#tokenInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') saveConfig(); });
+  $('#expenseForm').addEventListener('submit', submitExpense);
+  $('#cancelEdit').addEventListener('click', () => { resetExpenseForm(); setExpenseStatus(''); });
+  $('#generatePettyCashReport').addEventListener('click', generatePettyCashReport);
+  $('#generateReimbursementReport').addEventListener('click', generateReimbursementReport);
+  $('#expenseRows').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-edit-expense]');
+    if (button) startEditExpense(button.dataset.editExpense);
+  });
+  loadConfig();
+}
+window.EventAccountingCore = { initialize: initializeAccountingCore };

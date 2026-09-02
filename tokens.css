@@ -1,0 +1,38 @@
+/* Hallmark · genre: modern-minimal · tone: utilitarian · anchor hue: blue · macrostructure: Workbench · designed-as-app
+ * Hallmark · pre-emit critique: P4 H4 E4 S4 R5 V4 · contrast: pass (40–41) · mobile: pass (34, 49, 50–57)
+ */
+:root {
+  --color-paper: oklch(97.5% 0.006 135);
+  --color-surface: oklch(100% 0 0);
+  --color-surface-muted: oklch(94.5% 0.009 135);
+  --color-ink: oklch(25% 0.018 160);
+  --color-muted: oklch(52% 0.012 145);
+  --color-rule: oklch(88% 0.01 135);
+  --color-accent: oklch(39% 0.055 230);
+  --color-accent-ink: oklch(98% 0.006 135);
+  --color-accent-soft: oklch(92% 0.025 220);
+  --color-danger: oklch(48% 0.16 25);
+  --color-focus: oklch(56% 0.15 245);
+  --font-display: "Aptos Display", "Noto Sans TC", sans-serif;
+  --font-body: "Aptos", "Noto Sans TC", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: clamp(1.75rem, 4vw, 2.5rem);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-short: 140ms;
+  --rule-thin: 1px;
+  --radius-input: 0.5rem;
+  --radius-card: 0.875rem;
+}
