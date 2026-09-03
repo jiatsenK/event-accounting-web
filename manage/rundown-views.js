@@ -1,0 +1,478 @@
+(function (root, factory) {
+  const api = factory(root);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  if (root) root.RundownViews = api;
+})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null), function (root) {
+  'use strict';
+
+  function core() {
+    if (!root || !root.RundownCore) throw new Error('流程表資料模組尚未載入');
+    return root.RundownCore;
+  }
+
+  function planning() {
+    if (!root || !root.PlanningCore) throw new Error('規劃資料模組尚未載入');
+    return root.PlanningCore;
+  }
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  const MODES = [
+    { id: 'edit', label: '編輯流程' },
+    { id: 'assign', label: '排人' },
+    { id: 'print', label: '列印版本' }
+  ];
+
+  // ===========================================================================
+
+  function createController(container, context) {
+    const state = {
+      activityId: String(context && context.activityId || ''),
+      data: core().normalize({}),
+      source: 'empty', // 'backend' | 'demo' | 'empty'
+      mode: 'edit',
+      printVersion: 'control',
+      busy: false,
+      message: '',
+      error: false
+    };
+
+    function setMessage(message, error) {
+      state.message = message || '';
+      state.error = Boolean(error);
+    }
+
+    async function load(source) {
+      state.busy = true;
+      render();
+      try {
+        if (source === 'demo') {
+          state.data = core().demoRundown();
+          state.source = 'demo';
+          setMessage('目前顯示 2025 忘年會示範資料，僅供預覽四種版本；要編輯請切換為實際活動並設定存取碼。', false);
+        } else {
+          const raw = await planning().fetchRundown(state.activityId);
+          state.data = core().normalize(raw);
+          state.source = 'backend';
+          const empty = !state.data.segments.length && !state.data.roles.length;
+          setMessage(empty ? '這場活動還沒有流程表內容，可從「編輯流程」開始，或載入示範資料看看版面。' : '', false);
+        }
+      } catch (err) {
+        if (source !== 'demo') {
+          state.source = 'empty';
+          setMessage((err && err.message || '讀取失敗') + '；可先載入示範資料預覽版面。', true);
+        }
+      } finally {
+        state.busy = false;
+        render();
+      }
+    }
+
+    async function write(fields, okMessage) {
+      if (state.source === 'demo') {
+        setMessage('示範資料不可編輯。切換為實際活動後才能儲存。', true);
+        render();
+        return;
+      }
+      state.busy = true;
+      setMessage('儲存中…', false);
+      render();
+      try {
+        await planning().apiWrite(Object.assign({ activity_id: state.activityId }, fields));
+        const raw = await planning().fetchRundown(state.activityId);
+        state.data = core().normalize(raw);
+        state.source = 'backend';
+        setMessage(okMessage || '已儲存', false);
+      } catch (err) {
+        setMessage(err && err.message || '儲存失敗', true);
+      } finally {
+        state.busy = false;
+        render();
+      }
+    }
+
+    // -- rendering -----------------------------------------------------------
+
+    function render() {
+      container.innerHTML =
+        '<div class="rundown">' +
+          header() +
+          '<nav class="rd-modes" aria-label="流程表模式">' +
+            MODES.map(m => '<button type="button" data-mode="' + m.id + '"' +
+              (m.id === state.mode ? ' class="active" aria-current="true"' : '') + '>' + esc(m.label) + '</button>').join('') +
+          '</nav>' +
+          (state.message ? '<p class="rd-status' + (state.error ? ' error' : '') + '" role="status">' + esc(state.message) + '</p>' : '') +
+          '<div class="rd-body">' + body() + '</div>' +
+        '</div>';
+      bind();
+    }
+
+    function header() {
+      const editable = state.source === 'backend';
+      return '<header class="rd-head">' +
+        '<div><p class="rd-kicker">活動流程表</p>' +
+        '<h2>' + esc(context && context.activity && context.activity.name || state.activityId) + '</h2></div>' +
+        '<div class="rd-head-actions">' +
+        '<button type="button" data-action="reload"' + (state.busy ? ' disabled' : '') + '>重新讀取</button>' +
+        (state.source === 'demo'
+          ? '<button type="button" data-action="load-backend"' + (state.busy ? ' disabled' : '') + '>切回實際活動</button>'
+          : '<button type="button" data-action="load-demo"' + (state.busy ? ' disabled' : '') + '>載入示範資料</button>') +
+        '</div>' +
+        (editable ? '' : '<span class="rd-badge">' + (state.source === 'demo' ? '示範資料（唯讀）' : '尚未連線') + '</span>') +
+        '</header>';
+    }
+
+    function body() {
+      if (state.mode === 'edit') return editView();
+      if (state.mode === 'assign') return assignView();
+      return printView();
+    }
+
+    // -- 編輯流程 ------------------------------------------------------------
+
+    function editView() {
+      const d = state.data;
+      const stageOptions = core().STAGES.map(s => '<option value="' + s + '">' + s + '</option>').join('');
+      const roleOptions = d.roles.map(r => '<option value="' + esc(r.role) + '">' + esc(r.role) + '</option>').join('');
+      const audienceOptions = core().AUDIENCES.map(a => '<option value="' + a + '">' + a + '</option>').join('');
+      const prizeIndex = core().prizeIndexOf(d);
+
+      const segmentRows = d.segments.map(seg =>
+        '<tr data-seg="' + esc(seg.segment_id) + '">' +
+          '<td><input class="rd-in rd-in-num" data-field="順序" value="' + esc(seg.order) + '" inputmode="numeric"></td>' +
+          '<td><input class="rd-in rd-in-time" data-field="開始時間" value="' + esc(seg.start) + '" placeholder="17:30"></td>' +
+          '<td><input class="rd-in rd-in-time" data-field="結束時間" value="' + esc(seg.end) + '" placeholder="18:20"></td>' +
+          '<td><input class="rd-in" data-field="節目內容" value="' + esc(seg.title) + '"></td>' +
+          '<td><select class="rd-in" data-field="階段">' + stageOptions.replace('value="' + seg.stage + '"', 'value="' + seg.stage + '" selected') + '</select></td>' +
+          '<td><input class="rd-in rd-in-plan" data-field="方案" value="' + esc(seg.plan) + '" placeholder="—"></td>' +
+          '<td class="rd-prize-cell">' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('') +
+            (d.prizes.length ? '<button type="button" class="rd-link" data-action="edit-prizes" data-seg="' + esc(seg.segment_id) + '">獎項…</button>' : '') + '</td>' +
+          '<td><button type="button" class="rd-icon" data-action="save-seg" title="儲存">✓</button>' +
+              '<button type="button" class="rd-icon rd-danger" data-action="del-seg" title="刪除">✕</button></td>' +
+        '</tr>').join('');
+
+      const tasksBySeg = new Map();
+      d.tasks.forEach(t => { if (!tasksBySeg.has(t.segment_id)) tasksBySeg.set(t.segment_id, []); tasksBySeg.get(t.segment_id).push(t); });
+      const taskBlocks = d.segments.map(seg => {
+        const rows = (tasksBySeg.get(seg.segment_id) || []).map(t =>
+          '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) + '</span>' +
+          '<span class="rd-task-content">' + esc(t.content) + '</span>' +
+          '<span class="rd-task-aud rd-aud-' + esc(t.audience) + '">' + esc(t.audience) + '</span>' +
+          '<button type="button" class="rd-icon rd-danger" data-action="del-task" title="刪除">✕</button></li>').join('');
+        return '<section class="rd-task-block" data-seg="' + esc(seg.segment_id) + '">' +
+          '<h4>' + esc(seg.start) + ' ' + esc(seg.title) + '</h4>' +
+          '<ul class="rd-task-list">' + (rows || '<li class="rd-empty">尚無任務</li>') + '</ul>' +
+          (d.roles.length ?
+            '<div class="rd-task-add">' +
+              '<select data-new="角色">' + roleOptions + '</select>' +
+              '<input data-new="任務內容" placeholder="任務內容">' +
+              '<select data-new="對象">' + audienceOptions + '</select>' +
+              '<button type="button" data-action="add-task">加任務</button>' +
+            '</div>' : '<p class="rd-hint">先在下方新增角色，才能指派任務。</p>') +
+        '</section>';
+      }).join('');
+
+      return '<div class="rd-edit">' +
+        '<section class="rd-panel"><div class="rd-panel-head"><h3>時段</h3></div>' +
+          '<div class="rd-scroll"><table class="rd-table"><thead><tr>' +
+            '<th>順序</th><th>開始</th><th>結束</th><th>節目內容</th><th>階段</th><th>方案</th><th>獎項</th><th></th>' +
+          '</tr></thead><tbody>' + (segmentRows || '<tr><td colspan="8" class="rd-empty">尚無時段</td></tr>') + '</tbody></table></div>' +
+          '<div class="rd-add-row">' +
+            '<input class="rd-in rd-in-num" data-add="順序" placeholder="順序" inputmode="numeric">' +
+            '<input class="rd-in rd-in-time" data-add="開始時間" placeholder="開始 17:30">' +
+            '<input class="rd-in rd-in-time" data-add="結束時間" placeholder="結束">' +
+            '<input class="rd-in" data-add="節目內容" placeholder="節目內容">' +
+            '<select class="rd-in" data-add="階段">' + stageOptions + '</select>' +
+            '<button type="button" data-action="add-seg">新增時段</button>' +
+          '</div>' +
+        '</section>' +
+        '<section class="rd-panel"><div class="rd-panel-head"><h3>角色</h3><span class="rd-muted">從主流程拆出的固定角色，人員之後再排</span></div>' +
+          '<div class="rd-role-chips">' + d.roles.map(r =>
+            '<span class="rd-chip rd-chip-role" data-role="' + esc(r.role) + '">' + esc(r.role) +
+            '<button type="button" class="rd-chip-x" data-action="del-role" title="刪除">✕</button></span>').join('') +
+          '<span class="rd-add-inline"><input data-add="角色" placeholder="新角色（音控、報到…）"><button type="button" data-action="add-role">加</button></span>' +
+          '</div>' +
+        '</section>' +
+        '<section class="rd-panel"><div class="rd-panel-head"><h3>任務</h3><span class="rd-muted">一段一列，標「對象」決定哪個列印版本看得到</span></div>' +
+          taskBlocks +
+        '</section>' +
+      '</div>';
+    }
+
+    // -- 排人（拖曳）-------------------------------------------------------
+
+    function assignView() {
+      const d = state.data;
+      const assignees = core().assigneesByRole(d);
+      const unassigned = new Set(core().unassignedRoles(d));
+      const groups = new Map();
+      d.crew.forEach(m => { const g = m.group || '（未分組）'; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(m); });
+
+      const crewCol = '<aside class="rd-crew"><h3>工作人員</h3>' +
+        '<div class="rd-add-inline"><input data-add="姓名" placeholder="姓名"><input data-add="組別" placeholder="組別"><button type="button" data-action="add-crew">加</button></div>' +
+        [...groups.entries()].map(([g, members]) =>
+          '<div class="rd-crew-group"><p class="rd-crew-group-name">' + esc(g) + '</p>' +
+          members.map(m => '<span class="rd-person" draggable="true" data-person="' + esc(m.name) + '">' + esc(m.name) +
+            '<button type="button" class="rd-chip-x" data-action="del-crew" title="移除">✕</button></span>').join('') +
+          '</div>').join('') +
+        (d.crew.length ? '' : '<p class="rd-hint">先新增工作人員，再拖到右邊的角色上。</p>') +
+        '</aside>';
+
+      const roleCards = d.roles.map(r => {
+        const people = assignees.get(r.role) || [];
+        return '<div class="rd-role-card' + (unassigned.has(r.role) ? ' rd-unassigned' : '') + '" data-role="' + esc(r.role) + '">' +
+          '<div class="rd-role-card-head"><strong>' + esc(r.role) + '</strong>' +
+          (unassigned.has(r.role) ? '<span class="rd-tag-unset">未排</span>' : '<span class="rd-tag-set">' + people.length + ' 人</span>') + '</div>' +
+          '<p class="rd-muted">' + esc(r.description || '') + '</p>' +
+          '<div class="rd-drop" data-role="' + esc(r.role) + '">' +
+            people.map(p => '<span class="rd-person rd-person-set" data-person="' + esc(p) + '">' + esc(p) +
+              '<button type="button" class="rd-chip-x" data-action="unassign" data-role="' + esc(r.role) + '" data-person="' + esc(p) + '" title="取消指派">✕</button></span>').join('') +
+            '<span class="rd-drop-hint">拖人到這裡</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      const crewProjection = core().projectCrew(d);
+      const preview = '<section class="rd-panel"><div class="rd-panel-head"><h3>工作人員版預覽</h3><span class="rd-muted">拖完即時更新</span></div>' +
+        (crewProjection.people.some(p => p.rows.length)
+          ? crewProjection.people.filter(p => p.rows.length).map(p =>
+              '<div class="rd-preview-person"><h4>' + esc(p.name) + '<span class="rd-muted"> · ' + esc(p.roles.join('、')) + '</span></h4>' +
+              '<ul>' + p.rows.map(row => '<li><span class="rd-preview-time">' + esc(row.time) + '</span> ' + esc(row.segment) +
+                ' — ' + esc(row.content) + '</li>').join('') + '</ul></div>').join('')
+          : '<p class="rd-empty">還沒有可顯示的指派任務。</p>') +
+        '</section>';
+
+      return '<div class="rd-assign">' +
+        '<div class="rd-assign-grid">' + crewCol + '<div class="rd-roles">' + (roleCards || '<p class="rd-empty">先到「編輯流程」新增角色。</p>') + '</div></div>' +
+        preview +
+      '</div>';
+    }
+
+    // -- 列印版本 ---------------------------------------------------------
+
+    function printView() {
+      const d = state.data;
+      const versions = core().VERSIONS;
+      const active = versions.find(v => v.id === state.printVersion) || versions[0];
+      const sheet = renderSheet(active.id, d);
+      return '<div class="rd-print">' +
+        '<div class="rd-print-bar">' +
+          '<div class="rd-print-tabs">' + versions.map(v =>
+            '<button type="button" data-version="' + v.id + '"' + (v.id === active.id ? ' class="active"' : '') + '>' + esc(v.label) + '</button>').join('') +
+          '</div>' +
+          '<button type="button" class="rd-print-go" data-action="print">列印 / 存 PDF</button>' +
+        '</div>' +
+        '<div class="rd-sheet" data-version="' + active.id + '">' + sheet + '</div>' +
+      '</div>';
+    }
+
+    function renderSheet(versionId, d) {
+      const title = esc(context && context.activity && context.activity.name || state.activityId);
+      const label = (core().VERSIONS.find(v => v.id === versionId) || {}).label || '';
+      const head = '<div class="rd-sheet-head"><h3>' + title + '</h3><span>' + esc(label) + '</span></div>';
+      if (versionId === 'control') return head + sheetControl(core().projectControl(d));
+      if (versionId === 'crew') return head + sheetCrew(core().projectCrew(d));
+      if (versionId === 'venue') return head + sheetVenue(core().projectVenue(d));
+      return head + sheetDesigner(core().projectDesigner(d));
+    }
+
+    function sheetControl(model) {
+      const stages = model.stages.map(group =>
+        '<h4 class="rd-stage">' + esc(group.stage) + '</h4>' +
+        '<table class="rd-sheet-table"><tbody>' +
+        group.segments.map(seg =>
+          '<tr class="rd-seg-row"><td class="rd-time">' + esc([seg.start, seg.end].filter(Boolean).join('–')) + '</td>' +
+          '<td><div class="rd-seg-title">' + esc(seg.title) + (seg.plan ? ' <span class="rd-plan">（' + esc(seg.plan) + '）</span>' : '') + '</div>' +
+          (seg.prizeLabels.length ? '<div class="rd-seg-prize">' + seg.prizeLabels.map(esc).join('；') + '</div>' : '') +
+          (seg.note ? '<div class="rd-seg-note">' + esc(seg.note) + '</div>' : '') +
+          (seg.tasks.length ? '<ul class="rd-seg-tasks">' + seg.tasks.map(t =>
+            '<li><b>' + esc(t.role) + '</b>' + (t.unassigned ? ' <em class="rd-unset">未排</em>' : ' <span class="rd-who">' + esc(t.assignees.join('、')) + '</span>') +
+            '：' + esc(t.content) + ' <span class="rd-aud rd-aud-' + esc(t.audience) + '">' + esc(t.audience) + '</span></li>').join('') + '</ul>' : '') +
+          '</td></tr>').join('') +
+        '</tbody></table>').join('');
+      const note = model.unassignedRoles.length ? '<p class="rd-sheet-foot">未排角色：' + model.unassignedRoles.map(esc).join('、') + '</p>' : '';
+      return stages + note;
+    }
+
+    function sheetCrew(model) {
+      const people = model.people.filter(p => p.rows.length);
+      if (!people.length) return '<p class="rd-empty">還沒有指派任務。到「排人」把人拖到角色上。</p>';
+      return people.map(p =>
+        '<div class="rd-crew-sheet"><h4>' + esc(p.name) + '<span class="rd-muted"> · ' + esc(p.group || p.roles.join('、')) + '</span></h4>' +
+        '<table class="rd-sheet-table"><tbody>' + p.rows.map(row =>
+          '<tr><td class="rd-time">' + esc(row.time) + '</td><td><b>' + esc(row.segment) + '</b>（' + esc(row.role) + '）<br>' + esc(row.content) + '</td></tr>').join('') +
+        '</tbody></table></div>').join('') +
+        (model.idlePeople.length ? '<p class="rd-sheet-foot">尚未安排任務：' + model.idlePeople.map(esc).join('、') + '</p>' : '');
+    }
+
+    function sheetVenue(model) {
+      if (!model.rows.length) return '<p class="rd-empty">沒有標記為「飯店」對象的任務。</p>';
+      return '<table class="rd-sheet-table"><tbody>' + model.rows.map(row =>
+        '<tr><td class="rd-time">' + esc(row.time) + '</td><td><b>' + esc(row.segment) + '</b><ul>' +
+        row.tasks.map(t => '<li>' + esc(t.content) + '</li>').join('') + '</ul></td></tr>').join('') +
+        '</tbody></table>';
+    }
+
+    function sheetDesigner(model) {
+      return '<table class="rd-sheet-table rd-designer"><tbody>' + model.segments.map(seg =>
+        '<tr><td class="rd-time">' + esc(seg.time) + '</td><td><div class="rd-seg-title">' + esc(seg.title) +
+        (seg.plan ? ' <span class="rd-plan">（' + esc(seg.plan) + '）</span>' : '') + '</div>' +
+        (seg.prizeLabels.length ? '<div class="rd-designer-prize">' + seg.prizeLabels.map(esc).join('<br>') + '</div>' : '') +
+        '</td></tr>').join('') + '</tbody></table>';
+    }
+
+    // -- events -----------------------------------------------------------
+
+    function bind() {
+      container.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => {
+        state.mode = btn.dataset.mode; render();
+      }));
+      container.querySelectorAll('[data-version]').forEach(btn => btn.addEventListener('click', () => {
+        state.printVersion = btn.dataset.version; render();
+      }));
+
+      const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
+
+      on('[data-action="reload"]', 'click', () => load(state.source === 'demo' ? 'demo' : 'backend'));
+      on('[data-action="load-demo"]', 'click', () => load('demo'));
+      on('[data-action="load-backend"]', 'click', () => load('backend'));
+      on('[data-action="print"]', 'click', () => {
+        const body = container.ownerDocument.body;
+        body.classList.add('rd-printing');
+        const clear = () => { body.classList.remove('rd-printing'); root.removeEventListener('afterprint', clear); };
+        root.addEventListener('afterprint', clear);
+        root.print();
+        root.setTimeout(clear, 1500);
+      });
+
+      // 時段
+      on('[data-action="add-seg"]', 'click', () => {
+        const panel = container.querySelector('.rd-add-row');
+        const fields = {};
+        panel.querySelectorAll('[data-add]').forEach(el => { fields[el.dataset.add] = el.value.trim(); });
+        if (!fields['節目內容']) { setMessage('新增時段要有節目內容', true); render(); return; }
+        write(Object.assign({ action: 'save_rundown_segment' }, fields), '已新增時段');
+      });
+      on('[data-action="save-seg"]', 'click', event => {
+        const tr = event.target.closest('[data-seg]');
+        const fields = { action: 'save_rundown_segment', segment_id: tr.dataset.seg };
+        tr.querySelectorAll('[data-field]').forEach(el => { fields[el.dataset.field] = el.value.trim(); });
+        write(fields, '已更新時段');
+      });
+      on('[data-action="del-seg"]', 'click', event => {
+        const tr = event.target.closest('[data-seg]');
+        if (!root.confirm('刪除這個時段？它的任務也會一併刪除。')) return;
+        write({ action: 'save_rundown_segment', segment_id: tr.dataset.seg, _delete: '1' }, '已刪除時段');
+      });
+
+      // 角色
+      on('[data-action="add-role"]', 'click', () => {
+        const input = container.querySelector('[data-add="角色"]');
+        const role = input.value.trim();
+        if (!role) return;
+        write({ action: 'save_rundown_role', 角色: role }, '已新增角色');
+      });
+      on('[data-action="del-role"]', 'click', event => {
+        const chip = event.target.closest('[data-role]');
+        if (!root.confirm('刪除角色「' + chip.dataset.role + '」？')) return;
+        write({ action: 'save_rundown_role', 角色: chip.dataset.role, _delete: '1' }, '已刪除角色');
+      });
+
+      // 任務
+      on('[data-action="add-task"]', 'click', event => {
+        const block = event.target.closest('[data-seg]');
+        const fields = { action: 'save_rundown_task', segment_id: block.dataset.seg };
+        block.querySelectorAll('[data-new]').forEach(el => { fields[el.dataset.new] = el.value.trim(); });
+        if (!fields['任務內容']) { setMessage('任務內容不可空白', true); render(); return; }
+        write(fields, '已新增任務');
+      });
+      on('[data-action="del-task"]', 'click', event => {
+        const li = event.target.closest('[data-task]');
+        write({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務');
+      });
+
+      // 獎項
+      on('[data-action="edit-prizes"]', 'click', event => {
+        const segId = event.target.dataset.seg;
+        const seg = state.data.segments.find(s => s.segment_id === segId);
+        const options = state.data.prizes.map(p => p.prize_id + '  ' + core().prizeLabel(p)).join('\n');
+        const current = (seg.prize_ids || []).join(',');
+        const next = root.prompt('輸入這個時段引用的獎項 prize_id（逗號分隔）。\n可用：\n' + options, current);
+        if (next == null) return;
+        write({ action: 'save_rundown_segment', segment_id: segId, 節目內容: seg.title, 開始時間: seg.start, 結束時間: seg.end,
+          順序: seg.order, 階段: seg.stage, 方案: seg.plan, 備註: seg.note, prize_ids: next.trim() }, '已更新獎項連動');
+      });
+
+      // 工作人員
+      on('[data-action="add-crew"]', 'click', () => {
+        const wrap = container.querySelector('.rd-crew .rd-add-inline');
+        const fields = { action: 'save_rundown_crew' };
+        wrap.querySelectorAll('[data-add]').forEach(el => { fields[el.dataset.add] = el.value.trim(); });
+        if (!fields['姓名']) return;
+        write(fields, '已新增人員');
+      });
+      on('[data-action="del-crew"]', 'click', event => {
+        const chip = event.target.closest('[data-person]');
+        write({ action: 'save_rundown_crew', 姓名: chip.dataset.person, _delete: '1' }, '已移除人員');
+      });
+      on('[data-action="unassign"]', 'click', event => {
+        write({ action: 'save_rundown_assignment', 角色: event.target.dataset.role, 人員姓名: event.target.dataset.person, _delete: '1' }, '已取消指派');
+      });
+
+      bindDragAssign();
+    }
+
+    function bindDragAssign() {
+      let dragging = '';
+      container.querySelectorAll('.rd-person[draggable="true"]').forEach(chip => {
+        chip.addEventListener('dragstart', e => {
+          dragging = chip.dataset.person;
+          if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', dragging); }
+        });
+        // 觸控 / 點擊備援：點人 → 點角色
+        chip.addEventListener('click', e => {
+          if (e.target.closest('.rd-chip-x')) return;
+          container.querySelectorAll('.rd-person.rd-picked').forEach(el => el.classList.remove('rd-picked'));
+          chip.classList.add('rd-picked');
+          state._picked = chip.dataset.person;
+        });
+      });
+      container.querySelectorAll('.rd-drop').forEach(zone => {
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('rd-drop-over'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('rd-drop-over'));
+        zone.addEventListener('drop', e => {
+          e.preventDefault();
+          zone.classList.remove('rd-drop-over');
+          const person = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || dragging;
+          if (person) assign(zone.dataset.role, person);
+        });
+        zone.addEventListener('click', () => {
+          if (state._picked) { assign(zone.dataset.role, state._picked); state._picked = ''; }
+        });
+      });
+    }
+
+    function assign(role, person) {
+      if (!role || !person) return;
+      const exists = state.data.assignments.some(a => a.role === role && a.person === person);
+      if (exists) { setMessage(person + ' 已在「' + role + '」', false); render(); return; }
+      write({ action: 'save_rundown_assignment', 角色: role, 人員姓名: person }, person + ' → ' + role);
+    }
+
+    return { render, load, state };
+  }
+
+  const rundown = Object.freeze({
+    async mount(container, context) {
+      const controller = createController(container, context || {});
+      controller.render();
+      await controller.load('backend');
+    }
+  });
+
+  return { rundown, createController };
+});
