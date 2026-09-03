@@ -130,7 +130,8 @@
       if (!win || !doc) return reject(new Error('寫入只能在瀏覽器中使用'));
       const accessToken = win.sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
       if (!accessToken) return reject(new Error('尚未輸入存取碼'));
-      const iframeName = 'gas-write-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      const nonce = 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const iframeName = 'gas-write-' + nonce;
       const iframe = doc.createElement('iframe');
       iframe.name = iframeName;
       iframe.style.display = 'none';
@@ -140,7 +141,7 @@
       form.action = DEFAULT_API_URL;
       form.target = iframeName;
       form.style.display = 'none';
-      const values = Object.assign({}, fields, { token: accessToken, origin: win.location.origin });
+      const values = Object.assign({}, fields, { token: accessToken, origin: win.location.origin, nonce: nonce });
       Object.keys(values).forEach(name => {
         const input = doc.createElement('input');
         input.name = name;
@@ -157,10 +158,11 @@
         iframe.remove();
       };
       const finish = (fn, arg) => { if (settled) return; settled = true; cleanup(); fn(arg); };
+      // GAS 的回覆帶回同一個 nonce 就直接採用（不必檢查 event.source，GAS 的 iframe 常是巢狀的）
       const onMessage = event => {
-        if (event.source !== iframe.contentWindow) return;
         const message = event.data;
         if (!message || message.type !== 'event-accounting-result') return;
+        if (message.nonce ? message.nonce !== nonce : event.source !== iframe.contentWindow) return;
         const payload = message.payload || { ok: false, error: '回覆格式錯誤' };
         payload.ok ? finish(resolve, payload.data) : finish(reject, new Error(payload.error || '寫入失敗'));
       };
@@ -168,8 +170,9 @@
       doc.body.append(iframe, form);
       form.submit();
 
+      // postMessage 收不到時的後備：重讀比對。首輪等久一點讓 postMessage 先到。
       let polls = 0;
-      const maxPolls = 18;
+      const maxPolls = 12;
       const poll = async () => {
         if (settled) return;
         polls += 1;
@@ -181,9 +184,9 @@
         }
         if (settled) return;
         if (polls >= maxPolls) return finish(reject, new Error('還沒確認寫入是否成功，請按「重新讀取」看看'));
-        timer = win.setTimeout(poll, polls <= 3 ? 700 : 1400);
+        timer = win.setTimeout(poll, 2000);
       };
-      timer = win.setTimeout(poll, 900);
+      timer = win.setTimeout(poll, 2500);
     });
   }
 
