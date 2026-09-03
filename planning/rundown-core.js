@@ -156,8 +156,30 @@
     return map;
   }
 
+  // 方案：提案階段多方案並列。plans() 列出有哪些方案；沒填方案的時段在所有方案都出現。
+  function plans(data) {
+    const seen = [];
+    data.segments.forEach(seg => { if (seg.plan && seen.indexOf(seg.plan) < 0) seen.push(seg.plan); });
+    return seen;
+  }
+
+  function forPlan(data, plan) {
+    if (!plan) return data;
+    const keptIds = new Set();
+    const segments = data.segments.filter(seg => {
+      const keep = !seg.plan || seg.plan === plan;
+      if (keep) keptIds.add(seg.segment_id);
+      return keep;
+    });
+    return Object.assign({}, data, {
+      segments,
+      tasks: data.tasks.filter(task => keptIds.has(task.segment_id))
+    });
+  }
+
   // 總控版：完整 rundown，彩排段／正式段分區
-  function projectControl(data) {
+  function projectControl(data, plan) {
+    data = forPlan(data, plan);
     const prizeIndex = prizeIndexOf(data);
     const bySegment = tasksBySegment(data);
     const assignees = assigneesByRole(data);
@@ -184,7 +206,8 @@
   }
 
   // 工作人員版：依人員分組，只列該人被指派角色、對象含工作人員的任務
-  function projectCrew(data) {
+  function projectCrew(data, plan) {
+    data = forPlan(data, plan);
     const bySegment = tasksBySegment(data);
     const segmentOrder = new Map(data.segments.map((seg, index) => [seg.segment_id, index]));
     const segmentById = new Map(data.segments.map(seg => [seg.segment_id, seg]));
@@ -216,7 +239,8 @@
   }
 
   // 飯店版：只留對象含飯店的任務
-  function projectVenue(data) {
+  function projectVenue(data, plan) {
+    data = forPlan(data, plan);
     const segmentById = new Map(data.segments.map(seg => [seg.segment_id, seg]));
     const rows = [];
     data.segments.forEach((seg, index) => {
@@ -236,7 +260,8 @@
   }
 
   // 設計師（圖文）版：segment 時間軸 + 獎項字串 + 頒獎人，不含任務
-  function projectDesigner(data) {
+  function projectDesigner(data, plan) {
+    data = forPlan(data, plan);
     const prizeIndex = prizeIndexOf(data);
     return {
       segments: data.segments
@@ -261,9 +286,9 @@
     { id: 'designer', label: '設計師（圖文）版', project: projectDesigner }
   ];
 
-  function project(versionId, data) {
+  function project(versionId, data, plan) {
     const version = VERSIONS.find(item => item.id === versionId) || VERSIONS[0];
-    return version.project(data);
+    return version.project(data, plan);
   }
 
   // ---------------------------------------------------------------------------
@@ -368,11 +393,122 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 2026 尾牙提報流程（來源：2026年度 尾牙提報資料_20260731.xlsx 的「流程表」分頁，
+  // 五輪／六輪兩個提案方案並列；角色與人員沿用去年一份，抽獎輪次的獎項待 獎金明細 連動）
+  // ---------------------------------------------------------------------------
+
+  function standardCrew2026_() {
+    return {
+      roles: [
+        { 角色: '主持', 說明: '流程推進、唱名、頒獎引導' },
+        { 角色: '音控', 說明: '音樂、燈光、麥克風、投影' },
+        { 角色: '報到組', 說明: '員工與廠商報到、禮盒紅包發放' },
+        { 角色: '財務組', 說明: '獎金準備、托盤、簽收、廠商付款' },
+        { 角色: '抽獎組', 說明: '籤筒籤條、登記中獎' },
+        { 角色: '紀錄組', 說明: '得獎紀錄、主機操作' },
+        { 角色: '後勤支援組', 說明: '布置品、頒獎品、酒缸、收拾' },
+        { 角色: '場地聯絡', 說明: '對飯店窗口：出菜、敬酒、燈光、飲料補充' },
+        { 角色: '攝影', 說明: '平面與錄影' }
+      ],
+      crew: [
+        { 姓名: 'Minnie', 組別: '主持' }, { 姓名: '何正貽', 組別: '後勤支援組' },
+        { 姓名: '江宇柔', 組別: '報到組' }, { 姓名: '黃于庭', 組別: '報到組' },
+        { 姓名: '蔡淑惠', 組別: '財務組' }, { 姓名: '謝孟雅', 組別: '抽獎組' },
+        { 姓名: '賴雅慧', 組別: '紀錄組' }, { 姓名: '黃千容', 組別: '後勤支援組' },
+        { 姓名: '吳旻倪', 組別: '財務組' }, { 姓名: '洪炫佑', 組別: '後勤支援組' },
+        { 姓名: '洪萱容', 組別: '後勤支援組' }, { 姓名: '柯思維', 組別: '物資組' },
+        { 姓名: '柯佳岑', 組別: '統籌' }
+      ],
+      assignments: [
+        { 角色: '主持', 人員姓名: 'Minnie' }, { 角色: '音控', 人員姓名: '何正貽' },
+        { 角色: '報到組', 人員姓名: '江宇柔' }, { 角色: '報到組', 人員姓名: '黃于庭' },
+        { 角色: '財務組', 人員姓名: '蔡淑惠' }, { 角色: '財務組', 人員姓名: '吳旻倪' },
+        { 角色: '抽獎組', 人員姓名: '謝孟雅' }, { 角色: '紀錄組', 人員姓名: '賴雅慧' },
+        { 角色: '後勤支援組', 人員姓名: '洪炫佑' }, { 角色: '後勤支援組', 人員姓名: '洪萱容' },
+        { 角色: '後勤支援組', 人員姓名: '黃千容' }
+      ]
+    };
+  }
+
+  function rundown2026() {
+    const base = standardCrew2026_();
+    const rehearsal = [
+      { segment_id: 'y26-reh-1', 順序: 1, 開始時間: '15:00', 結束時間: '15:30', 節目內容: '工作人員到場、場佈', 階段: '彩排', 備註: '報到區、酒水區、音控區定位' },
+      { segment_id: 'y26-reh-2', 順序: 2, 開始時間: '16:00', 結束時間: '16:30', 節目內容: '音控測試', 階段: '彩排' },
+      { segment_id: 'y26-reh-3', 順序: 3, 開始時間: '16:30', 結束時間: '17:00', 節目內容: '主持人彩排、合照位置確認', 階段: '彩排' },
+      { segment_id: 'y26-reh-4', 順序: 4, 開始時間: '17:00', 結束時間: '17:30', 節目內容: '歌手彩排、工作人員就位', 階段: '彩排' }
+    ];
+    const plan5 = [
+      ['18:20', '18:30', '開放進場'], ['18:30', '18:35', '正式開場／支店長致詞'], ['18:35', '18:40', '團體合照'],
+      ['18:40', '19:10', '歌手演唱（一）'], ['19:10', '19:20', '第一輪抽獎｜10名'], ['19:20', '19:30', '資深員工表揚'],
+      ['19:30', '19:40', '第二輪抽獎｜10名'], ['19:40', '19:50', '完工工地表揚'], ['19:50', '20:00', '第三輪抽獎｜10名'],
+      ['20:00', '20:20', '歌手演唱（二）'], ['20:20', '20:30', '第四輪抽獎｜10名'], ['20:30', '20:45', '歌手演唱（三）'],
+      ['20:45', '21:00', '第五輪抽獎｜10名'], ['21:00', '', '活動結束']
+    ];
+    const plan6 = [
+      ['18:20', '18:30', '開放進場'], ['18:30', '18:35', '正式開場／支店長致詞'], ['18:35', '18:40', '團體合照'],
+      ['18:40', '18:50', '第一輪抽獎｜10名'], ['18:50', '19:10', '歌手演唱（一）'], ['19:10', '19:20', '第二輪抽獎｜10名'],
+      ['19:20', '19:30', '資深員工表揚'], ['19:30', '19:40', '第三輪抽獎｜10名'], ['19:40', '19:50', '完工工地表揚'],
+      ['19:50', '20:00', '第四輪抽獎｜10名'], ['20:00', '20:20', '歌手演唱（二）'], ['20:20', '20:30', '第五輪抽獎｜10名'],
+      ['20:30', '20:45', '歌手演唱（三）'], ['20:45', '21:00', '第六輪抽獎｜10名'], ['21:00', '', '活動結束']
+    ];
+    const planSegs = (rows, plan, prefix, orderBase) => rows.map((r, i) => ({
+      segment_id: prefix + '-' + (i + 1), 順序: orderBase + i, 開始時間: r[0], 結束時間: r[1],
+      節目內容: r[2], 階段: '正式', 方案: plan
+    }));
+    const segments = rehearsal
+      .concat(planSegs(plan5, '五輪抽獎', 'y26-5r', 100))
+      .concat(planSegs(plan6, '六輪抽獎', 'y26-6r', 200));
+
+    const tasks = [];
+    segments.forEach(s => {
+      const add = (role, content, aud) => tasks.push({ segment_id: s.segment_id, 角色: role, 任務內容: content, 對象: aud });
+      const title = s['節目內容'];
+      if (/開放進場/.test(title)) { add('報到組', '員工／廠商報到、發禮盒與紅包', '工作人員'); add('場地聯絡', '小菜、一口杯、冰塊、酒水上桌', '飯店'); }
+      if (/正式開場|致詞/.test(title)) { add('主持', '提醒撕下抽獎券投箱、引導支店長上台致詞', '總控'); add('場地聯絡', '敬酒飲料遞送上台', '飯店'); }
+      if (/團體合照/.test(title)) { add('攝影', '引導拍攝團體合照', '工作人員'); add('場地聯絡', '合照後開始出菜', '飯店'); }
+      if (/抽獎/.test(title)) {
+        add('主持', '請頒獎人上台、逐一抽籤唱名、主管頒發、全體合影', '總控');
+        add('抽獎組', '籤筒上台、抽畢下台、登記中獎', '工作人員');
+        add('財務組', '紅包托盤、空托盤、合照手牌', '工作人員');
+        add('場地聯絡', '暫停出菜、燈光配合抽獎', '飯店');
+      }
+      if (/表揚/.test(title)) { add('財務組', '準備獎金與獎狀、托盤上台', '工作人員'); add('後勤支援組', '托盤上台供主管頒發', '工作人員'); }
+      if (/活動結束/.test(title)) { add('財務組', '攝影／餐廳付款', '工作人員'); add('後勤支援組', '收頒獎品、收布置物、收酒缸', '工作人員'); add('場地聯絡', '協助場地復原、確認遺留物品', '飯店'); }
+      if (s['階段'] === '彩排' && /場佈|到場/.test(title)) { add('後勤支援組', '報到區、酒水區、音控區定位', '工作人員'); add('紀錄組', '主機設定、播放系統開啟', '工作人員'); }
+      if (s['階段'] === '彩排' && /音控測試/.test(title)) add('音控', '音響、燈光、投影測試', '工作人員');
+    });
+
+    return normalize({
+      activity_id: 'yearend2026',
+      segments, tasks,
+      roles: base.roles, crew: base.crew, assignments: base.assignments,
+      prizes: []
+    });
+  }
+
+  const TEMPLATES = [
+    { id: 'yearend2026', label: '2026 尾牙提報（五輪／六輪兩方案）', build: rundown2026 },
+    { id: 'yearend2025', label: '2025 忘年會（去年實際流程）', build: demoRundown }
+  ];
+
+  function templates() {
+    return TEMPLATES.map(t => ({ id: t.id, label: t.label }));
+  }
+
+  function template(id) {
+    const found = TEMPLATES.find(t => t.id === id) || TEMPLATES[0];
+    return Object.assign({ id: found.id, label: found.label }, found.build());
+  }
+
   return {
     STAGES,
     AUDIENCES,
     VERSIONS,
     DEMO_ACTIVITY_ID,
+    templates,
+    template,
     normalize,
     prizeLabel,
     prizeIndexOf,
@@ -380,11 +516,14 @@
     assigneesByRole,
     unassignedRoles,
     rolesForPerson,
+    plans,
+    forPlan,
     projectControl,
     projectCrew,
     projectVenue,
     projectDesigner,
     project,
-    demoRundown
+    demoRundown,
+    rundown2026
   };
 });
