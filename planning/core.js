@@ -120,8 +120,10 @@
     return apiRead('rundown', { activity_id: String(activityId || '') });
   }
 
-  // 寫入走 POST（隱藏 form + iframe），GAS 以 postMessage 回傳結果。
-  function apiWrite(fields) {
+  // 寫入走 POST（隱藏 form + iframe）。GAS 的 postMessage 回覆有時被瀏覽器擋掉，
+  // 所以同時輪詢一個 confirm() 判斷式（通常是重讀後檢查變更是否生效），兩者任一成立就算成功。
+  function apiWrite(fields, options) {
+    const opts = options || {};
     return new Promise((resolve, reject) => {
       const win = root && root.window === root ? root : null;
       const doc = win && win.document;
@@ -145,6 +147,7 @@
         input.value = values[name] == null ? '' : values[name];
         form.appendChild(input);
       });
+
       let settled = false;
       let timer = null;
       const cleanup = () => {
@@ -153,23 +156,34 @@
         form.remove();
         iframe.remove();
       };
+      const finish = (fn, arg) => { if (settled) return; settled = true; cleanup(); fn(arg); };
       const onMessage = event => {
         if (event.source !== iframe.contentWindow) return;
         const message = event.data;
         if (!message || message.type !== 'event-accounting-result') return;
-        settled = true;
-        cleanup();
         const payload = message.payload || { ok: false, error: '回覆格式錯誤' };
-        payload.ok ? resolve(payload.data) : reject(new Error(payload.error || '寫入失敗'));
+        payload.ok ? finish(resolve, payload.data) : finish(reject, new Error(payload.error || '寫入失敗'));
       };
       win.addEventListener('message', onMessage);
       doc.body.append(iframe, form);
       form.submit();
-      timer = win.setTimeout(() => {
+
+      let polls = 0;
+      const maxPolls = 18;
+      const poll = async () => {
         if (settled) return;
-        cleanup();
-        reject(new Error('寫入逾時，請重新載入流程表確認'));
-      }, API_TIMEOUT_MS + 4000);
+        polls += 1;
+        if (typeof opts.confirm === 'function') {
+          try {
+            const ok = await opts.confirm();
+            if (ok) return finish(resolve, ok === true ? { confirmed: true } : ok);
+          } catch (err) { /* 重讀失敗就下輪再試 */ }
+        }
+        if (settled) return;
+        if (polls >= maxPolls) return finish(reject, new Error('還沒確認寫入是否成功，請按「重新讀取」看看'));
+        timer = win.setTimeout(poll, polls <= 3 ? 700 : 1400);
+      };
+      timer = win.setTimeout(poll, 900);
     });
   }
 

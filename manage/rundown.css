@@ -111,7 +111,14 @@
 .rd-print-go { padding: 0 var(--space-md); min-height: 2.5rem; color: var(--color-accent-ink); background: var(--color-accent); border: 0; border-radius: var(--radius-input); font-weight: 750; cursor: pointer; }
 .rd-plan-pick { display: inline-flex; align-items: center; gap: var(--space-2xs); font-size: var(--text-sm); font-weight: 700; color: var(--color-muted); }
 .rd-plan-pick select { min-height: 2.5rem; padding: 0 var(--space-2xs); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-surface); }
-@media print { body.rd-printing .rd-plan-pick { display: none !important; } }
+@media print { body.rd-printing .rd-plan-pick, body.rd-printing .rd-planbar { display: none !important; } }
+
+.rd-planbar { display: flex; align-items: center; gap: var(--space-2xs); flex-wrap: wrap; margin: 0 0 var(--space-sm); padding: var(--space-2xs) var(--space-xs); background: var(--color-accent-soft); border-radius: var(--radius-input); font-size: var(--text-sm); }
+.rd-planbar > span:first-child { font-weight: 750; }
+.rd-planbar select { min-height: 2.25rem; padding: 0 var(--space-2xs); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-surface); font-weight: 700; }
+.rd-tpl-pick { display: inline-flex; align-items: center; gap: var(--space-3xs); font-size: var(--text-sm); color: var(--color-muted); }
+.rd-tpl-pick select { min-height: 2.25rem; padding: 0 var(--space-2xs); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-surface); }
+.rd-import-row select[data-import="plan"] { font-weight: 700; }
 
 .rd-sheet { padding: var(--space-lg); background: var(--color-surface); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-card); }
 .rd-sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); padding-bottom: var(--space-2xs); margin-bottom: var(--space-sm); border-bottom: 2px solid var(--color-ink); }
