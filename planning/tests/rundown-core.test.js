@@ -75,12 +75,44 @@ test('設計師（圖文）版：只有 segment 時間軸＋獎項字串，無�
   assert.ok(designer.segments.every(s => s.title !== '工作人員到場、場佈'), '彩排段不進圖文版');
 });
 
-test('templates / template：內建 2025 忘年會，可取回完整流程供帶入', () => {
+test('templates / template：內建 2026 尾牙與 2025 忘年會，可取回完整流程供帶入', () => {
   const list = core.templates();
+  assert.ok(list.some(t => t.id === 'yearend2026'));
   assert.ok(list.some(t => t.id === 'yearend2025'));
   const t = core.template('yearend2025');
   assert.ok(t.segments.length > 10 && t.roles.length && t.tasks.length);
-  assert.equal(core.template('不存在').id, list[0].id, '未知 id 退回第一個');
+  assert.equal(core.template('不存在').id, list[0].id, '未知 id 退回第一個（2026）');
+});
+
+test('2026 尾牙範本：兩個提案方案並列，可依方案投影', () => {
+  const d = core.rundown2026();
+  const planList = core.plans(d);
+  assert.deepEqual(planList, ['五輪抽獎', '六輪抽獎']);
+  const five = core.projectControl(d, '五輪抽獎');
+  const six = core.projectControl(d, '六輪抽獎');
+  const fiveTitles = five.stages.flatMap(s => s.segments.map(x => x.title));
+  const sixTitles = six.stages.flatMap(s => s.segments.map(x => x.title));
+  assert.ok(fiveTitles.filter(x => /輪抽獎/.test(x)).length === 5);
+  assert.ok(sixTitles.filter(x => /輪抽獎/.test(x)).length === 6);
+  assert.ok(fiveTitles.includes('工作人員到場、場佈'), '彩排（無方案）在每個方案都出現');
+  assert.ok(sixTitles.includes('工作人員到場、場佈'));
+});
+
+test('forPlan：沒填方案的時段在所有方案都保留，任務跟著過濾', () => {
+  const d = core.normalize({
+    segments: [
+      { segment_id: 'a', 節目內容: '共用', 順序: 1 },
+      { segment_id: 'b', 節目內容: '五輪限定', 順序: 2, 方案: '五輪抽獎' },
+      { segment_id: 'c', 節目內容: '六輪限定', 順序: 3, 方案: '六輪抽獎' }
+    ],
+    tasks: [
+      { segment_id: 'a', 角色: 'x', 任務內容: 't1', 對象: '全部' },
+      { segment_id: 'b', 角色: 'x', 任務內容: 't2', 對象: '全部' }
+    ]
+  });
+  const five = core.forPlan(d, '五輪抽獎');
+  assert.deepEqual(five.segments.map(s => s.segment_id), ['a', 'b']);
+  assert.deepEqual(five.tasks.map(t => t.content), ['t1', 't2']);
 });
 
 test('project 依 versionId 分派，未知退回總控版', () => {

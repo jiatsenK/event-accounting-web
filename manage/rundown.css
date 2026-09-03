@@ -109,6 +109,9 @@
 .rd-print-tabs button { padding: var(--space-2xs) var(--space-sm); color: var(--color-muted); background: var(--color-surface); border: var(--rule-thin) solid var(--color-rule); border-radius: 999px; font-weight: 700; cursor: pointer; }
 .rd-print-tabs button.active { color: var(--color-accent-ink); background: var(--color-accent); border-color: var(--color-accent); }
 .rd-print-go { padding: 0 var(--space-md); min-height: 2.5rem; color: var(--color-accent-ink); background: var(--color-accent); border: 0; border-radius: var(--radius-input); font-weight: 750; cursor: pointer; }
+.rd-plan-pick { display: inline-flex; align-items: center; gap: var(--space-2xs); font-size: var(--text-sm); font-weight: 700; color: var(--color-muted); }
+.rd-plan-pick select { min-height: 2.5rem; padding: 0 var(--space-2xs); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-surface); }
+@media print { body.rd-printing .rd-plan-pick { display: none !important; } }
 
 .rd-sheet { padding: var(--space-lg); background: var(--color-surface); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-card); }
 .rd-sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); padding-bottom: var(--space-2xs); margin-bottom: var(--space-sm); border-bottom: 2px solid var(--color-ink); }

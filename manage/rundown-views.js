@@ -36,6 +36,7 @@
       source: 'empty', // 'backend' | 'demo' | 'empty'
       mode: 'edit',
       printVersion: 'control',
+      plan: '',
       busy: false,
       message: '',
       error: false
@@ -51,9 +52,11 @@
       render();
       try {
         if (source === 'demo') {
-          state.data = core().demoRundown();
+          const first = core().templates()[0];
+          state.data = core().template(first.id);
+          state.demoTemplateId = first.id;
           state.source = 'demo';
-          setMessage('目前顯示 2025 忘年會示範資料，僅供預覽四種版本；要編輯請切換為實際活動並設定存取碼。', false);
+          setMessage('目前顯示範例流程「' + first.label + '」（唯讀）。按「把這份帶入目前活動」寫進實際活動後即可編輯。', false);
         } else {
           const raw = await planning().fetchRundown(state.activityId);
           state.data = core().normalize(raw);
@@ -214,7 +217,9 @@
       return '<div class="rd-edit">' +
         importPanel() +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>時段</h3>' +
-          (readOnly ? '' : '<span class="rd-muted">改時間直接點欄位選，改完自動存</span>') + '</div>' +
+          '<span class="rd-muted">' +
+          (core().plans(d).length ? '含 ' + core().plans(d).map(esc).join('／') + ' 兩個提案方案，決定後刪掉另一個方案的時段即可。' : '') +
+          (readOnly ? '' : '改時間直接點欄位選，改完自動存') + '</span></div>' +
           '<div class="rd-scroll"><table class="rd-table"><thead><tr>' +
             '<th>順序</th><th>開始</th><th>結束</th><th>節目內容</th><th>階段</th><th>方案</th><th>獎項</th><th></th>' +
           '</tr></thead><tbody>' + (segmentRows || '<tr><td colspan="8" class="rd-empty">尚無時段</td></tr>') + '</tbody></table></div>' +
@@ -312,26 +317,32 @@
       const d = state.data;
       const versions = core().VERSIONS;
       const active = versions.find(v => v.id === state.printVersion) || versions[0];
-      const sheet = renderSheet(active.id, d);
+      const planList = core().plans(d);
+      if (planList.length && planList.indexOf(state.plan) < 0) state.plan = planList[0];
+      const sheet = renderSheet(active.id, d, state.plan);
       return '<div class="rd-print">' +
         '<div class="rd-print-bar">' +
           '<div class="rd-print-tabs">' + versions.map(v =>
             '<button type="button" data-version="' + v.id + '"' + (v.id === active.id ? ' class="active"' : '') + '>' + esc(v.label) + '</button>').join('') +
           '</div>' +
+          (planList.length ? '<label class="rd-plan-pick">方案 <select data-plan-pick>' +
+            planList.map(p => '<option value="' + esc(p) + '"' + (p === state.plan ? ' selected' : '') + '>' + esc(p) + '</option>').join('') +
+            '</select></label>' : '') +
           '<button type="button" class="rd-print-go" data-action="print">列印 / 存 PDF</button>' +
         '</div>' +
         '<div class="rd-sheet" data-version="' + active.id + '">' + sheet + '</div>' +
       '</div>';
     }
 
-    function renderSheet(versionId, d) {
+    function renderSheet(versionId, d, plan) {
       const title = esc(context && context.activity && context.activity.name || state.activityId);
       const label = (core().VERSIONS.find(v => v.id === versionId) || {}).label || '';
-      const head = '<div class="rd-sheet-head"><h3>' + title + '</h3><span>' + esc(label) + '</span></div>';
-      if (versionId === 'control') return head + sheetControl(core().projectControl(d));
-      if (versionId === 'crew') return head + sheetCrew(core().projectCrew(d));
-      if (versionId === 'venue') return head + sheetVenue(core().projectVenue(d));
-      return head + sheetDesigner(core().projectDesigner(d));
+      const planLabel = plan && core().plans(d).length ? '｜' + esc(plan) : '';
+      const head = '<div class="rd-sheet-head"><h3>' + title + '</h3><span>' + esc(label) + planLabel + '</span></div>';
+      if (versionId === 'control') return head + sheetControl(core().projectControl(d, plan));
+      if (versionId === 'crew') return head + sheetCrew(core().projectCrew(d, plan));
+      if (versionId === 'venue') return head + sheetVenue(core().projectVenue(d, plan));
+      return head + sheetDesigner(core().projectDesigner(d, plan));
     }
 
     function sheetControl(model) {
@@ -388,13 +399,15 @@
       container.querySelectorAll('[data-version]').forEach(btn => btn.addEventListener('click', () => {
         state.printVersion = btn.dataset.version; render();
       }));
+      const planPick = container.querySelector('[data-plan-pick]');
+      if (planPick) planPick.addEventListener('change', () => { state.plan = planPick.value; render(); });
 
       const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
 
       on('[data-action="reload"]', 'click', () => load(state.source === 'demo' ? 'demo' : 'backend'));
       on('[data-action="load-demo"]', 'click', () => load('demo'));
       on('[data-action="load-backend"]', 'click', () => load('backend'));
-      on('[data-action="import-current"]', 'click', () => importTemplate(core().DEMO_ACTIVITY_ID, 'replace'));
+      on('[data-action="import-current"]', 'click', () => importTemplate(state.demoTemplateId || core().templates()[0].id, 'replace'));
       on('[data-action="import-template"]', 'click', () => {
         const wrap = container.querySelector('.rd-import-row');
         importTemplate(wrap.querySelector('[data-import="template"]').value, wrap.querySelector('[data-import="mode"]').value);
