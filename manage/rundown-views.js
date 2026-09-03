@@ -36,11 +36,21 @@
       source: 'empty', // 'backend' | 'demo' | 'empty'
       mode: 'edit',
       printVersion: 'control',
-      plan: '',
+      plan: '',            // '' = 兩案並列；否則單一方案名
+      templateId: null,    // 目前預覽／要帶入的範本
       busy: false,
       message: '',
       error: false
     };
+    state.templateId = (core().templates()[0] || {}).id || null;
+    state.importTemplateId = state.templateId;
+    state.importPlan = '';
+
+    // 目前畫面要呈現的資料：有方案且選了單一方案時，只顯示該方案 + 無方案時段
+    function viewData() {
+      if (state.plan && core().plans(state.data).length) return core().forPlan(state.data, state.plan);
+      return state.data;
+    }
 
     function setMessage(message, error) {
       state.message = message || '';
@@ -52,14 +62,17 @@
       render();
       try {
         if (source === 'demo') {
-          const first = core().templates()[0];
-          state.data = core().template(first.id);
-          state.demoTemplateId = first.id;
+          const tpl = core().template(state.templateId);
+          state.templateId = tpl.id;
+          state.data = tpl;
+          state.plan = core().plans(tpl)[0] || '';
           state.source = 'demo';
-          setMessage('目前顯示範例流程「' + first.label + '」（唯讀）。按「把這份帶入目前活動」寫進實際活動後即可編輯。', false);
+          setMessage('範例流程「' + tpl.label + '」（唯讀）。' +
+            (core().plans(tpl).length ? '選好方案後' : '') + '按「帶入到目前活動」寫進實際活動即可編輯。', false);
         } else {
           const raw = await planning().fetchRundown(state.activityId);
           state.data = core().normalize(raw);
+          state.plan = core().plans(state.data)[0] || '';
           state.source = 'backend';
           const empty = !state.data.segments.length && !state.data.roles.length;
           setMessage(empty ? '這場活動還沒有流程表內容，可從「編輯流程」開始，或按「看範例流程」帶入去年的流程。' : '', false);
@@ -75,34 +88,132 @@
       }
     }
 
+    // 樂觀更新：把這次寫入先套進本機資料，畫面立即反應，再送後端；失敗才重讀還原。
+    function applyLocal(fields) {
+      const d = state.data;
+      const del = String(fields._delete || '') === '1';
+      switch (fields.action) {
+        case 'save_rundown_segment':
+          if (del) {
+            d.segments = d.segments.filter(s => s.segment_id !== fields.segment_id);
+            d.tasks = d.tasks.filter(t => t.segment_id !== fields.segment_id);
+          } else if (fields.segment_id) {
+            const s = d.segments.find(x => x.segment_id === fields.segment_id);
+            if (s) {
+              if (fields['節目內容'] != null) s.title = fields['節目內容'];
+              if (fields['開始時間'] != null) s.start = fields['開始時間'];
+              if (fields['結束時間'] != null) s.end = fields['結束時間'];
+              if (fields['順序'] != null && fields['順序'] !== '') s.order = Number(fields['順序']) || s.order;
+              if (fields['階段']) s.stage = fields['階段'];
+              if (fields['方案'] != null) s.plan = fields['方案'];
+            }
+          }
+          break;
+        case 'save_rundown_role':
+          if (del) d.roles = d.roles.filter(r => r.role !== fields['角色']);
+          break;
+        case 'save_rundown_task':
+          if (del) d.tasks = d.tasks.filter(t => t.task_id !== fields.task_id);
+          break;
+        case 'save_rundown_assignment':
+          if (del) {
+            d.assignments = d.assignments.filter(x => !(x.role === fields['角色'] && x.person === fields['人員姓名']));
+          } else if (!d.assignments.some(x => x.role === fields['角色'] && x.person === fields['人員姓名'])) {
+            d.assignments.push({ role: fields['角色'], person: fields['人員姓名'] });
+          }
+          break;
+        case 'save_rundown_crew':
+          if (del) d.crew = d.crew.filter(c => c.name !== fields['姓名']);
+          break;
+        default:
+          break;
+      }
+    }
+
+    // 用重讀結果確認寫入是否生效（postMessage 常被瀏覽器擋掉）
+    async function confirmWrite(fields) {
+      const d = core().normalize(await planning().fetchRundown(state.activityId));
+      state._fresh = d;
+      const del = String(fields._delete || '') === '1';
+      const t = s => String(s == null ? '' : s).trim();
+      switch (fields.action) {
+        case 'save_rundown_segment':
+          if (del) return !d.segments.some(s => s.segment_id === fields.segment_id);
+          if (fields.segment_id) return d.segments.some(s => s.segment_id === fields.segment_id && s.title === t(fields['節目內容']));
+          return d.segments.some(s => s.title === t(fields['節目內容']));
+        case 'save_rundown_role':
+          return del ? !d.roles.some(r => r.role === fields['角色']) : d.roles.some(r => r.role === fields['角色']);
+        case 'save_rundown_task':
+          if (del) return !d.tasks.some(x => x.task_id === fields.task_id);
+          return d.tasks.some(x => x.segment_id === fields.segment_id && x.content === t(fields['任務內容']));
+        case 'save_rundown_assignment': {
+          const has = d.assignments.some(a => a.role === fields['角色'] && a.person === fields['人員姓名']);
+          return del ? !has : has;
+        }
+        case 'save_rundown_crew':
+          return del ? !d.crew.some(c => c.name === fields['姓名']) : d.crew.some(c => c.name === fields['姓名']);
+        case 'import_rundown':
+          return d.segments.length > 0 || d.roles.length > 0;
+        default:
+          return null;
+      }
+    }
+
     async function write(fields, okMessage, options) {
       const opts = options || {};
       if (state.source === 'demo' && !opts.allowDemo) {
-        setMessage('這是示範資料。用上面的「帶入到目前活動」把它寫進實際活動，或先「切回實際活動」。', true);
+        setMessage('這是範例流程（唯讀）。用上方的「帶入到目前活動」寫進實際活動。', true);
         render();
         return;
       }
+      const paint = opts.noRender ? renderStatusOnly : render;
+      if (opts.optimistic !== false) applyLocal(fields);
       state.busy = true;
-      if (!opts.silent) { setMessage('儲存中…', false); render(); }
+      setMessage(opts.pending || '處理中…', false);
+      paint();
       try {
-        const result = await planning().apiWrite(Object.assign({ activity_id: state.activityId }, fields));
-        if (opts.skipReload) {
-          state.source = 'backend';
-          setMessage(okMessage || '已儲存', false);
-        } else {
-          const raw = await planning().fetchRundown(state.activityId);
-          state.data = core().normalize(raw);
-          state.source = 'backend';
-          setMessage(okMessage || '已儲存', false);
-        }
+        await planning().apiWrite(
+          Object.assign({ activity_id: state.activityId }, fields),
+          { confirm: () => confirmWrite(fields) }
+        );
+        if (state._fresh) { state.data = state._fresh; state._fresh = null; }
+        else { try { state.data = core().normalize(await planning().fetchRundown(state.activityId)); } catch (e) { /* keep local */ } }
+        state.source = 'backend';
         state.busy = false;
-        if (!opts.skipReload) render(); else if (!opts.silent) renderStatusOnly();
-        return result;
+        setMessage(okMessage || '已儲存', false);
+        paint();
       } catch (err) {
         state.busy = false;
-        setMessage(err && err.message || '儲存失敗', true);
+        setMessage((err && err.message) || '寫入失敗', true);
+        try { state.data = core().normalize(await planning().fetchRundown(state.activityId)); } catch (e) { /* keep local */ }
         render();
       }
+    }
+
+    async function importTemplate(templateId, mode, plan) {
+      let template = core().template(templateId || state.templateId);
+      if (!template) { setMessage('找不到這份流程範本', true); render(); return; }
+      const picked = plan && plan !== '__all__' && core().plans(template).length ? plan : '';
+      if (picked) {
+        const f = core().forPlan(template, picked);
+        template = Object.assign({}, template, {
+          segments: f.segments.map(s => Object.assign({}, s, { plan: '' })),
+          tasks: f.tasks
+        });
+      }
+      const target = (context && context.activity && context.activity.name) || state.activityId;
+      if (state.source === 'demo') state.source = 'backend';
+      const payload = {
+        segments: template.segments, roles: template.roles, tasks: template.tasks,
+        crew: template.crew, assignments: template.assignments
+      };
+      const label = template.label + (picked ? '（' + picked + '）' : '');
+      if (mode === 'replace' && typeof root.confirm === 'function' &&
+          !root.confirm('帶入「' + label + '」前會清空「' + target + '」目前的流程內容，確定？')) return;
+      await write(
+        { action: 'import_rundown', mode: mode === 'append' ? 'append' : 'replace', data: JSON.stringify(payload) },
+        '已帶入「' + label + '」', { allowDemo: true, optimistic: false, pending: '帶入中，這步會慢一點…' }
+      );
     }
 
     function renderStatusOnly() {
@@ -111,21 +222,6 @@
       el.textContent = state.message;
       el.classList.toggle('error', state.error);
       el.classList.toggle('rd-hidden', !state.message);
-    }
-
-    async function importTemplate(templateId, mode) {
-      const template = core().template(templateId);
-      if (!template) { setMessage('找不到這份流程範本', true); render(); return; }
-      const target = (context && context.activity && context.activity.name) || state.activityId;
-      if (state.source === 'demo') state.source = 'backend'; // 帶入即寫進實際活動（apiWrite 會檢查存取碼）
-      const payload = {
-        segments: template.segments, roles: template.roles, tasks: template.tasks,
-        crew: template.crew, assignments: template.assignments
-      };
-      if (mode === 'replace' && typeof root.confirm === 'function' &&
-          !root.confirm('帶入「' + template.label + '」前會清空「' + target + '」目前的流程內容，確定？')) return;
-      await write({ action: 'import_rundown', mode: mode === 'append' ? 'append' : 'replace', data: JSON.stringify(payload) },
-        '已帶入「' + template.label + '」', { allowDemo: true });
     }
 
     // -- rendering -----------------------------------------------------------
@@ -138,10 +234,27 @@
             MODES.map(m => '<button type="button" data-mode="' + m.id + '"' +
               (m.id === state.mode ? ' class="active" aria-current="true"' : '') + '>' + esc(m.label) + '</button>').join('') +
           '</nav>' +
+          planBar() +
           '<p class="rd-status' + (state.error ? ' error' : '') + (state.message ? '' : ' rd-hidden') + '" role="status">' + esc(state.message) + '</p>' +
           '<div class="rd-body">' + body() + '</div>' +
         '</div>';
       bind();
+    }
+
+    function templateOptions(selectedId) {
+      return core().templates().map(t =>
+        '<option value="' + esc(t.id) + '"' + (t.id === selectedId ? ' selected' : '') + '>' + esc(t.label) + '</option>').join('');
+    }
+
+    function planBar() {
+      const list = core().plans(state.data);
+      if (!list.length) return '';
+      return '<div class="rd-planbar"><span>方案</span><select data-plan-pick>' +
+        list.map(p => '<option value="' + esc(p) + '"' + (p === state.plan ? ' selected' : '') + '>' + esc(p) + '</option>').join('') +
+        '<option value="" ' + (state.plan === '' ? 'selected' : '') + '>兩案並列</option>' +
+        '</select>' +
+        (state.source === 'demo' && state.plan ? '<span class="rd-muted">帶入時只會帶「' + esc(state.plan) + '」</span>' : '') +
+        '</div>';
     }
 
     function header() {
@@ -152,11 +265,12 @@
         '<div class="rd-head-actions">' +
         '<button type="button" data-action="reload"' + (state.busy ? ' disabled' : '') + '>重新讀取</button>' +
         (state.source === 'demo'
-          ? '<button type="button" data-action="import-current" class="rd-primary"' + (state.busy ? ' disabled' : '') + '>把這份帶入目前活動</button>' +
+          ? '<label class="rd-tpl-pick">範本 <select data-tpl-pick' + (state.busy ? ' disabled' : '') + '>' + templateOptions(state.templateId) + '</select></label>' +
+            '<button type="button" data-action="import-current" class="rd-primary"' + (state.busy ? ' disabled' : '') + '>帶入到目前活動</button>' +
             '<button type="button" data-action="load-backend"' + (state.busy ? ' disabled' : '') + '>切回實際活動</button>'
           : '<button type="button" data-action="load-demo"' + (state.busy ? ' disabled' : '') + '>看範例流程</button>') +
         '</div>' +
-        (editable ? '' : '<span class="rd-badge">' + (state.source === 'demo' ? '示範資料（唯讀）' : '尚未連線') + '</span>') +
+        (editable ? '' : '<span class="rd-badge">' + (state.source === 'demo' ? '範例（唯讀）' : '尚未連線') + '</span>') +
         '</header>';
     }
 
@@ -169,7 +283,7 @@
     // -- 編輯流程 ------------------------------------------------------------
 
     function editView() {
-      const d = state.data;
+      const d = viewData();
       const stageOptions = core().STAGES.map(s => '<option value="' + s + '">' + s + '</option>').join('');
       const roleOptions = d.roles.map(r => '<option value="' + esc(r.role) + '">' + esc(r.role) + '</option>').join('');
       const audienceOptions = core().AUDIENCES.map(a => '<option value="' + a + '">' + a + '</option>').join('');
@@ -250,10 +364,16 @@
       const templates = core().templates();
       if (state.source !== 'backend' || !templates.length) return '';
       const hasContent = state.data.segments.length || state.data.roles.length;
+      const tpl = core().template(state.importTemplateId);
+      const tplPlans = core().plans(tpl);
       return '<section class="rd-panel rd-import"><div class="rd-panel-head"><h3>帶入起始流程</h3>' +
         '<span class="rd-muted">' + (hasContent ? '目前活動已有內容，帶入前可選清空或附加' : '從過去的流程直接帶入，不用重打') + '</span></div>' +
         '<div class="rd-import-row">' +
-          '<select data-import="template">' + templates.map(t => '<option value="' + esc(t.id) + '">' + esc(t.label) + '</option>').join('') + '</select>' +
+          '<select data-import="template">' + templateOptions(state.importTemplateId) + '</select>' +
+          (tplPlans.length ? '<select data-import="plan">' +
+            tplPlans.map(p => '<option value="' + esc(p) + '"' + (p === state.importPlan ? ' selected' : '') + '>' + esc(p) + '</option>').join('') +
+            '<option value="__all__"' + (state.importPlan === '__all__' ? ' selected' : '') + '>兩案都帶入</option>' +
+          '</select>' : '') +
           '<select data-import="mode">' +
             '<option value="replace">清空後帶入</option>' +
             '<option value="append">加在現有內容後</option>' +
@@ -314,35 +434,30 @@
     // -- 列印版本 ---------------------------------------------------------
 
     function printView() {
-      const d = state.data;
+      const d = viewData();
       const versions = core().VERSIONS;
       const active = versions.find(v => v.id === state.printVersion) || versions[0];
-      const planList = core().plans(d);
-      if (planList.length && planList.indexOf(state.plan) < 0) state.plan = planList[0];
-      const sheet = renderSheet(active.id, d, state.plan);
+      const sheet = renderSheet(active.id, d);
       return '<div class="rd-print">' +
         '<div class="rd-print-bar">' +
           '<div class="rd-print-tabs">' + versions.map(v =>
             '<button type="button" data-version="' + v.id + '"' + (v.id === active.id ? ' class="active"' : '') + '>' + esc(v.label) + '</button>').join('') +
           '</div>' +
-          (planList.length ? '<label class="rd-plan-pick">方案 <select data-plan-pick>' +
-            planList.map(p => '<option value="' + esc(p) + '"' + (p === state.plan ? ' selected' : '') + '>' + esc(p) + '</option>').join('') +
-            '</select></label>' : '') +
           '<button type="button" class="rd-print-go" data-action="print">列印 / 存 PDF</button>' +
         '</div>' +
         '<div class="rd-sheet" data-version="' + active.id + '">' + sheet + '</div>' +
       '</div>';
     }
 
-    function renderSheet(versionId, d, plan) {
+    function renderSheet(versionId, d) {
       const title = esc(context && context.activity && context.activity.name || state.activityId);
       const label = (core().VERSIONS.find(v => v.id === versionId) || {}).label || '';
-      const planLabel = plan && core().plans(d).length ? '｜' + esc(plan) : '';
+      const planLabel = state.plan && core().plans(state.data).length ? '｜' + esc(state.plan) : '';
       const head = '<div class="rd-sheet-head"><h3>' + title + '</h3><span>' + esc(label) + planLabel + '</span></div>';
-      if (versionId === 'control') return head + sheetControl(core().projectControl(d, plan));
-      if (versionId === 'crew') return head + sheetCrew(core().projectCrew(d, plan));
-      if (versionId === 'venue') return head + sheetVenue(core().projectVenue(d, plan));
-      return head + sheetDesigner(core().projectDesigner(d, plan));
+      if (versionId === 'control') return head + sheetControl(core().projectControl(d));
+      if (versionId === 'crew') return head + sheetCrew(core().projectCrew(d));
+      if (versionId === 'venue') return head + sheetVenue(core().projectVenue(d));
+      return head + sheetDesigner(core().projectDesigner(d));
     }
 
     function sheetControl(model) {
@@ -401,16 +516,25 @@
       }));
       const planPick = container.querySelector('[data-plan-pick]');
       if (planPick) planPick.addEventListener('change', () => { state.plan = planPick.value; render(); });
+      const tplPick = container.querySelector('[data-tpl-pick]');
+      if (tplPick) tplPick.addEventListener('change', () => { state.templateId = tplPick.value; load('demo'); });
+      const importTpl = container.querySelector('[data-import="template"]');
+      if (importTpl) importTpl.addEventListener('change', () => { state.importTemplateId = importTpl.value; state.importPlan = ''; render(); });
 
       const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
 
       on('[data-action="reload"]', 'click', () => load(state.source === 'demo' ? 'demo' : 'backend'));
       on('[data-action="load-demo"]', 'click', () => load('demo'));
       on('[data-action="load-backend"]', 'click', () => load('backend'));
-      on('[data-action="import-current"]', 'click', () => importTemplate(state.demoTemplateId || core().templates()[0].id, 'replace'));
+      on('[data-action="import-current"]', 'click', () => importTemplate(state.templateId, 'replace', state.plan || '__all__'));
       on('[data-action="import-template"]', 'click', () => {
         const wrap = container.querySelector('.rd-import-row');
-        importTemplate(wrap.querySelector('[data-import="template"]').value, wrap.querySelector('[data-import="mode"]').value);
+        const planSel = wrap.querySelector('[data-import="plan"]');
+        importTemplate(
+          wrap.querySelector('[data-import="template"]').value,
+          wrap.querySelector('[data-import="mode"]').value,
+          planSel ? planSel.value : '__all__'
+        );
       });
       on('[data-action="print"]', 'click', () => {
         const body = container.ownerDocument.body;
@@ -435,12 +559,7 @@
         const fields = { action: 'save_rundown_segment', segment_id: tr.dataset.seg };
         tr.querySelectorAll('[data-field]').forEach(el => { fields[el.dataset.field] = el.value.trim(); });
         if (!fields['節目內容']) { setMessage('節目內容不可空白', true); renderStatusOnly(); return; }
-        const seg = state.data.segments.find(s => s.segment_id === tr.dataset.seg);
-        if (seg) {
-          seg.order = Number(fields['順序']) || 0; seg.start = fields['開始時間']; seg.end = fields['結束時間'];
-          seg.title = fields['節目內容']; seg.stage = fields['階段']; seg.plan = fields['方案'];
-        }
-        write(fields, '時段已更新', { skipReload: true, silent: false });
+        write(fields, '時段已更新', { noRender: true });
       });
       on('[data-action="del-seg"]', 'click', event => {
         const tr = event.target.closest('[data-seg]');
