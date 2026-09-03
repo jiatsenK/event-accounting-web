@@ -116,13 +116,72 @@
     };
   }
 
+  async function fetchRundown(activityId) {
+    return apiRead('rundown', { activity_id: String(activityId || '') });
+  }
+
+  // 寫入走 POST（隱藏 form + iframe），GAS 以 postMessage 回傳結果。
+  function apiWrite(fields) {
+    return new Promise((resolve, reject) => {
+      const win = root && root.window === root ? root : null;
+      const doc = win && win.document;
+      if (!win || !doc) return reject(new Error('寫入只能在瀏覽器中使用'));
+      const accessToken = win.sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
+      if (!accessToken) return reject(new Error('尚未輸入存取碼'));
+      const iframeName = 'gas-write-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      const iframe = doc.createElement('iframe');
+      iframe.name = iframeName;
+      iframe.style.display = 'none';
+      iframe.setAttribute('aria-hidden', 'true');
+      const form = doc.createElement('form');
+      form.method = 'POST';
+      form.action = DEFAULT_API_URL;
+      form.target = iframeName;
+      form.style.display = 'none';
+      const values = Object.assign({}, fields, { token: accessToken, origin: win.location.origin });
+      Object.keys(values).forEach(name => {
+        const input = doc.createElement('input');
+        input.name = name;
+        input.value = values[name] == null ? '' : values[name];
+        form.appendChild(input);
+      });
+      let settled = false;
+      let timer = null;
+      const cleanup = () => {
+        if (timer) win.clearTimeout(timer);
+        win.removeEventListener('message', onMessage);
+        form.remove();
+        iframe.remove();
+      };
+      const onMessage = event => {
+        if (event.source !== iframe.contentWindow) return;
+        const message = event.data;
+        if (!message || message.type !== 'event-accounting-result') return;
+        settled = true;
+        cleanup();
+        const payload = message.payload || { ok: false, error: '回覆格式錯誤' };
+        payload.ok ? resolve(payload.data) : reject(new Error(payload.error || '寫入失敗'));
+      };
+      win.addEventListener('message', onMessage);
+      doc.body.append(iframe, form);
+      form.submit();
+      timer = win.setTimeout(() => {
+        if (settled) return;
+        cleanup();
+        reject(new Error('寫入逾時，請重新載入流程表確認'));
+      }, API_TIMEOUT_MS + 4000);
+    });
+  }
+
   return {
     DEFAULT_API_URL,
     TOKEN_STORAGE_KEY,
     apiRead,
+    apiWrite,
     fetchActivities,
     fetchPlanningHistory,
     fetchPlanningForecast,
+    fetchRundown,
     getHistory,
     calculateRows
   };

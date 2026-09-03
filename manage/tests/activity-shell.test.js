@@ -11,6 +11,8 @@ assert.doesNotMatch(html, /id="status"/);
 assert.match(html, /app-router\.js/);
 assert.match(html, /accounting-views\.js/);
 assert.match(html, /planning-views\.js/);
+assert.match(html, /rundown-core\.js/);
+assert.match(html, /rundown-views\.js/);
 assert.match(html, /app-views\.js/);
 assert.match(html, /activity-app\.js/);
 assert.doesNotMatch(html, new RegExp('<' + 'i' + 'frame\\b', 'i'));

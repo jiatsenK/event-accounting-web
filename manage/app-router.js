@@ -8,7 +8,7 @@
   const DEFAULT_ACTIVITY_ID = 'midyear2026';
   const AREA_VIEWS = Object.freeze({
     accounting: Object.freeze(['overview', 'expenses', 'reimbursement']),
-    planning: Object.freeze(['history', 'forecast'])
+    planning: Object.freeze(['history', 'forecast', 'rundown'])
   });
 
   function normalizeActivityId(value) {

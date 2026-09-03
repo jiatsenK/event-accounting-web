@@ -8,7 +8,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
   views.AREAS.planning.views.map(item => item.label),
-  ['歷史紀錄', '規劃試算']
+  ['歷史紀錄', '規劃試算', '流程表']
 );
 
 (async () => {
