@@ -368,11 +368,26 @@
     });
   }
 
+  const TEMPLATES = [
+    { id: 'yearend2025', label: '2025 忘年會（去年實際流程）', build: demoRundown }
+  ];
+
+  function templates() {
+    return TEMPLATES.map(t => ({ id: t.id, label: t.label }));
+  }
+
+  function template(id) {
+    const found = TEMPLATES.find(t => t.id === id) || TEMPLATES[0];
+    return Object.assign({ id: found.id, label: found.label }, found.build());
+  }
+
   return {
     STAGES,
     AUDIENCES,
     VERSIONS,
     DEMO_ACTIVITY_ID,
+    templates,
+    template,
     normalize,
     prizeLabel,
     prizeIndexOf,

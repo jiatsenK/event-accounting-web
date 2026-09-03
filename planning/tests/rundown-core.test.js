@@ -75,6 +75,14 @@ test('設計師（圖文）版：只有 segment 時間軸＋獎項字串，無�
   assert.ok(designer.segments.every(s => s.title !== '工作人員到場、場佈'), '彩排段不進圖文版');
 });
 
+test('templates / template：內建 2025 忘年會，可取回完整流程供帶入', () => {
+  const list = core.templates();
+  assert.ok(list.some(t => t.id === 'yearend2025'));
+  const t = core.template('yearend2025');
+  assert.ok(t.segments.length > 10 && t.roles.length && t.tasks.length);
+  assert.equal(core.template('不存在').id, list[0].id, '未知 id 退回第一個');
+});
+
 test('project 依 versionId 分派，未知退回總控版', () => {
   const data = core.demoRundown();
   assert.ok(core.project('venue', data).rows);
