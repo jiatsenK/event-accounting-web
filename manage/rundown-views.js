@@ -43,6 +43,7 @@
     };
     state.templateId = (core().templates()[0] || {}).id || null;
     state.importTemplateId = state.templateId;
+    state.anchorEditing = new Set(); // 正在編輯錨定時間的 segment_id；多數段落用不到，預設收起來
 
     function setMessage(message, error) {
       state.message = message || '';
@@ -272,6 +273,30 @@
       const timed = core().calculateTimeline(d.segments, d.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s]));
 
+      // 錨定時間絕大多數段落用不到（只有少數要釘死時刻），預設收成一個小按鈕；
+      // 點開才變成真正的時間欄位，不是每一列都攤開一個空的時間框。
+      function anchorCellHtml(seg, readOnly) {
+        if (readOnly) return seg.anchor_time ? esc(seg.anchor_time) : '';
+        if (seg.anchor_time || state.anchorEditing.has(seg.segment_id)) {
+          return '<input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '">';
+        }
+        return '<button type="button" class="rd-link" data-action="add-anchor" data-seg="' + esc(seg.segment_id) + '" title="把這段釘在固定時刻，其餘段落不用設">📌 釘時刻</button>';
+      }
+
+      // 獎項：直接列出可用獎項當可點的標籤，點一下就連結／取消連結，不用打 prize_id。
+      function prizeCellHtml(seg, readOnly) {
+        if (!d.prizes.length) return '';
+        if (readOnly) {
+          return core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
+        }
+        const linked = new Set(seg.prize_ids || []);
+        return d.prizes.map(p => {
+          const active = linked.has(p.prize_id);
+          return '<button type="button" class="rd-prize-toggle' + (active ? ' rd-prize-toggle-active' : '') +
+            '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(p.tier || p.prize_id) + '</button>';
+        }).join('');
+      }
+
       // 順序不給手打：拖把手調（滑鼠），或按 ▲▼（觸控／鍵盤都能用，拖曳在手機上常常失靈）。
       // 順序值本身用隱藏欄位跟著列一起送出。
       const segmentRows = timed.map((seg, i) =>
@@ -283,11 +308,10 @@
             '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '"></td>' +
           '<td class="rd-time-readout">' + esc(seg.time) + '</td>' +
           '<td><input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></td>' +
-          '<td><input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '"' + dis + '></td>' +
+          '<td class="rd-anchor-cell">' + anchorCellHtml(seg, readOnly) + '</td>' +
           '<td><input class="rd-in" data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></td>' +
           '<td><select class="rd-in" data-field="階段"' + dis + '>' + stageOptions.replace('value="' + seg.stage + '"', 'value="' + seg.stage + '" selected') + '</select></td>' +
-          '<td class="rd-prize-cell">' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('') +
-            (d.prizes.length && !readOnly ? '<button type="button" class="rd-link" data-action="edit-prizes" data-seg="' + esc(seg.segment_id) + '">獎項…</button>' : '') + '</td>' +
+          '<td class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</td>' +
           '<td>' + (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-seg" title="刪除">✕</button>') + '</td>' +
         '</tr>').join('');
 
@@ -615,16 +639,27 @@
         write({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務');
       });
 
-      // 獎項
-      on('[data-action="edit-prizes"]', 'click', event => {
-        const segId = event.target.dataset.seg;
-        const seg = state.data.segments.find(s => s.segment_id === segId);
-        const options = state.data.prizes.map(p => p.prize_id + '  ' + core().prizeLabel(p)).join('\n');
-        const current = (seg.prize_ids || []).join(',');
-        const next = root.prompt('輸入這個時段引用的獎項 prize_id（逗號分隔）。\n可用：\n' + options, current);
-        if (next == null) return;
-        write({ action: 'save_rundown_segment', segment_id: segId, 節目內容: seg.title, duration_min: seg.duration_min, 錨定時間: seg.anchor_time,
-          順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: next.trim() }, '已更新獎項連動');
+      // 獎項：點標籤直接連結／取消連結，不用打 prize_id
+      on('[data-action="toggle-prize"]', 'click', event => {
+        const tr = event.target.closest('tr[data-seg]');
+        const seg = tr && state.data.segments.find(s => s.segment_id === tr.dataset.seg);
+        if (!seg) return;
+        const linked = new Set(seg.prize_ids || []);
+        const prizeId = event.target.dataset.prize;
+        const nowActive = !linked.has(prizeId);
+        if (nowActive) linked.add(prizeId); else linked.delete(prizeId);
+        seg.prize_ids = Array.from(linked);
+        event.target.classList.toggle('rd-prize-toggle-active', nowActive);
+        write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
+          錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: seg.prize_ids.join(',') },
+          '已更新獎項連動', { noRender: true, optimistic: false });
+      });
+      // 錨定時間：預設收成按鈕，點開才變成真正的時間欄位
+      on('[data-action="add-anchor"]', 'click', event => {
+        state.anchorEditing.add(event.target.dataset.seg);
+        render();
+        const input = container.querySelector('[data-seg="' + event.target.dataset.seg + '"] [data-field="錨定時間"]');
+        if (input) input.focus();
       });
 
       // 工作人員
