@@ -43,6 +43,7 @@
     };
     state.templateId = (core().templates()[0] || {}).id || null;
     state.importTemplateId = state.templateId;
+    state.anchorEditing = new Set(); // 正在編輯錨定時間的 segment_id；多數段落用不到，預設收起來
 
     function setMessage(message, error) {
       state.message = message || '';
@@ -272,18 +273,45 @@
       const timed = core().calculateTimeline(d.segments, d.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s]));
 
-      // 順序不給手打：拖曳把手調整，順序值本身用隱藏欄位跟著列一起送出。
-      const segmentRows = timed.map(seg =>
+      // 錨定時間絕大多數段落用不到（只有少數要釘死時刻），預設收成一個小按鈕；
+      // 點開才變成真正的時間欄位，不是每一列都攤開一個空的時間框。
+      function anchorCellHtml(seg, readOnly) {
+        if (readOnly) return seg.anchor_time ? esc(seg.anchor_time) : '';
+        if (seg.anchor_time || state.anchorEditing.has(seg.segment_id)) {
+          return '<input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '">';
+        }
+        return '<button type="button" class="rd-link" data-action="add-anchor" data-seg="' + esc(seg.segment_id) + '" title="把這段釘在固定時刻，其餘段落不用設">📌 釘時刻</button>';
+      }
+
+      // 獎項：直接列出可用獎項當可點的標籤，點一下就連結／取消連結，不用打 prize_id。
+      function prizeCellHtml(seg, readOnly) {
+        if (!d.prizes.length) return '';
+        if (readOnly) {
+          return core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
+        }
+        const linked = new Set(seg.prize_ids || []);
+        return d.prizes.map(p => {
+          const active = linked.has(p.prize_id);
+          return '<button type="button" class="rd-prize-toggle' + (active ? ' rd-prize-toggle-active' : '') +
+            '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(p.tier || p.prize_id) + '</button>';
+        }).join('');
+      }
+
+      // 順序不給手打：拖把手調（滑鼠），或按 ▲▼（觸控／鍵盤都能用，拖曳在手機上常常失靈）。
+      // 順序值本身用隱藏欄位跟著列一起送出。
+      const segmentRows = timed.map((seg, i) =>
         '<tr data-seg="' + esc(seg.segment_id) + '">' +
-          '<td>' + (readOnly ? '' : '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>') +
+          '<td class="rd-order-cell">' + (readOnly ? '' :
+            '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>' +
+            '<button type="button" class="rd-icon rd-order-btn" data-action="move-seg" data-dir="up"' + (i === 0 ? ' disabled' : '') + ' title="上移">▲</button>' +
+            '<button type="button" class="rd-icon rd-order-btn" data-action="move-seg" data-dir="down"' + (i === timed.length - 1 ? ' disabled' : '') + ' title="下移">▼</button>') +
             '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '"></td>' +
           '<td class="rd-time-readout">' + esc(seg.time) + '</td>' +
           '<td><input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></td>' +
-          '<td><input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '"' + dis + '></td>' +
+          '<td class="rd-anchor-cell">' + anchorCellHtml(seg, readOnly) + '</td>' +
           '<td><input class="rd-in" data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></td>' +
           '<td><select class="rd-in" data-field="階段"' + dis + '>' + stageOptions.replace('value="' + seg.stage + '"', 'value="' + seg.stage + '" selected') + '</select></td>' +
-          '<td class="rd-prize-cell">' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('') +
-            (d.prizes.length && !readOnly ? '<button type="button" class="rd-link" data-action="edit-prizes" data-seg="' + esc(seg.segment_id) + '">獎項…</button>' : '') + '</td>' +
+          '<td class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</td>' +
           '<td>' + (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-seg" title="刪除">✕</button>') + '</td>' +
         '</tr>').join('');
 
@@ -365,8 +393,8 @@
             '<option value="固定開始"' + (fixed ? ' selected' : '') + '>固定開始時間</option>' +
           '</select></label>' +
           (fixed
-            ? '<label>彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(c.rehearsal_start) + '"' + dis + '></label>'
-            : '<label>彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
+            ? '<label class="rd-config-third">彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(c.rehearsal_start) + '"' + dis + '></label>'
+            : '<label class="rd-config-third">彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
           '<button type="button" class="rd-primary" data-action="save-config"' + dis + '>儲存</button>' +
         '</div></section>';
     }
@@ -509,14 +537,20 @@
 
       const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
 
-      // 流程時間設定：切彩排基準只換第三個欄位（不寫入），按「儲存」才送出一次
+      // 流程時間設定：切彩排基準只換第三個欄位（不寫入、不整頁重繪——避免打斷下面時段表還沒存檔的編輯）
       on('[data-config="彩排_基準"]', 'change', event => {
         const panel = container.querySelector('.rd-config-row');
         if (!state.data.config) state.data.config = {};
         const officialEl = panel.querySelector('[data-config="正式_基準開始"]');
         if (officialEl) state.data.config.official_start = officialEl.value;
-        state.data.config.rehearsal_mode = event.target.value === '固定開始' ? '固定開始' : '接續正式';
-        render();
+        const fixed = event.target.value === '固定開始';
+        state.data.config.rehearsal_mode = fixed ? '固定開始' : '接續正式';
+        const third = panel.querySelector('.rd-config-third');
+        if (third) {
+          third.outerHTML = fixed
+            ? '<label class="rd-config-third">彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(state.data.config.rehearsal_start) + '"></label>'
+            : '<label class="rd-config-third">彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(state.data.config.rehearsal_buffer_min) + '" inputmode="numeric"></label>';
+        }
       });
       on('[data-action="save-config"]', 'click', () => {
         const panel = container.querySelector('.rd-config-row');
@@ -572,6 +606,11 @@
         if (!root.confirm('刪除這個時段？它的任務也會一併刪除。')) return;
         write({ action: 'save_rundown_segment', segment_id: tr.dataset.seg, _delete: '1' }, '已刪除時段');
       });
+      // ▲▼：跟拖曳走同一條 reorderAndSave，觸控／鍵盤都能操作
+      on('[data-action="move-seg"]', 'click', event => {
+        const tr = event.target.closest('tr[data-seg]');
+        if (tr) moveSegment(tr.dataset.seg, event.target.dataset.dir);
+      });
       bindSegmentDrag();
 
       // 角色
@@ -600,16 +639,27 @@
         write({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務');
       });
 
-      // 獎項
-      on('[data-action="edit-prizes"]', 'click', event => {
-        const segId = event.target.dataset.seg;
-        const seg = state.data.segments.find(s => s.segment_id === segId);
-        const options = state.data.prizes.map(p => p.prize_id + '  ' + core().prizeLabel(p)).join('\n');
-        const current = (seg.prize_ids || []).join(',');
-        const next = root.prompt('輸入這個時段引用的獎項 prize_id（逗號分隔）。\n可用：\n' + options, current);
-        if (next == null) return;
-        write({ action: 'save_rundown_segment', segment_id: segId, 節目內容: seg.title, duration_min: seg.duration_min, 錨定時間: seg.anchor_time,
-          順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: next.trim() }, '已更新獎項連動');
+      // 獎項：點標籤直接連結／取消連結，不用打 prize_id
+      on('[data-action="toggle-prize"]', 'click', event => {
+        const tr = event.target.closest('tr[data-seg]');
+        const seg = tr && state.data.segments.find(s => s.segment_id === tr.dataset.seg);
+        if (!seg) return;
+        const linked = new Set(seg.prize_ids || []);
+        const prizeId = event.target.dataset.prize;
+        const nowActive = !linked.has(prizeId);
+        if (nowActive) linked.add(prizeId); else linked.delete(prizeId);
+        seg.prize_ids = Array.from(linked);
+        event.target.classList.toggle('rd-prize-toggle-active', nowActive);
+        write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
+          錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: seg.prize_ids.join(',') },
+          '已更新獎項連動', { noRender: true, optimistic: false });
+      });
+      // 錨定時間：預設收成按鈕，點開才變成真正的時間欄位
+      on('[data-action="add-anchor"]', 'click', event => {
+        state.anchorEditing.add(event.target.dataset.seg);
+        render();
+        const input = container.querySelector('[data-seg="' + event.target.dataset.seg + '"] [data-field="錨定時間"]');
+        if (input) input.focus();
       });
 
       // 工作人員
@@ -686,16 +736,30 @@
       });
       tbody.addEventListener('drop', event => {
         event.preventDefault();
-        if (dragId) commitSegmentReorder(dragId);
+        if (dragId) {
+          const ids = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]')).map(tr => tr.dataset.seg);
+          reorderAndSave(ids, dragId);
+        }
         dragId = '';
       });
     }
 
-    function commitSegmentReorder(segmentId) {
-      const ids = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]')).map(tr => tr.dataset.seg);
-      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
-      const seg = byId.get(segmentId);
+    // 鍵盤／觸控可用的順序調整：跟拖曳共用同一套「取新鄰居中間值」寫入邏輯。
+    function moveSegment(segmentId, dir) {
+      const ids = state.data.segments.map(s => s.segment_id);
       const index = ids.indexOf(segmentId);
+      const swapWith = dir === 'up' ? index - 1 : index + 1;
+      if (index < 0 || swapWith < 0 || swapWith >= ids.length) return;
+      const next = ids.slice();
+      next[index] = ids[swapWith];
+      next[swapWith] = ids[index];
+      reorderAndSave(next, segmentId);
+    }
+
+    function reorderAndSave(ids, movedId) {
+      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
+      const seg = byId.get(movedId);
+      const index = ids.indexOf(movedId);
       if (!seg || index < 0) return;
       const prev = index > 0 ? byId.get(ids[index - 1]) : null;
       const next = index < ids.length - 1 ? byId.get(ids[index + 1]) : null;
