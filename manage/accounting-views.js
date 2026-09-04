@@ -12,15 +12,31 @@
     '<div id="vendorStatus" class="status form-status" aria-live="polite"></div><div class="vendor-table-wrap"><table class="vendor-table">' +
     '<thead><tr><th>廠商名稱</th><th>統一編號</th><th>匯款資料</th><th>正式文件</th><th>更新時間</th></tr></thead>' +
     '<tbody id="vendorRows"><tr><td colspan="5" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
-  function templateWithVendorPanel() {
+  const BUDGET_PANEL = '<section class="tab-panel" data-tab-panel="budget" role="tabpanel" hidden>' +
+    '<div class="card"><div class="section-heading"><div><h2>活動預算</h2><div class="muted">同一份預算由草稿逐步提報、核准；核准後同步成為支出預算項目的正式來源</div></div>' +
+    '<div class="budget-status-actions"><span id="activityBudgetStatus" class="budget-status">讀取中</span><button id="advanceBudgetStatus" type="button" hidden></button></div></div>' +
+    '<div class="budget-summary"><div><span>預估總額</span><strong id="activityBudgetTotal">…</strong></div><div><span>上一屆同類型</span><strong id="activityBudgetPreviousTotal">…</strong></div><div><span>差異</span><strong id="activityBudgetDifference">…</strong></div></div>' +
+    '<div class="budget-toolbar"><button id="showBudgetEditor" type="button">新增預算品項</button><button id="downloadBudgetProposal" class="secondary" type="button">下載預算簽呈</button><button id="downloadBudgetAttachment" class="secondary" type="button">下載明細附件</button></div>' +
+    '<div id="budgetEditor" class="editor-panel" hidden><div class="section-heading"><h2 id="budgetFormTitle">新增預算品項</h2><button id="closeBudgetEditor" class="secondary" type="button">關閉</button></div>' +
+    '<form id="activityBudgetForm"><div class="row"><select name="budget_item" required><option value="">選擇預算項目</option></select><select name="vendor_value"><option value="">未指定廠商</option></select></div>' +
+    '<input name="item" placeholder="品項，例如：桌菜" required><div class="row"><input name="unit_price" type="number" min="0" step="0.01" placeholder="單價（加服務費）" required><input name="quantity" type="number" min="0.01" step="0.01" placeholder="數量" required></div>' +
+    '<div class="row"><input name="amount" type="number" min="1" step="0.01" placeholder="金額（含稅）" required><input name="payment_terms" placeholder="付款條件／待付款時間"></div>' +
+    '<div id="yearEndFundingFields" class="row"><input name="sponsor_amount" type="number" min="0" step="0.01" placeholder="廠商贊助款"><input name="jdc_amount" type="number" min="0" step="0.01" placeholder="JDC負擔（空白自動計算）"></div>' +
+    '<textarea name="note" placeholder="備註／價差原因"></textarea><div class="form-actions"><button id="submitBudgetLine" type="submit">儲存品項</button><button id="cancelBudgetEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="activityBudgetFormStatus" class="status form-status" aria-live="polite"></div></form></div>' +
+    '<div id="activityBudgetStatusMessage" class="status form-status" aria-live="polite"></div><div class="budget-table-wrap"><table class="budget-table"><thead><tr><th>預算項目</th><th>廠商</th><th>品項</th><th class="num">單價</th><th class="num">數量</th><th class="num">含稅金額</th><th class="num">廠商總額</th><th class="num">去年同項</th><th>付款／備註</th><th></th></tr></thead>' +
+    '<tbody id="activityBudgetRows"><tr><td colspan="10" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
+  function templateWithAccountingPanels() {
     const marker = '<section class="tab-panel" data-tab-panel="reimbursement"';
-    return ACCOUNTING_TEMPLATE.replace(marker, VENDOR_PANEL + marker);
+    return ACCOUNTING_TEMPLATE.replace(marker, BUDGET_PANEL + VENDOR_PANEL + marker);
   }
   const SCRIPT_SOURCES = Object.freeze([
     Object.freeze({ key: 'exceljs', src: 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js' }),
+    Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.umd.cjs' }),
     Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260831-01' }),
-    Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260904-46' }),
+    Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260904-49' }),
+    Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260904-49' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
+    Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260904-49' }),
     Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260902-app1' })
   ]);
   let dependenciesPromise = null;
@@ -58,7 +74,7 @@
 
   async function mount(container, context) {
     if (!initialized) {
-      container.innerHTML = templateWithVendorPanel();
+      container.innerHTML = templateWithAccountingPanels();
       container.addEventListener('click', event => {
         const opener = event.target.closest('[data-open-tab]');
         if (opener && typeof context.navigate === 'function') context.navigate({ view: opener.dataset.openTab });
@@ -80,7 +96,7 @@
 
   return {
     cacheKey: 'accounting',
-    template: templateWithVendorPanel(),
+    template: templateWithAccountingPanels(),
     scriptSources: SCRIPT_SOURCES,
     loadScript,
     mount

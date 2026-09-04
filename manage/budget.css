@@ -1,0 +1,96 @@
+.accounting-app .budget-status-actions,
+.accounting-app .budget-toolbar,
+.accounting-app .budget-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.accounting-app .budget-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 750;
+  background: #f0f1ee;
+  color: #555a54;
+}
+
+.accounting-app .budget-status.status-submitted {
+  background: #fff4d9;
+  color: #7a5712;
+}
+
+.accounting-app .budget-status.status-approved {
+  background: #e8f4eb;
+  color: #28603c;
+}
+
+.accounting-app .budget-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.accounting-app .budget-summary > div {
+  padding: 12px 14px;
+  border: 1px solid #e3e6e0;
+  border-radius: 10px;
+  background: #fafbf9;
+}
+
+.accounting-app .budget-summary span {
+  display: block;
+  color: #73736d;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.accounting-app .budget-summary strong {
+  font-size: 20px;
+}
+
+.accounting-app .budget-toolbar {
+  margin-bottom: 12px;
+}
+
+.accounting-app .budget-table-wrap {
+  overflow: auto;
+}
+
+.accounting-app .budget-table {
+  min-width: 1080px;
+}
+
+.accounting-app .budget-table td {
+  vertical-align: top;
+}
+
+.accounting-app .budget-table .vendor-total {
+  font-weight: 750;
+}
+
+.accounting-app .budget-table .budget-note {
+  max-width: 240px;
+  white-space: normal;
+  line-height: 1.45;
+}
+
+.accounting-app .budget-row-actions {
+  flex-wrap: nowrap;
+}
+
+.accounting-app .danger-outline {
+  color: #8f2e2e;
+  border-color: #d9b5b5;
+}
+
+@media (max-width: 620px) {
+  .accounting-app .budget-summary {
+    grid-template-columns: 1fr;
+  }
+}

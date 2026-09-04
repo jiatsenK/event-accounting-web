@@ -224,7 +224,7 @@ $('#exportPreview').addEventListener('change', (event) => {
 });
 
 function activateAccountingTab(name) {
-  const valid = ['overview', 'expenses', 'vendors', 'reimbursement'];
+  const valid = ['overview', 'budget', 'expenses', 'vendors', 'reimbursement'];
   const target = valid.includes(name) ? name : 'overview';
   document.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === target; button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active)); });
   document.querySelectorAll('[data-tab-panel]').forEach(panel => { panel.hidden = panel.dataset.tabPanel !== target; });
