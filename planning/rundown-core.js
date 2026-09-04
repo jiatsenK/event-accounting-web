@@ -38,19 +38,36 @@
     return str(value).split(/[,，]/).map(s => s.trim()).filter(Boolean);
   }
 
+  function integer(value, fallback) {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 ? n : fallback;
+  }
+
+  function normalizeConfig(row) {
+    const config = row || {};
+    const mode = str(config['彩排_基準'] || config.rehearsal_mode);
+    return {
+      official_start: str(config['正式_基準開始'] || config.official_start || config['活動開始時間'] || config.activity_start_time),
+      rehearsal_mode: mode === '固定開始' ? mode : '接續正式',
+      rehearsal_start: str(config['彩排_固定開始'] || config.rehearsal_start),
+      rehearsal_buffer_min: integer(config['彩排_緩衝分鐘'] != null ? config['彩排_緩衝分鐘'] : config.rehearsal_buffer_min, 0),
+      activity_date: str(config['活動日期'] || config.activity_date),
+      activity_start_time: str(config['活動開始時間'] || config.activity_start_time)
+    };
+  }
+
   function normalize(raw) {
     const data = raw || {};
     const segments = (data.segments || []).map((row, index) => ({
       segment_id: str(row.segment_id) || ('seg-' + index),
       order: num(row['順序'] != null ? row['順序'] : row.order) || 0,
-      start: str(row['開始時間'] || row.start),
-      end: str(row['結束時間'] || row.end),
+      duration_min: integer(row.duration_min, 0),
+      anchor_time: str(row['錨定時間'] || row.anchor_time),
       title: str(row['節目內容'] || row.title),
       stage: normalizeStage(row['階段'] || row.stage),
-      plan: str(row['方案'] || row.plan),
       prize_ids: toList(row.prize_ids),
       note: str(row['備註'] || row.note)
-    })).sort((a, b) => (a.order - b.order) || a.start.localeCompare(b.start));
+    })).sort((a, b) => a.order - b.order);
 
     const roles = (data.roles || []).map(row => ({
       role: str(row['角色'] || row.role),
@@ -88,6 +105,7 @@
 
     return {
       activity_id: str(data.activity_id),
+      config: normalizeConfig(data.config),
       segments,
       roles,
       tasks,
@@ -95,6 +113,95 @@
       crew,
       prizes
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 時間計算：資料只存 duration / anchor，牆上時間在投影前才推導
+  // ---------------------------------------------------------------------------
+
+  function parseClock(value) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(str(value));
+    if (!match) return null;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    return hour >= 0 && hour < 24 && minute >= 0 && minute < 60 ? hour * 60 + minute : null;
+  }
+
+  function clockNear(value, reference) {
+    let minute = parseClock(value);
+    if (minute == null || reference == null) return minute;
+    while (minute < reference - 720) minute += 1440;
+    while (minute > reference + 720) minute -= 1440;
+    return minute;
+  }
+
+  function forwardStage(rows, baseMinute) {
+    let cursor = baseMinute;
+    return rows.map(segment => {
+      const expected = cursor;
+      const anchored = clockNear(segment.anchor_time, expected);
+      const start = anchored == null ? expected : anchored;
+      const end = start == null ? null : start + segment.duration_min;
+      cursor = end;
+      return Object.assign({}, segment, {
+        start_min: start,
+        end_min: end,
+        gap_min: anchored != null && expected != null ? anchored - expected : 0,
+        time: formatTimeRange(start, end)
+      });
+    });
+  }
+
+  function backwardRehearsal(rows, boundary) {
+    const result = new Array(rows.length);
+    let cursor = boundary;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const segment = rows[i];
+      const expected = cursor == null ? null : cursor - segment.duration_min;
+      const anchored = clockNear(segment.anchor_time, expected);
+      const start = anchored == null ? expected : anchored;
+      const end = anchored == null ? cursor : (start == null ? null : start + segment.duration_min);
+      cursor = start;
+      result[i] = Object.assign({}, segment, {
+        start_min: start,
+        end_min: end,
+        gap_min: anchored != null && expected != null ? anchored - expected : 0,
+        time: formatTimeRange(start, end)
+      });
+    }
+    return result;
+  }
+
+  function calculateTimeline(segments, rawConfig) {
+    const config = normalizeConfig(rawConfig);
+    const officialBase = parseClock(config.official_start || config.activity_start_time);
+    const official = forwardStage(segments.filter(segment => segment.stage === '正式'), officialBase);
+    const rehearsalRows = segments.filter(segment => segment.stage === '彩排');
+    const rehearsal = config.rehearsal_mode === '固定開始'
+      ? forwardStage(rehearsalRows, parseClock(config.rehearsal_start))
+      : backwardRehearsal(rehearsalRows, officialBase == null ? null : officialBase - config.rehearsal_buffer_min);
+    const byId = new Map(rehearsal.concat(official).map(segment => [segment.segment_id, segment]));
+    return segments.map(segment => byId.get(segment.segment_id));
+  }
+
+  function formatMinute(value) {
+    if (!Number.isFinite(value)) return '';
+    const day = Math.floor(value / 1440);
+    const withinDay = ((value % 1440) + 1440) % 1440;
+    const clock = String(Math.floor(withinDay / 60)).padStart(2, '0') + ':' + String(withinDay % 60).padStart(2, '0');
+    if (day > 0) return (day === 1 ? '翌 ' : '翌日+' + day + ' ') + clock;
+    if (day < 0) return '前日 ' + clock;
+    return clock;
+  }
+
+  function formatTimeRange(start, end) {
+    const left = formatMinute(start);
+    const right = formatMinute(end);
+    return left && right ? left + '–' + right : left || right;
+  }
+
+  function withCalculatedTimes(data) {
+    return Object.assign({}, data, { segments: calculateTimeline(data.segments, data.config) });
   }
 
   // ---------------------------------------------------------------------------
@@ -156,30 +263,9 @@
     return map;
   }
 
-  // 方案：提案階段多方案並列。plans() 列出有哪些方案；沒填方案的時段在所有方案都出現。
-  function plans(data) {
-    const seen = [];
-    data.segments.forEach(seg => { if (seg.plan && seen.indexOf(seg.plan) < 0) seen.push(seg.plan); });
-    return seen;
-  }
-
-  function forPlan(data, plan) {
-    if (!plan) return data;
-    const keptIds = new Set();
-    const segments = data.segments.filter(seg => {
-      const keep = !seg.plan || seg.plan === plan;
-      if (keep) keptIds.add(seg.segment_id);
-      return keep;
-    });
-    return Object.assign({}, data, {
-      segments,
-      tasks: data.tasks.filter(task => keptIds.has(task.segment_id))
-    });
-  }
-
   // 總控版：完整 rundown，彩排段／正式段分區
-  function projectControl(data, plan) {
-    data = forPlan(data, plan);
+  function projectControl(data) {
+    data = withCalculatedTimes(data);
     const prizeIndex = prizeIndexOf(data);
     const bySegment = tasksBySegment(data);
     const assignees = assigneesByRole(data);
@@ -187,10 +273,10 @@
       stage,
       segments: data.segments.filter(seg => seg.stage === stage).map(seg => ({
         segment_id: seg.segment_id,
-        start: seg.start,
-        end: seg.end,
+        start: formatMinute(seg.start_min),
+        end: formatMinute(seg.end_min),
+        time: seg.time,
         title: seg.title,
-        plan: seg.plan,
         note: seg.note,
         prizeLabels: segmentPrizes(seg, prizeIndex).map(prizeLabel),
         tasks: (bySegment.get(seg.segment_id) || []).map(task => ({
@@ -206,8 +292,8 @@
   }
 
   // 工作人員版：依人員分組，只列該人被指派角色、對象含工作人員的任務
-  function projectCrew(data, plan) {
-    data = forPlan(data, plan);
+  function projectCrew(data) {
+    data = withCalculatedTimes(data);
     const bySegment = tasksBySegment(data);
     const segmentOrder = new Map(data.segments.map((seg, index) => [seg.segment_id, index]));
     const segmentById = new Map(data.segments.map(seg => [seg.segment_id, seg]));
@@ -222,7 +308,7 @@
             if (!seg) return;
             rows.push({
               order: segmentOrder.get(task.segment_id) || 0,
-              time: [seg.start, seg.end].filter(Boolean).join('–'),
+              time: seg.time,
               segment: seg.title,
               role: role,
               content: task.content
@@ -239,8 +325,8 @@
   }
 
   // 飯店版：只留對象含飯店的任務
-  function projectVenue(data, plan) {
-    data = forPlan(data, plan);
+  function projectVenue(data) {
+    data = withCalculatedTimes(data);
     const segmentById = new Map(data.segments.map(seg => [seg.segment_id, seg]));
     const rows = [];
     data.segments.forEach((seg, index) => {
@@ -250,7 +336,7 @@
       if (!tasks.length) return;
       rows.push({
         order: index,
-        time: [seg.start, seg.end].filter(Boolean).join('–'),
+        time: seg.time,
         segment: seg.title,
         tasks: tasks.map(task => ({ role: task.role, content: task.content }))
       });
@@ -260,8 +346,8 @@
   }
 
   // 設計師（圖文）版：segment 時間軸 + 獎項字串 + 頒獎人，不含任務
-  function projectDesigner(data, plan) {
-    data = forPlan(data, plan);
+  function projectDesigner(data) {
+    data = withCalculatedTimes(data);
     const prizeIndex = prizeIndexOf(data);
     return {
       segments: data.segments
@@ -269,9 +355,8 @@
         .map(seg => {
           const prizes = segmentPrizes(seg, prizeIndex);
           return {
-            time: [seg.start, seg.end].filter(Boolean).join('–'),
+            time: seg.time,
             title: seg.title,
-            plan: seg.plan,
             prizeLabels: prizes.map(prizeLabel),
             presenters: prizes.map(prize => prize.presenter).filter(Boolean)
           };
@@ -286,9 +371,9 @@
     { id: 'designer', label: '設計師（圖文）版', project: projectDesigner }
   ];
 
-  function project(versionId, data, plan) {
+  function project(versionId, data) {
     const version = VERSIONS.find(item => item.id === versionId) || VERSIONS[0];
-    return version.project(data, plan);
+    return version.project(data);
   }
 
   // ---------------------------------------------------------------------------
@@ -298,27 +383,28 @@
   function demoRundown() {
     return normalize({
       activity_id: DEMO_ACTIVITY_ID,
+      config: { 正式_基準開始: '17:30', 彩排_基準: '固定開始', 彩排_固定開始: '15:00' },
       segments: [
-        { segment_id: 'r1', 順序: 1, 開始時間: '15:00', 結束時間: '15:30', 節目內容: '工作人員到場、場佈', 階段: '彩排', 備註: '報到區、酒水區、音控區定位' },
-        { segment_id: 'r2', 順序: 2, 開始時間: '16:00', 結束時間: '16:30', 節目內容: '音控測試', 階段: '彩排' },
-        { segment_id: 'r3', 順序: 3, 開始時間: '16:30', 結束時間: '17:00', 節目內容: '主持人彩排、合照位置確認', 階段: '彩排' },
-        { segment_id: 'r4', 順序: 4, 開始時間: '17:00', 結束時間: '17:30', 節目內容: '歌手彩排、工作人員就位', 階段: '彩排' },
-        { segment_id: 's1', 順序: 10, 開始時間: '17:30', 結束時間: '18:20', 節目內容: '迎賓酒會', 階段: '正式' },
-        { segment_id: 's2', 順序: 11, 開始時間: '18:20', 結束時間: '18:30', 節目內容: '開放進場', 階段: '正式' },
-        { segment_id: 's3', 順序: 12, 開始時間: '18:30', 結束時間: '18:35', 節目內容: '正式開場／支店長致詞', 階段: '正式' },
-        { segment_id: 's4', 順序: 13, 開始時間: '18:35', 結束時間: '18:40', 節目內容: '團體合照', 階段: '正式' },
-        { segment_id: 's5', 順序: 14, 開始時間: '18:40', 結束時間: '19:10', 節目內容: '歌手演唱', 階段: '正式' },
-        { segment_id: 's6', 順序: 15, 開始時間: '19:10', 結束時間: '19:15', 節目內容: '資深員工表揚', 階段: '正式', 備註: '5／10／15 年' },
-        { segment_id: 's7', 順序: 16, 開始時間: '19:15', 結束時間: '19:25', 節目內容: '抽獎活動 四等獎', 階段: '正式', prize_ids: ['prize-4'] },
-        { segment_id: 's8', 順序: 17, 開始時間: '19:25', 結束時間: '19:30', 節目內容: '健身環頒獎', 階段: '正式', prize_ids: ['prize-game-1'] },
-        { segment_id: 's9', 順序: 18, 開始時間: '19:30', 結束時間: '19:35', 節目內容: '抽獎活動 三等獎', 階段: '正式', prize_ids: ['prize-3'] },
-        { segment_id: 's10', 順序: 19, 開始時間: '19:35', 結束時間: '20:00', 節目內容: '趣味遊戲 甩甩便利貼', 階段: '正式', prize_ids: ['prize-game-2'] },
-        { segment_id: 's11', 順序: 20, 開始時間: '20:00', 結束時間: '20:05', 節目內容: '抽獎活動 二等獎', 階段: '正式', prize_ids: ['prize-2'] },
-        { segment_id: 's12', 順序: 21, 開始時間: '20:05', 結束時間: '20:35', 節目內容: '歌手演唱', 階段: '正式' },
-        { segment_id: 's13', 順序: 22, 開始時間: '20:35', 結束時間: '20:40', 節目內容: '抽獎活動 一等獎', 階段: '正式', prize_ids: ['prize-1'] },
-        { segment_id: 's14', 順序: 23, 開始時間: '20:40', 結束時間: '20:45', 節目內容: '抽獎活動 支店長獎', 階段: '正式', prize_ids: ['prize-0'] },
-        { segment_id: 's15', 順序: 24, 開始時間: '20:45', 結束時間: '21:00', 節目內容: '歌手演唱', 階段: '正式' },
-        { segment_id: 's16', 順序: 25, 開始時間: '21:00', 結束時間: '', 節目內容: '活動結束', 階段: '正式' }
+        { segment_id: 'r1', 順序: 1, duration_min: 30, 節目內容: '工作人員到場、場佈', 階段: '彩排', 備註: '報到區、酒水區、音控區定位' },
+        { segment_id: 'r2', 順序: 2, duration_min: 30, 錨定時間: '16:00', 節目內容: '音控測試', 階段: '彩排' },
+        { segment_id: 'r3', 順序: 3, duration_min: 30, 節目內容: '主持人彩排、合照位置確認', 階段: '彩排' },
+        { segment_id: 'r4', 順序: 4, duration_min: 30, 節目內容: '歌手彩排、工作人員就位', 階段: '彩排' },
+        { segment_id: 's1', 順序: 10, duration_min: 50, 節目內容: '迎賓酒會', 階段: '正式' },
+        { segment_id: 's2', 順序: 11, duration_min: 10, 節目內容: '開放進場', 階段: '正式' },
+        { segment_id: 's3', 順序: 12, duration_min: 5, 節目內容: '正式開場／支店長致詞', 階段: '正式' },
+        { segment_id: 's4', 順序: 13, duration_min: 5, 節目內容: '團體合照', 階段: '正式' },
+        { segment_id: 's5', 順序: 14, duration_min: 30, 節目內容: '歌手演唱', 階段: '正式' },
+        { segment_id: 's6', 順序: 15, duration_min: 5, 節目內容: '資深員工表揚', 階段: '正式', 備註: '5／10／15 年' },
+        { segment_id: 's7', 順序: 16, duration_min: 10, 節目內容: '抽獎活動 四等獎', 階段: '正式', prize_ids: ['prize-4'] },
+        { segment_id: 's8', 順序: 17, duration_min: 5, 節目內容: '健身環頒獎', 階段: '正式', prize_ids: ['prize-game-1'] },
+        { segment_id: 's9', 順序: 18, duration_min: 5, 節目內容: '抽獎活動 三等獎', 階段: '正式', prize_ids: ['prize-3'] },
+        { segment_id: 's10', 順序: 19, duration_min: 25, 節目內容: '趣味遊戲 甩甩便利貼', 階段: '正式', prize_ids: ['prize-game-2'] },
+        { segment_id: 's11', 順序: 20, duration_min: 5, 節目內容: '抽獎活動 二等獎', 階段: '正式', prize_ids: ['prize-2'] },
+        { segment_id: 's12', 順序: 21, duration_min: 30, 節目內容: '歌手演唱', 階段: '正式' },
+        { segment_id: 's13', 順序: 22, duration_min: 5, 節目內容: '抽獎活動 一等獎', 階段: '正式', prize_ids: ['prize-1'] },
+        { segment_id: 's14', 順序: 23, duration_min: 5, 節目內容: '抽獎活動 支店長獎', 階段: '正式', prize_ids: ['prize-0'] },
+        { segment_id: 's15', 順序: 24, duration_min: 15, 節目內容: '歌手演唱', 階段: '正式' },
+        { segment_id: 's16', 順序: 25, duration_min: 0, 節目內容: '活動結束', 階段: '正式' }
       ],
       roles: [
         { 角色: '主持', 說明: '流程推進、唱名、頒獎引導' },
@@ -394,8 +480,8 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 2026 尾牙提報流程（來源：2026年度 尾牙提報資料_20260731.xlsx 的「流程表」分頁，
-  // 五輪／六輪兩個提案方案並列；角色與人員沿用去年一份，抽獎輪次的獎項待 獎金明細 連動）
+  // 2026 尾牙定案流程（來源：2026年度 尾牙提報資料_20260731.xlsx 的「流程表」分頁，
+  // 採五輪案；角色與人員沿用去年一份，抽獎輪次的獎項待 獎金明細 連動）
   // ---------------------------------------------------------------------------
 
   function standardCrew2026_() {
@@ -433,33 +519,27 @@
 
   function rundown2026() {
     const base = standardCrew2026_();
+    // 原始資料是牆上時間；換成 duration_min＋必要處補錨定時間，換算式見下方註記。
     const rehearsal = [
-      { segment_id: 'y26-reh-1', 順序: 1, 開始時間: '15:00', 結束時間: '15:30', 節目內容: '工作人員到場、場佈', 階段: '彩排', 備註: '報到區、酒水區、音控區定位' },
-      { segment_id: 'y26-reh-2', 順序: 2, 開始時間: '16:00', 結束時間: '16:30', 節目內容: '音控測試', 階段: '彩排' },
-      { segment_id: 'y26-reh-3', 順序: 3, 開始時間: '16:30', 結束時間: '17:00', 節目內容: '主持人彩排、合照位置確認', 階段: '彩排' },
-      { segment_id: 'y26-reh-4', 順序: 4, 開始時間: '17:00', 結束時間: '17:30', 節目內容: '歌手彩排、工作人員就位', 階段: '彩排' }
+      { segment_id: 'y26-reh-1', 順序: 1, duration_min: 30, 節目內容: '工作人員到場、場佈', 階段: '彩排', 備註: '報到區、酒水區、音控區定位' },
+      // 15:30 收工到 16:00 開始音控測試，中間空 30 分鐘，用錨定時間標出這個跳點。
+      { segment_id: 'y26-reh-2', 順序: 2, duration_min: 30, 錨定時間: '16:00', 節目內容: '音控測試', 階段: '彩排' },
+      { segment_id: 'y26-reh-3', 順序: 3, duration_min: 30, 節目內容: '主持人彩排、合照位置確認', 階段: '彩排' },
+      { segment_id: 'y26-reh-4', 順序: 4, duration_min: 30, 節目內容: '歌手彩排、工作人員就位', 階段: '彩排' }
     ];
     const plan5 = [
-      ['18:20', '18:30', '開放進場'], ['18:30', '18:35', '正式開場／支店長致詞'], ['18:35', '18:40', '團體合照'],
-      ['18:40', '19:10', '歌手演唱（一）'], ['19:10', '19:20', '第一輪抽獎｜10名'], ['19:20', '19:30', '資深員工表揚'],
-      ['19:30', '19:40', '第二輪抽獎｜10名'], ['19:40', '19:50', '完工工地表揚'], ['19:50', '20:00', '第三輪抽獎｜10名'],
-      ['20:00', '20:20', '歌手演唱（二）'], ['20:20', '20:30', '第四輪抽獎｜10名'], ['20:30', '20:45', '歌手演唱（三）'],
-      ['20:45', '21:00', '第五輪抽獎｜10名'], ['21:00', '', '活動結束']
+      [10, '開放進場'], [5, '正式開場／支店長致詞'], [5, '團體合照'],
+      [30, '歌手演唱（一）'], [10, '第一輪抽獎｜10名'], [10, '資深員工表揚'],
+      [10, '第二輪抽獎｜10名'], [10, '完工工地表揚'], [10, '第三輪抽獎｜10名'],
+      [20, '歌手演唱（二）'], [10, '第四輪抽獎｜10名'], [15, '歌手演唱（三）'],
+      [15, '第五輪抽獎｜10名'], [0, '活動結束']
     ];
-    const plan6 = [
-      ['18:20', '18:30', '開放進場'], ['18:30', '18:35', '正式開場／支店長致詞'], ['18:35', '18:40', '團體合照'],
-      ['18:40', '18:50', '第一輪抽獎｜10名'], ['18:50', '19:10', '歌手演唱（一）'], ['19:10', '19:20', '第二輪抽獎｜10名'],
-      ['19:20', '19:30', '資深員工表揚'], ['19:30', '19:40', '第三輪抽獎｜10名'], ['19:40', '19:50', '完工工地表揚'],
-      ['19:50', '20:00', '第四輪抽獎｜10名'], ['20:00', '20:20', '歌手演唱（二）'], ['20:20', '20:30', '第五輪抽獎｜10名'],
-      ['20:30', '20:45', '歌手演唱（三）'], ['20:45', '21:00', '第六輪抽獎｜10名'], ['21:00', '', '活動結束']
-    ];
-    const planSegs = (rows, plan, prefix, orderBase) => rows.map((r, i) => ({
-      segment_id: prefix + '-' + (i + 1), 順序: orderBase + i, 開始時間: r[0], 結束時間: r[1],
-      節目內容: r[2], 階段: '正式', 方案: plan
+    const planSegs = (rows, prefix, orderBase) => rows.map((r, i) => ({
+      segment_id: prefix + '-' + (i + 1), 順序: orderBase + i, duration_min: r[0],
+      節目內容: r[1], 階段: '正式', 備註: '五輪案'
     }));
     const segments = rehearsal
-      .concat(planSegs(plan5, '五輪抽獎', 'y26-5r', 100))
-      .concat(planSegs(plan6, '六輪抽獎', 'y26-6r', 200));
+      .concat(planSegs(plan5, 'y26-5r', 100));
 
     const tasks = [];
     segments.forEach(s => {
@@ -482,6 +562,7 @@
 
     return normalize({
       activity_id: 'yearend2026',
+      config: { 正式_基準開始: '18:20', 彩排_基準: '固定開始', 彩排_固定開始: '15:00' },
       segments, tasks,
       roles: base.roles, crew: base.crew, assignments: base.assignments,
       prizes: []
@@ -489,7 +570,7 @@
   }
 
   const TEMPLATES = [
-    { id: 'yearend2026', label: '2026 尾牙提報（五輪／六輪兩方案）', build: rundown2026 },
+    { id: 'yearend2026', label: '2026 尾牙定案（五輪）', build: rundown2026 },
     { id: 'yearend2025', label: '2025 忘年會（去年實際流程）', build: demoRundown }
   ];
 
@@ -510,14 +591,14 @@
     templates,
     template,
     normalize,
+    calculateTimeline,
+    formatTimeRange,
     prizeLabel,
     prizeIndexOf,
     segmentPrizes,
     assigneesByRole,
     unassignedRoles,
     rolesForPerson,
-    plans,
-    forPlan,
     projectControl,
     projectCrew,
     projectVenue,

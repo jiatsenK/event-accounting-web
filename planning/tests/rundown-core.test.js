@@ -11,18 +11,58 @@ test('prizeLabel 組出圖文字串', () => {
   assert.equal(core.prizeLabel({ tier: '普獎', amount: null, count: 100, presenter: '' }), '普獎 × 100名');
 });
 
-test('normalize 接受中文欄位與英文欄位、prize_ids 字串或陣列', () => {
+test('normalize 接受新時間欄位與 prize_ids 字串或陣列', () => {
   const data = core.normalize({
     activity_id: 'x',
+    config: { 正式_基準開始: '18:00', 彩排_基準: '固定開始', 彩排_固定開始: '15:00', 彩排_緩衝分鐘: 5 },
     segments: [
-      { segment_id: 'b', 順序: 2, 節目內容: '後', 開始時間: '19:00' },
-      { segment_id: 'a', order: 1, title: '前', start: '18:00', prize_ids: 'p1,p2' }
+      { segment_id: 'b', 順序: 2, 節目內容: '後', duration_min: '20', 錨定時間: '19:00' },
+      { segment_id: 'a', order: 1, title: '前', duration_min: 30, prize_ids: 'p1,p2' }
     ],
     tasks: [{ segment_id: 'a', 角色: '音控', 任務內容: 'x', 對象: '亂寫' }]
   });
   assert.deepEqual(data.segments.map(s => s.segment_id), ['a', 'b']);
   assert.deepEqual(data.segments[0].prize_ids, ['p1', 'p2']);
+  assert.equal(data.segments[0].duration_min, 30);
+  assert.equal(data.segments[1].anchor_time, '19:00');
+  assert.deepEqual(data.config, {
+    official_start: '18:00', rehearsal_mode: '固定開始', rehearsal_start: '15:00', rehearsal_buffer_min: 5,
+    activity_date: '', activity_start_time: ''
+  });
   assert.equal(data.tasks[0].audience, '全部', '未知對象退回全部');
+});
+
+test('正式段依基準、duration 與中途錨點往後計算', () => {
+  const segments = core.normalize({
+    config: { 正式_基準開始: '18:00' },
+    segments: [
+      { segment_id: 'a', 順序: 1, 階段: '正式', duration_min: 30 },
+      { segment_id: 'b', 順序: 2, 階段: '正式', duration_min: 10, 錨定時間: '19:00' },
+      { segment_id: 'c', 順序: 3, 階段: '正式', duration_min: 20 }
+    ]
+  });
+  const result = core.calculateTimeline(segments.segments, segments.config);
+  assert.deepEqual(result.map(s => [s.start_min, s.end_min]), [[1080, 1110], [1140, 1150], [1150, 1170]]);
+  assert.equal(result[1].gap_min, 30);
+});
+
+test('彩排接續正式：扣除緩衝後由後往前回推', () => {
+  const data = core.normalize({
+    config: { 正式_基準開始: '18:00', 彩排_基準: '接續正式', 彩排_緩衝分鐘: 10 },
+    segments: [
+      { segment_id: 'a', 順序: 1, 階段: '彩排', duration_min: 30 },
+      { segment_id: 'b', 順序: 2, 階段: '彩排', duration_min: 20 },
+      { segment_id: 'c', 順序: 3, 階段: '正式', duration_min: 10 }
+    ]
+  });
+  const result = core.calculateTimeline(data.segments, data.config);
+  assert.deepEqual(result.slice(0, 2).map(s => [s.start_min, s.end_min]), [[1020, 1050], [1050, 1070]]);
+  assert.deepEqual([result[2].start_min, result[2].end_min], [1080, 1090]);
+});
+
+test('時間格式化只在顯示層標示跨日', () => {
+  assert.equal(core.formatTimeRange(1430, 1470), '23:50–翌 00:30');
+  assert.equal(core.formatTimeRange(null, null), '');
 });
 
 test('晚綁定：未指派角色列在 unassignedRoles，不從投影消失', () => {
@@ -84,35 +124,13 @@ test('templates / template：內建 2026 尾牙與 2025 忘年會，可取回完
   assert.equal(core.template('不存在').id, list[0].id, '未知 id 退回第一個（2026）');
 });
 
-test('2026 尾牙範本：兩個提案方案並列，可依方案投影', () => {
+test('2026 尾牙範本：只保留五輪定案版本，不含方案欄位', () => {
   const d = core.rundown2026();
-  const planList = core.plans(d);
-  assert.deepEqual(planList, ['五輪抽獎', '六輪抽獎']);
-  const five = core.projectControl(d, '五輪抽獎');
-  const six = core.projectControl(d, '六輪抽獎');
-  const fiveTitles = five.stages.flatMap(s => s.segments.map(x => x.title));
-  const sixTitles = six.stages.flatMap(s => s.segments.map(x => x.title));
-  assert.ok(fiveTitles.filter(x => /輪抽獎/.test(x)).length === 5);
-  assert.ok(sixTitles.filter(x => /輪抽獎/.test(x)).length === 6);
-  assert.ok(fiveTitles.includes('工作人員到場、場佈'), '彩排（無方案）在每個方案都出現');
-  assert.ok(sixTitles.includes('工作人員到場、場佈'));
-});
-
-test('forPlan：沒填方案的時段在所有方案都保留，任務跟著過濾', () => {
-  const d = core.normalize({
-    segments: [
-      { segment_id: 'a', 節目內容: '共用', 順序: 1 },
-      { segment_id: 'b', 節目內容: '五輪限定', 順序: 2, 方案: '五輪抽獎' },
-      { segment_id: 'c', 節目內容: '六輪限定', 順序: 3, 方案: '六輪抽獎' }
-    ],
-    tasks: [
-      { segment_id: 'a', 角色: 'x', 任務內容: 't1', 對象: '全部' },
-      { segment_id: 'b', 角色: 'x', 任務內容: 't2', 對象: '全部' }
-    ]
-  });
-  const five = core.forPlan(d, '五輪抽獎');
-  assert.deepEqual(five.segments.map(s => s.segment_id), ['a', 'b']);
-  assert.deepEqual(five.tasks.map(t => t.content), ['t1', 't2']);
+  const titles = core.projectControl(d).stages.flatMap(s => s.segments.map(x => x.title));
+  assert.equal(titles.filter(x => /輪抽獎/.test(x)).length, 5);
+  assert.ok(d.segments.every(segment => !('plan' in segment)));
+  assert.equal('plans' in core, false);
+  assert.equal('forPlan' in core, false);
 });
 
 test('project 依 versionId 分派，未知退回總控版', () => {
