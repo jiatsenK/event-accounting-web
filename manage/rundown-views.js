@@ -151,8 +151,13 @@
           return del ? !d.crew.some(c => c.name === fields['姓名']) : d.crew.some(c => c.name === fields['姓名']);
         case 'save_rundown_config':
           return !!(d.config && (fields['正式_基準開始'] == null || d.config.official_start === t(fields['正式_基準開始'])));
-        case 'import_rundown':
-          return d.segments.length > 0 || d.roles.length > 0;
+        case 'import_rundown': {
+          // 清空（帶空 data）跟一般帶入的「成功」判斷相反：清空要看到變空，不是變有內容
+          let expected;
+          try { expected = JSON.parse(fields.data || '{}'); } catch (e) { expected = {}; }
+          const expectEmpty = !(expected.segments || []).length && !(expected.roles || []).length;
+          return expectEmpty ? (d.segments.length === 0 && d.roles.length === 0) : (d.segments.length > 0 || d.roles.length > 0);
+        }
         default:
           return null;
       }
@@ -374,7 +379,9 @@
             '<option value="append">加在現有內容後</option>' +
           '</select>' +
           '<button type="button" data-action="import-template"' + (state.busy ? ' disabled' : '') + '>帶入</button>' +
-        '</div></section>';
+        '</div>' +
+        (hasContent ? '<button type="button" class="rd-link" data-action="clear-rundown"' + (state.busy ? ' disabled' : '') + '>清空這場活動的流程表（測試資料用，無法復原）</button>' : '') +
+        '</section>';
     }
 
     // 流程時間設定：正式段基準開始 + 彩排要「接續正式往前推」還是「固定開始時間」。
@@ -569,6 +576,12 @@
           wrap.querySelector('[data-import="template"]').value,
           wrap.querySelector('[data-import="mode"]').value
         );
+      });
+      // 清空測試資料：走既有的 import_rundown replace，帶空資料等於全部清掉
+      on('[data-action="clear-rundown"]', 'click', () => {
+        const target = (context && context.activity && context.activity.name) || state.activityId;
+        if (!root.confirm('清空「' + target + '」目前的流程表內容？時段、角色、任務、人員、指派全部清空，沒辦法復原。')) return;
+        write({ action: 'import_rundown', mode: 'replace', data: '{}' }, '已清空流程表', { optimistic: false, pending: '清空中…' });
       });
       on('[data-action="print"]', 'click', () => {
         const body = container.ownerDocument.body;
