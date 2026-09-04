@@ -148,6 +148,8 @@
         }
         case 'save_rundown_crew':
           return del ? !d.crew.some(c => c.name === fields['姓名']) : d.crew.some(c => c.name === fields['姓名']);
+        case 'save_rundown_config':
+          return !!(d.config && (fields['正式_基準開始'] == null || d.config.official_start === t(fields['正式_基準開始'])));
         case 'import_rundown':
           return d.segments.length > 0 || d.roles.length > 0;
         default:
@@ -233,11 +235,10 @@
         '<option value="' + esc(t.id) + '"' + (t.id === selectedId ? ' selected' : '') + '>' + esc(t.label) + '</option>').join('');
     }
 
+    // 活動名稱由外殼的 section-header 顯示，這裡不重複；只留動作按鈕。
     function header() {
       const editable = state.source === 'backend';
       return '<header class="rd-head">' +
-        '<div><p class="rd-kicker">活動流程表</p>' +
-        '<h2>' + esc(context && context.activity && context.activity.name || state.activityId) + '</h2></div>' +
         '<div class="rd-head-actions">' +
         '<button type="button" data-action="reload"' + (state.busy ? ' disabled' : '') + '>重新讀取</button>' +
         (state.source === 'demo'
@@ -267,14 +268,15 @@
 
       const readOnly = state.source === 'demo';
       const dis = readOnly ? ' disabled' : '';
-      const nextOrder = d.segments.length ? Math.max.apply(null, d.segments.map(s => s.order || 0)) + 1 : 1;
       // 段落只存 duration／錨定時間；牆上時間在這裡即時算出來唯讀顯示。
       const timed = core().calculateTimeline(d.segments, d.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s]));
 
+      // 順序不給手打：拖曳把手調整，順序值本身用隱藏欄位跟著列一起送出。
       const segmentRows = timed.map(seg =>
         '<tr data-seg="' + esc(seg.segment_id) + '">' +
-          '<td><input class="rd-in rd-in-num" data-field="順序" value="' + esc(seg.order) + '" inputmode="numeric"' + dis + '></td>' +
+          '<td>' + (readOnly ? '' : '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>') +
+            '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '"></td>' +
           '<td class="rd-time-readout">' + esc(seg.time) + '</td>' +
           '<td><input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></td>' +
           '<td><input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '"' + dis + '></td>' +
@@ -312,19 +314,11 @@
         configPanel() +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>時段</h3>' +
           '<span class="rd-muted">' +
-          (readOnly ? '' : '改「持續」或「錨定時間」就自動存，牆上時間欄是算出來的，唯讀') + '</span></div>' +
+          (readOnly ? '' : '拖 ⠿ 調順序；改「持續」或「錨定時間」自動存，牆上時間欄是算出來的，唯讀') + '</span></div>' +
           '<div class="rd-scroll"><table class="rd-table"><thead><tr>' +
-            '<th>順序</th><th>時間</th><th>持續(分)</th><th>錨定</th><th>節目內容</th><th>階段</th><th>獎項</th><th></th>' +
+            '<th></th><th>時間</th><th>持續(分)</th><th>錨定</th><th>節目內容</th><th>階段</th><th>獎項</th><th></th>' +
           '</tr></thead><tbody>' + (segmentRows || '<tr><td colspan="8" class="rd-empty">尚無時段</td></tr>') + '</tbody></table></div>' +
-          (readOnly ? '' :
-          '<div class="rd-add-row">' +
-            '<input class="rd-in rd-in-num" data-add="順序" value="' + esc(nextOrder) + '" inputmode="numeric">' +
-            '<input class="rd-in rd-in-num rd-in-duration" data-add="duration_min" placeholder="持續(分)" inputmode="numeric">' +
-            '<input class="rd-in rd-in-time" type="time" data-add="錨定時間" placeholder="錨定（可空）">' +
-            '<input class="rd-in" data-add="節目內容" placeholder="節目內容">' +
-            '<select class="rd-in" data-add="階段">' + stageOptions.replace('value="正式"', 'value="正式" selected') + '</select>' +
-            '<button type="button" data-action="add-seg">新增時段</button>' +
-          '</div>') +
+          (readOnly ? '' : '<button type="button" class="rd-add-btn" data-action="add-seg">＋ 新增時段</button>') +
         '</section>' +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>角色</h3><span class="rd-muted">從主流程拆出的固定角色，人員之後再排</span></div>' +
           '<div class="rd-role-chips">' + d.roles.map(r =>
@@ -356,13 +350,14 @@
     }
 
     // 流程時間設定：正式段基準開始 + 彩排要「接續正式往前推」還是「固定開始時間」。
+    // 改欄位不即時寫入；按「儲存」才送出一次。
     function configPanel() {
       if (state.source !== 'backend') return '';
       const c = state.data.config || {};
       const fixed = c.rehearsal_mode === '固定開始';
       const dis = state.busy ? ' disabled' : '';
       return '<section class="rd-panel rd-config"><div class="rd-panel-head"><h3>流程時間設定</h3>' +
-        '<span class="rd-muted">正式段的基準開始時間，彩排段接續往前推或另訂固定時間</span></div>' +
+        '<span class="rd-muted">正式段的基準開始時間，彩排段接續往前推或另訂固定時間；改完按「儲存」才套用</span></div>' +
         '<div class="rd-config-row">' +
           '<label>正式段開始<input class="rd-in rd-in-time" type="time" data-config="正式_基準開始" value="' + esc(c.official_start) + '"' + dis + '></label>' +
           '<label>彩排基準<select class="rd-in" data-config="彩排_基準"' + dis + '>' +
@@ -372,6 +367,7 @@
           (fixed
             ? '<label>彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(c.rehearsal_start) + '"' + dis + '></label>'
             : '<label>彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
+          '<button type="button" class="rd-primary" data-action="save-config"' + dis + '>儲存</button>' +
         '</div></section>';
     }
 
@@ -513,8 +509,16 @@
 
       const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
 
-      // 流程時間設定：切彩排基準要換第三個欄位，用整頁重繪
-      on('[data-config]', 'change', () => {
+      // 流程時間設定：切彩排基準只換第三個欄位（不寫入），按「儲存」才送出一次
+      on('[data-config="彩排_基準"]', 'change', event => {
+        const panel = container.querySelector('.rd-config-row');
+        if (!state.data.config) state.data.config = {};
+        const officialEl = panel.querySelector('[data-config="正式_基準開始"]');
+        if (officialEl) state.data.config.official_start = officialEl.value;
+        state.data.config.rehearsal_mode = event.target.value === '固定開始' ? '固定開始' : '接續正式';
+        render();
+      });
+      on('[data-action="save-config"]', 'click', () => {
         const panel = container.querySelector('.rd-config-row');
         const fields = { action: 'save_rundown_config' };
         panel.querySelectorAll('[data-config]').forEach(el => { fields[el.dataset.config] = el.value.trim(); });
@@ -541,15 +545,17 @@
         root.setTimeout(clear, 1500);
       });
 
-      // 時段
-      on('[data-action="add-seg"]', 'click', () => {
-        const panel = container.querySelector('.rd-add-row');
-        const fields = {};
-        panel.querySelectorAll('[data-add]').forEach(el => { fields[el.dataset.add] = el.value.trim(); });
-        if (!fields['節目內容']) { setMessage('新增時段要有節目內容', true); render(); return; }
-        write(Object.assign({ action: 'save_rundown_segment' }, fields), '已新增時段');
+      // 時段：「＋」直接加一列在最後面，帶預設標題，馬上可以就地改名
+      on('[data-action="add-seg"]', 'click', async () => {
+        const beforeIds = new Set(state.data.segments.map(s => s.segment_id));
+        const last = state.data.segments[state.data.segments.length - 1];
+        const order = (last ? last.order : 0) + 10;
+        await write({ action: 'save_rundown_segment', 節目內容: '新時段', duration_min: 0, 順序: order, 階段: '正式' }, '已新增時段');
+        const added = state.data.segments.find(s => !beforeIds.has(s.segment_id));
+        const input = added && container.querySelector('[data-seg="' + added.segment_id + '"] [data-field="節目內容"]');
+        if (input) { input.focus(); input.select(); }
       });
-      // 時段欄位：改完（blur / 選完）就地存，不整頁重繪
+      // 時段欄位：改完（blur / 選完）就地存，不整頁重繪；牆上時間欄靠下面的即時重算，不等網路
       on('.rd-table [data-field]', 'change', event => {
         const tr = event.target.closest('[data-seg]');
         const fields = { action: 'save_rundown_segment', segment_id: tr.dataset.seg };
@@ -557,11 +563,16 @@
         if (!fields['節目內容']) { setMessage('節目內容不可空白', true); renderStatusOnly(); return; }
         write(fields, '時段已更新', { noRender: true });
       });
+      // 打字當下就照目前畫面上的欄位重算牆上時間，不必等存檔完成才看到後面時段跟著動
+      on('.rd-table [data-field="duration_min"], .rd-table [data-field="錨定時間"], .rd-table [data-field="階段"]', 'input', () => {
+        refreshTimeReadouts();
+      });
       on('[data-action="del-seg"]', 'click', event => {
         const tr = event.target.closest('[data-seg]');
         if (!root.confirm('刪除這個時段？它的任務也會一併刪除。')) return;
         write({ action: 'save_rundown_segment', segment_id: tr.dataset.seg, _delete: '1' }, '已刪除時段');
       });
+      bindSegmentDrag();
 
       // 角色
       on('[data-action="add-role"]', 'click', () => {
@@ -618,6 +629,82 @@
       });
 
       bindDragAssign();
+    }
+
+    // 讀目前畫面上每一列的欄位值（不是 state.data，因為使用者可能還沒 blur、還沒存檔），
+    // 就地重算牆上時間，只更新唯讀的時間欄文字——不動任何 input，不會打斷打字。
+    function refreshTimeReadouts() {
+      const rows = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]'));
+      if (!rows.length) return;
+      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
+      const draft = rows.map(tr => {
+        const base = byId.get(tr.dataset.seg) || {};
+        const duration = tr.querySelector('[data-field="duration_min"]');
+        const anchor = tr.querySelector('[data-field="錨定時間"]');
+        const stage = tr.querySelector('[data-field="階段"]');
+        return Object.assign({}, base, {
+          segment_id: tr.dataset.seg,
+          duration_min: duration ? (Number(duration.value) || 0) : base.duration_min,
+          anchor_time: anchor ? anchor.value : base.anchor_time,
+          stage: stage ? stage.value : base.stage
+        });
+      });
+      const timed = core().calculateTimeline(draft, state.data.config);
+      const timeById = new Map(timed.map(s => [s.segment_id, s.time]));
+      rows.forEach(tr => {
+        const cell = tr.querySelector('.rd-time-readout');
+        if (cell) cell.textContent = timeById.get(tr.dataset.seg) || '';
+      });
+    }
+
+    // 拖 ⠿ 調整順序：放開時只送被拖動那一段的新順序值（取新鄰居的中間值），不動其他列。
+    function bindSegmentDrag() {
+      const tbody = container.querySelector('.rd-table tbody');
+      if (!tbody) return;
+      let dragId = '';
+      tbody.querySelectorAll('.rd-drag-handle').forEach(handle => {
+        handle.addEventListener('dragstart', event => {
+          const tr = handle.closest('tr[data-seg]');
+          dragId = tr ? tr.dataset.seg : '';
+          if (tr) tr.classList.add('rd-dragging');
+          if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', dragId); }
+        });
+        handle.addEventListener('dragend', () => {
+          const tr = handle.closest('tr[data-seg]');
+          if (tr) tr.classList.remove('rd-dragging');
+        });
+      });
+      tbody.addEventListener('dragover', event => {
+        if (!dragId) return;
+        event.preventDefault();
+        const tr = event.target.closest('tr[data-seg]');
+        const dragRow = tbody.querySelector('tr[data-seg="' + dragId + '"]');
+        if (!tr || !dragRow || tr === dragRow) return;
+        const rect = tr.getBoundingClientRect();
+        const before = (event.clientY - rect.top) < rect.height / 2;
+        tbody.insertBefore(dragRow, before ? tr : tr.nextSibling);
+      });
+      tbody.addEventListener('drop', event => {
+        event.preventDefault();
+        if (dragId) commitSegmentReorder(dragId);
+        dragId = '';
+      });
+    }
+
+    function commitSegmentReorder(segmentId) {
+      const ids = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]')).map(tr => tr.dataset.seg);
+      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
+      const seg = byId.get(segmentId);
+      const index = ids.indexOf(segmentId);
+      if (!seg || index < 0) return;
+      const prev = index > 0 ? byId.get(ids[index - 1]) : null;
+      const next = index < ids.length - 1 ? byId.get(ids[index + 1]) : null;
+      const prevOrder = prev ? prev.order : (next ? next.order - 20 : 0);
+      const nextOrder = next ? next.order : (prev ? prev.order + 20 : 20);
+      state.data.segments = ids.map(id => byId.get(id));
+      write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
+        錨定時間: seg.anchor_time, 順序: (prevOrder + nextOrder) / 2, 階段: seg.stage, 備註: seg.note,
+        prize_ids: (seg.prize_ids || []).join(',') }, '順序已更新');
     }
 
     function bindDragAssign() {
