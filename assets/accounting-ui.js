@@ -224,7 +224,7 @@ $('#exportPreview').addEventListener('change', (event) => {
 });
 
 function activateAccountingTab(name) {
-  const valid = ['overview', 'expenses', 'reimbursement'];
+  const valid = ['overview', 'expenses', 'vendors', 'reimbursement'];
   const target = valid.includes(name) ? name : 'overview';
   document.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === target; button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active)); });
   document.querySelectorAll('[data-tab-panel]').forEach(panel => { panel.hidden = panel.dataset.tabPanel !== target; });
@@ -237,6 +237,9 @@ document.addEventListener('click', event => {
   if (opener) activateAccountingTab(opener.dataset.openTab);
 });
 try { activateAccountingTab(sessionStorage.getItem('eventAccountingActiveTab') || 'overview'); } catch (_) { activateAccountingTab('overview'); }
+
+const vendorSearch = $('#vendorSearch');
+if (vendorSearch) vendorSearch.addEventListener('input', event => renderVendors(event.target.value));
 
 const expenseEditorPanel = $('#expenseEditor');
 $('#showExpenseEditor').addEventListener('click', () => {

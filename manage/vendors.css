@@ -1,0 +1,23 @@
+.accounting-app .vendor-table-wrap { overflow: auto; }
+.accounting-app .vendor-table { min-width: 760px; }
+.accounting-app .vendor-table td { vertical-align: middle; }
+.accounting-app .vendor-tax-id {
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+.accounting-app .vendor-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.accounting-app .vendor-status.active { color: #28603c; background: #edf6ef; }
+.accounting-app .vendor-status.disabled { color: #8b342e; background: #f4eceb; }
+.accounting-app .vendor-status.retail { color: #62645f; background: #f1f1ee; }
+.accounting-app .vendor-links a {
+  color: #28566f;
+  font-weight: 650;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
