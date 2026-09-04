@@ -272,10 +272,14 @@
       const timed = core().calculateTimeline(d.segments, d.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s]));
 
-      // 順序不給手打：拖曳把手調整，順序值本身用隱藏欄位跟著列一起送出。
-      const segmentRows = timed.map(seg =>
+      // 順序不給手打：拖把手調（滑鼠），或按 ▲▼（觸控／鍵盤都能用，拖曳在手機上常常失靈）。
+      // 順序值本身用隱藏欄位跟著列一起送出。
+      const segmentRows = timed.map((seg, i) =>
         '<tr data-seg="' + esc(seg.segment_id) + '">' +
-          '<td>' + (readOnly ? '' : '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>') +
+          '<td class="rd-order-cell">' + (readOnly ? '' :
+            '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>' +
+            '<button type="button" class="rd-icon rd-order-btn" data-action="move-seg" data-dir="up"' + (i === 0 ? ' disabled' : '') + ' title="上移">▲</button>' +
+            '<button type="button" class="rd-icon rd-order-btn" data-action="move-seg" data-dir="down"' + (i === timed.length - 1 ? ' disabled' : '') + ' title="下移">▼</button>') +
             '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '"></td>' +
           '<td class="rd-time-readout">' + esc(seg.time) + '</td>' +
           '<td><input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></td>' +
@@ -365,8 +369,8 @@
             '<option value="固定開始"' + (fixed ? ' selected' : '') + '>固定開始時間</option>' +
           '</select></label>' +
           (fixed
-            ? '<label>彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(c.rehearsal_start) + '"' + dis + '></label>'
-            : '<label>彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
+            ? '<label class="rd-config-third">彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(c.rehearsal_start) + '"' + dis + '></label>'
+            : '<label class="rd-config-third">彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
           '<button type="button" class="rd-primary" data-action="save-config"' + dis + '>儲存</button>' +
         '</div></section>';
     }
@@ -509,14 +513,20 @@
 
       const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
 
-      // 流程時間設定：切彩排基準只換第三個欄位（不寫入），按「儲存」才送出一次
+      // 流程時間設定：切彩排基準只換第三個欄位（不寫入、不整頁重繪——避免打斷下面時段表還沒存檔的編輯）
       on('[data-config="彩排_基準"]', 'change', event => {
         const panel = container.querySelector('.rd-config-row');
         if (!state.data.config) state.data.config = {};
         const officialEl = panel.querySelector('[data-config="正式_基準開始"]');
         if (officialEl) state.data.config.official_start = officialEl.value;
-        state.data.config.rehearsal_mode = event.target.value === '固定開始' ? '固定開始' : '接續正式';
-        render();
+        const fixed = event.target.value === '固定開始';
+        state.data.config.rehearsal_mode = fixed ? '固定開始' : '接續正式';
+        const third = panel.querySelector('.rd-config-third');
+        if (third) {
+          third.outerHTML = fixed
+            ? '<label class="rd-config-third">彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(state.data.config.rehearsal_start) + '"></label>'
+            : '<label class="rd-config-third">彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(state.data.config.rehearsal_buffer_min) + '" inputmode="numeric"></label>';
+        }
       });
       on('[data-action="save-config"]', 'click', () => {
         const panel = container.querySelector('.rd-config-row');
@@ -571,6 +581,11 @@
         const tr = event.target.closest('[data-seg]');
         if (!root.confirm('刪除這個時段？它的任務也會一併刪除。')) return;
         write({ action: 'save_rundown_segment', segment_id: tr.dataset.seg, _delete: '1' }, '已刪除時段');
+      });
+      // ▲▼：跟拖曳走同一條 reorderAndSave，觸控／鍵盤都能操作
+      on('[data-action="move-seg"]', 'click', event => {
+        const tr = event.target.closest('tr[data-seg]');
+        if (tr) moveSegment(tr.dataset.seg, event.target.dataset.dir);
       });
       bindSegmentDrag();
 
@@ -686,16 +701,30 @@
       });
       tbody.addEventListener('drop', event => {
         event.preventDefault();
-        if (dragId) commitSegmentReorder(dragId);
+        if (dragId) {
+          const ids = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]')).map(tr => tr.dataset.seg);
+          reorderAndSave(ids, dragId);
+        }
         dragId = '';
       });
     }
 
-    function commitSegmentReorder(segmentId) {
-      const ids = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]')).map(tr => tr.dataset.seg);
-      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
-      const seg = byId.get(segmentId);
+    // 鍵盤／觸控可用的順序調整：跟拖曳共用同一套「取新鄰居中間值」寫入邏輯。
+    function moveSegment(segmentId, dir) {
+      const ids = state.data.segments.map(s => s.segment_id);
       const index = ids.indexOf(segmentId);
+      const swapWith = dir === 'up' ? index - 1 : index + 1;
+      if (index < 0 || swapWith < 0 || swapWith >= ids.length) return;
+      const next = ids.slice();
+      next[index] = ids[swapWith];
+      next[swapWith] = ids[index];
+      reorderAndSave(next, segmentId);
+    }
+
+    function reorderAndSave(ids, movedId) {
+      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
+      const seg = byId.get(movedId);
+      const index = ids.indexOf(movedId);
       if (!seg || index < 0) return;
       const prev = index > 0 ? byId.get(ids[index - 1]) : null;
       const next = index < ids.length - 1 ? byId.get(ids[index + 1]) : null;
