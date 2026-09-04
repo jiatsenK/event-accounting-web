@@ -56,4 +56,25 @@ test('設計師版 sheet 不含任務細節', () => {
   assert.doesNotMatch(container.innerHTML, /籤筒上台/);
 });
 
+test('流程表畫面不再顯示方案控制或方案欄位', () => {
+  const ctrl = views.createController(container, { activityId: 'yearend2026' });
+  ctrl.state.data = RundownCore.rundown2026();
+  ctrl.state.mode = 'edit';
+  ctrl.render();
+  assert.doesNotMatch(container.innerHTML, /data-plan-pick|data-import="plan"|<th>方案<\/th>/);
+});
+
+test('時段編輯只寫 duration 與錨定時間，牆上時間唯讀顯示', () => {
+  const ctrl = views.createController(container, { activityId: 'yearend2026' });
+  ctrl.state.data = RundownCore.rundown2026();
+  ctrl.state.source = 'backend';
+  ctrl.state.mode = 'edit';
+  ctrl.render();
+  assert.match(container.innerHTML, /data-field="duration_min"/);
+  assert.match(container.innerHTML, /data-field="錨定時間"/);
+  assert.match(container.innerHTML, /18:20–18:30/);
+  assert.doesNotMatch(container.innerHTML, /data-field="開始時間"|data-field="結束時間"/);
+  assert.match(container.innerHTML, /data-config="正式_基準開始"/);
+});
+
 console.log('rundown-views tests PASS');

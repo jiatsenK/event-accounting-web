@@ -36,7 +36,6 @@
       source: 'empty', // 'backend' | 'demo' | 'empty'
       mode: 'edit',
       printVersion: 'control',
-      plan: '',            // '' = 兩案並列；否則單一方案名
       templateId: null,    // 目前預覽／要帶入的範本
       busy: false,
       message: '',
@@ -44,13 +43,6 @@
     };
     state.templateId = (core().templates()[0] || {}).id || null;
     state.importTemplateId = state.templateId;
-    state.importPlan = '';
-
-    // 目前畫面要呈現的資料：有方案且選了單一方案時，只顯示該方案 + 無方案時段
-    function viewData() {
-      if (state.plan && core().plans(state.data).length) return core().forPlan(state.data, state.plan);
-      return state.data;
-    }
 
     function setMessage(message, error) {
       state.message = message || '';
@@ -65,14 +57,11 @@
           const tpl = core().template(state.templateId);
           state.templateId = tpl.id;
           state.data = tpl;
-          state.plan = core().plans(tpl)[0] || '';
           state.source = 'demo';
-          setMessage('範例流程「' + tpl.label + '」（唯讀）。' +
-            (core().plans(tpl).length ? '選好方案後' : '') + '按「帶入到目前活動」寫進實際活動即可編輯。', false);
+          setMessage('範例流程「' + tpl.label + '」（唯讀）。按「帶入到目前活動」寫進實際活動即可編輯。', false);
         } else {
           const raw = await planning().fetchRundown(state.activityId);
           state.data = core().normalize(raw);
-          state.plan = core().plans(state.data)[0] || '';
           state.source = 'backend';
           const empty = !state.data.segments.length && !state.data.roles.length;
           setMessage(empty ? '這場活動還沒有流程表內容，可從「編輯流程」開始，或按「看範例流程」帶入去年的流程。' : '', false);
@@ -101,14 +90,21 @@
             const s = d.segments.find(x => x.segment_id === fields.segment_id);
             if (s) {
               if (fields['節目內容'] != null) s.title = fields['節目內容'];
-              if (fields['開始時間'] != null) s.start = fields['開始時間'];
-              if (fields['結束時間'] != null) s.end = fields['結束時間'];
+              if (fields.duration_min != null && fields.duration_min !== '') s.duration_min = Number(fields.duration_min) || 0;
+              if (fields['錨定時間'] != null) s.anchor_time = fields['錨定時間'];
               if (fields['順序'] != null && fields['順序'] !== '') s.order = Number(fields['順序']) || s.order;
               if (fields['階段']) s.stage = fields['階段'];
-              if (fields['方案'] != null) s.plan = fields['方案'];
             }
           }
           break;
+        case 'save_rundown_config': {
+          if (!d.config) d.config = {};
+          if (fields['正式_基準開始'] != null) d.config.official_start = fields['正式_基準開始'];
+          if (fields['彩排_基準'] != null) d.config.rehearsal_mode = fields['彩排_基準'] === '固定開始' ? '固定開始' : '接續正式';
+          if (fields['彩排_固定開始'] != null) d.config.rehearsal_start = fields['彩排_固定開始'];
+          if (fields['彩排_緩衝分鐘'] != null && fields['彩排_緩衝分鐘'] !== '') d.config.rehearsal_buffer_min = Number(fields['彩排_緩衝分鐘']) || 0;
+          break;
+        }
         case 'save_rundown_role':
           if (del) d.roles = d.roles.filter(r => r.role !== fields['角色']);
           break;
@@ -190,24 +186,16 @@
       }
     }
 
-    async function importTemplate(templateId, mode, plan) {
+    async function importTemplate(templateId, mode) {
       let template = core().template(templateId || state.templateId);
       if (!template) { setMessage('找不到這份流程範本', true); render(); return; }
-      const picked = plan && plan !== '__all__' && core().plans(template).length ? plan : '';
-      if (picked) {
-        const f = core().forPlan(template, picked);
-        template = Object.assign({}, template, {
-          segments: f.segments.map(s => Object.assign({}, s, { plan: '' })),
-          tasks: f.tasks
-        });
-      }
       const target = (context && context.activity && context.activity.name) || state.activityId;
       if (state.source === 'demo') state.source = 'backend';
       const payload = {
         segments: template.segments, roles: template.roles, tasks: template.tasks,
         crew: template.crew, assignments: template.assignments
       };
-      const label = template.label + (picked ? '（' + picked + '）' : '');
+      const label = template.label;
       if (mode === 'replace' && typeof root.confirm === 'function' &&
           !root.confirm('帶入「' + label + '」前會清空「' + target + '」目前的流程內容，確定？')) return;
       await write(
@@ -234,7 +222,6 @@
             MODES.map(m => '<button type="button" data-mode="' + m.id + '"' +
               (m.id === state.mode ? ' class="active" aria-current="true"' : '') + '>' + esc(m.label) + '</button>').join('') +
           '</nav>' +
-          planBar() +
           '<p class="rd-status' + (state.error ? ' error' : '') + (state.message ? '' : ' rd-hidden') + '" role="status">' + esc(state.message) + '</p>' +
           '<div class="rd-body">' + body() + '</div>' +
         '</div>';
@@ -244,17 +231,6 @@
     function templateOptions(selectedId) {
       return core().templates().map(t =>
         '<option value="' + esc(t.id) + '"' + (t.id === selectedId ? ' selected' : '') + '>' + esc(t.label) + '</option>').join('');
-    }
-
-    function planBar() {
-      const list = core().plans(state.data);
-      if (!list.length) return '';
-      return '<div class="rd-planbar"><span>方案</span><select data-plan-pick>' +
-        list.map(p => '<option value="' + esc(p) + '"' + (p === state.plan ? ' selected' : '') + '>' + esc(p) + '</option>').join('') +
-        '<option value="" ' + (state.plan === '' ? 'selected' : '') + '>兩案並列</option>' +
-        '</select>' +
-        (state.source === 'demo' && state.plan ? '<span class="rd-muted">帶入時只會帶「' + esc(state.plan) + '」</span>' : '') +
-        '</div>';
     }
 
     function header() {
@@ -283,7 +259,7 @@
     // -- 編輯流程 ------------------------------------------------------------
 
     function editView() {
-      const d = viewData();
+      const d = state.data;
       const stageOptions = core().STAGES.map(s => '<option value="' + s + '">' + s + '</option>').join('');
       const roleOptions = d.roles.map(r => '<option value="' + esc(r.role) + '">' + esc(r.role) + '</option>').join('');
       const audienceOptions = core().AUDIENCES.map(a => '<option value="' + a + '">' + a + '</option>').join('');
@@ -291,17 +267,19 @@
 
       const readOnly = state.source === 'demo';
       const dis = readOnly ? ' disabled' : '';
-      const lastEnd = d.segments.length ? (d.segments[d.segments.length - 1].end || d.segments[d.segments.length - 1].start) : '';
       const nextOrder = d.segments.length ? Math.max.apply(null, d.segments.map(s => s.order || 0)) + 1 : 1;
+      // 段落只存 duration／錨定時間；牆上時間在這裡即時算出來唯讀顯示。
+      const timed = core().calculateTimeline(d.segments, d.config);
+      const timeById = new Map(timed.map(s => [s.segment_id, s]));
 
-      const segmentRows = d.segments.map(seg =>
+      const segmentRows = timed.map(seg =>
         '<tr data-seg="' + esc(seg.segment_id) + '">' +
           '<td><input class="rd-in rd-in-num" data-field="順序" value="' + esc(seg.order) + '" inputmode="numeric"' + dis + '></td>' +
-          '<td><input class="rd-in rd-in-time" type="time" data-field="開始時間" value="' + esc(seg.start) + '"' + dis + '></td>' +
-          '<td><input class="rd-in rd-in-time" type="time" data-field="結束時間" value="' + esc(seg.end) + '"' + dis + '></td>' +
+          '<td class="rd-time-readout">' + esc(seg.time) + '</td>' +
+          '<td><input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></td>' +
+          '<td><input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '"' + dis + '></td>' +
           '<td><input class="rd-in" data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></td>' +
           '<td><select class="rd-in" data-field="階段"' + dis + '>' + stageOptions.replace('value="' + seg.stage + '"', 'value="' + seg.stage + '" selected') + '</select></td>' +
-          '<td><input class="rd-in rd-in-plan" data-field="方案" value="' + esc(seg.plan) + '" placeholder="—"' + dis + '></td>' +
           '<td class="rd-prize-cell">' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('') +
             (d.prizes.length && !readOnly ? '<button type="button" class="rd-link" data-action="edit-prizes" data-seg="' + esc(seg.segment_id) + '">獎項…</button>' : '') + '</td>' +
           '<td>' + (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-seg" title="刪除">✕</button>') + '</td>' +
@@ -315,8 +293,9 @@
           '<span class="rd-task-content">' + esc(t.content) + '</span>' +
           '<span class="rd-task-aud rd-aud-' + esc(t.audience) + '">' + esc(t.audience) + '</span>' +
           '<button type="button" class="rd-icon rd-danger" data-action="del-task" title="刪除">✕</button></li>').join('');
+        const time = (timeById.get(seg.segment_id) || {}).time || '';
         return '<section class="rd-task-block" data-seg="' + esc(seg.segment_id) + '">' +
-          '<h4>' + esc([seg.start, seg.title].filter(Boolean).join(' ')) + '</h4>' +
+          '<h4>' + esc([time, seg.title].filter(Boolean).join(' ')) + '</h4>' +
           '<ul class="rd-task-list">' + (rows || '<li class="rd-empty">尚無任務</li>') + '</ul>' +
           (readOnly ? '' : (d.roles.length ?
             '<div class="rd-task-add">' +
@@ -330,18 +309,18 @@
 
       return '<div class="rd-edit">' +
         importPanel() +
+        configPanel() +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>時段</h3>' +
           '<span class="rd-muted">' +
-          (core().plans(d).length ? '含 ' + core().plans(d).map(esc).join('／') + ' 兩個提案方案，決定後刪掉另一個方案的時段即可。' : '') +
-          (readOnly ? '' : '改時間直接點欄位選，改完自動存') + '</span></div>' +
+          (readOnly ? '' : '改「持續」或「錨定時間」就自動存，牆上時間欄是算出來的，唯讀') + '</span></div>' +
           '<div class="rd-scroll"><table class="rd-table"><thead><tr>' +
-            '<th>順序</th><th>開始</th><th>結束</th><th>節目內容</th><th>階段</th><th>方案</th><th>獎項</th><th></th>' +
+            '<th>順序</th><th>時間</th><th>持續(分)</th><th>錨定</th><th>節目內容</th><th>階段</th><th>獎項</th><th></th>' +
           '</tr></thead><tbody>' + (segmentRows || '<tr><td colspan="8" class="rd-empty">尚無時段</td></tr>') + '</tbody></table></div>' +
           (readOnly ? '' :
           '<div class="rd-add-row">' +
             '<input class="rd-in rd-in-num" data-add="順序" value="' + esc(nextOrder) + '" inputmode="numeric">' +
-            '<input class="rd-in rd-in-time" type="time" data-add="開始時間" value="' + esc(lastEnd) + '">' +
-            '<input class="rd-in rd-in-time" type="time" data-add="結束時間">' +
+            '<input class="rd-in rd-in-num rd-in-duration" data-add="duration_min" placeholder="持續(分)" inputmode="numeric">' +
+            '<input class="rd-in rd-in-time" type="time" data-add="錨定時間" placeholder="錨定（可空）">' +
             '<input class="rd-in" data-add="節目內容" placeholder="節目內容">' +
             '<select class="rd-in" data-add="階段">' + stageOptions.replace('value="正式"', 'value="正式" selected') + '</select>' +
             '<button type="button" data-action="add-seg">新增時段</button>' +
@@ -364,21 +343,35 @@
       const templates = core().templates();
       if (state.source !== 'backend' || !templates.length) return '';
       const hasContent = state.data.segments.length || state.data.roles.length;
-      const tpl = core().template(state.importTemplateId);
-      const tplPlans = core().plans(tpl);
       return '<section class="rd-panel rd-import"><div class="rd-panel-head"><h3>帶入起始流程</h3>' +
         '<span class="rd-muted">' + (hasContent ? '目前活動已有內容，帶入前可選清空或附加' : '從過去的流程直接帶入，不用重打') + '</span></div>' +
         '<div class="rd-import-row">' +
           '<select data-import="template">' + templateOptions(state.importTemplateId) + '</select>' +
-          (tplPlans.length ? '<select data-import="plan">' +
-            tplPlans.map(p => '<option value="' + esc(p) + '"' + (p === state.importPlan ? ' selected' : '') + '>' + esc(p) + '</option>').join('') +
-            '<option value="__all__"' + (state.importPlan === '__all__' ? ' selected' : '') + '>兩案都帶入</option>' +
-          '</select>' : '') +
           '<select data-import="mode">' +
             '<option value="replace">清空後帶入</option>' +
             '<option value="append">加在現有內容後</option>' +
           '</select>' +
           '<button type="button" data-action="import-template"' + (state.busy ? ' disabled' : '') + '>帶入</button>' +
+        '</div></section>';
+    }
+
+    // 流程時間設定：正式段基準開始 + 彩排要「接續正式往前推」還是「固定開始時間」。
+    function configPanel() {
+      if (state.source !== 'backend') return '';
+      const c = state.data.config || {};
+      const fixed = c.rehearsal_mode === '固定開始';
+      const dis = state.busy ? ' disabled' : '';
+      return '<section class="rd-panel rd-config"><div class="rd-panel-head"><h3>流程時間設定</h3>' +
+        '<span class="rd-muted">正式段的基準開始時間，彩排段接續往前推或另訂固定時間</span></div>' +
+        '<div class="rd-config-row">' +
+          '<label>正式段開始<input class="rd-in rd-in-time" type="time" data-config="正式_基準開始" value="' + esc(c.official_start) + '"' + dis + '></label>' +
+          '<label>彩排基準<select class="rd-in" data-config="彩排_基準"' + dis + '>' +
+            '<option value="接續正式"' + (fixed ? '' : ' selected') + '>接續正式（往前推）</option>' +
+            '<option value="固定開始"' + (fixed ? ' selected' : '') + '>固定開始時間</option>' +
+          '</select></label>' +
+          (fixed
+            ? '<label>彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(c.rehearsal_start) + '"' + dis + '></label>'
+            : '<label>彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
         '</div></section>';
     }
 
@@ -434,7 +427,7 @@
     // -- 列印版本 ---------------------------------------------------------
 
     function printView() {
-      const d = viewData();
+      const d = state.data;
       const versions = core().VERSIONS;
       const active = versions.find(v => v.id === state.printVersion) || versions[0];
       const sheet = renderSheet(active.id, d);
@@ -452,8 +445,7 @@
     function renderSheet(versionId, d) {
       const title = esc(context && context.activity && context.activity.name || state.activityId);
       const label = (core().VERSIONS.find(v => v.id === versionId) || {}).label || '';
-      const planLabel = state.plan && core().plans(state.data).length ? '｜' + esc(state.plan) : '';
-      const head = '<div class="rd-sheet-head"><h3>' + title + '</h3><span>' + esc(label) + planLabel + '</span></div>';
+      const head = '<div class="rd-sheet-head"><h3>' + title + '</h3><span>' + esc(label) + '</span></div>';
       if (versionId === 'control') return head + sheetControl(core().projectControl(d));
       if (versionId === 'crew') return head + sheetCrew(core().projectCrew(d));
       if (versionId === 'venue') return head + sheetVenue(core().projectVenue(d));
@@ -466,7 +458,7 @@
         '<table class="rd-sheet-table"><tbody>' +
         group.segments.map(seg =>
           '<tr class="rd-seg-row"><td class="rd-time">' + esc([seg.start, seg.end].filter(Boolean).join('–')) + '</td>' +
-          '<td><div class="rd-seg-title">' + esc(seg.title) + (seg.plan ? ' <span class="rd-plan">（' + esc(seg.plan) + '）</span>' : '') + '</div>' +
+          '<td><div class="rd-seg-title">' + esc(seg.title) + '</div>' +
           (seg.prizeLabels.length ? '<div class="rd-seg-prize">' + seg.prizeLabels.map(esc).join('；') + '</div>' : '') +
           (seg.note ? '<div class="rd-seg-note">' + esc(seg.note) + '</div>' : '') +
           (seg.tasks.length ? '<ul class="rd-seg-tasks">' + seg.tasks.map(t =>
@@ -500,7 +492,7 @@
     function sheetDesigner(model) {
       return '<table class="rd-sheet-table rd-designer"><tbody>' + model.segments.map(seg =>
         '<tr><td class="rd-time">' + esc(seg.time) + '</td><td><div class="rd-seg-title">' + esc(seg.title) +
-        (seg.plan ? ' <span class="rd-plan">（' + esc(seg.plan) + '）</span>' : '') + '</div>' +
+        '</div>' +
         (seg.prizeLabels.length ? '<div class="rd-designer-prize">' + seg.prizeLabels.map(esc).join('<br>') + '</div>' : '') +
         '</td></tr>').join('') + '</tbody></table>';
     }
@@ -514,26 +506,30 @@
       container.querySelectorAll('[data-version]').forEach(btn => btn.addEventListener('click', () => {
         state.printVersion = btn.dataset.version; render();
       }));
-      const planPick = container.querySelector('[data-plan-pick]');
-      if (planPick) planPick.addEventListener('change', () => { state.plan = planPick.value; render(); });
       const tplPick = container.querySelector('[data-tpl-pick]');
       if (tplPick) tplPick.addEventListener('change', () => { state.templateId = tplPick.value; load('demo'); });
       const importTpl = container.querySelector('[data-import="template"]');
-      if (importTpl) importTpl.addEventListener('change', () => { state.importTemplateId = importTpl.value; state.importPlan = ''; render(); });
+      if (importTpl) importTpl.addEventListener('change', () => { state.importTemplateId = importTpl.value; render(); });
 
       const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
+
+      // 流程時間設定：切彩排基準要換第三個欄位，用整頁重繪
+      on('[data-config]', 'change', () => {
+        const panel = container.querySelector('.rd-config-row');
+        const fields = { action: 'save_rundown_config' };
+        panel.querySelectorAll('[data-config]').forEach(el => { fields[el.dataset.config] = el.value.trim(); });
+        write(fields, '流程時間設定已更新');
+      });
 
       on('[data-action="reload"]', 'click', () => load(state.source === 'demo' ? 'demo' : 'backend'));
       on('[data-action="load-demo"]', 'click', () => load('demo'));
       on('[data-action="load-backend"]', 'click', () => load('backend'));
-      on('[data-action="import-current"]', 'click', () => importTemplate(state.templateId, 'replace', state.plan || '__all__'));
+      on('[data-action="import-current"]', 'click', () => importTemplate(state.templateId, 'replace'));
       on('[data-action="import-template"]', 'click', () => {
         const wrap = container.querySelector('.rd-import-row');
-        const planSel = wrap.querySelector('[data-import="plan"]');
         importTemplate(
           wrap.querySelector('[data-import="template"]').value,
-          wrap.querySelector('[data-import="mode"]').value,
-          planSel ? planSel.value : '__all__'
+          wrap.querySelector('[data-import="mode"]').value
         );
       });
       on('[data-action="print"]', 'click', () => {
@@ -601,8 +597,8 @@
         const current = (seg.prize_ids || []).join(',');
         const next = root.prompt('輸入這個時段引用的獎項 prize_id（逗號分隔）。\n可用：\n' + options, current);
         if (next == null) return;
-        write({ action: 'save_rundown_segment', segment_id: segId, 節目內容: seg.title, 開始時間: seg.start, 結束時間: seg.end,
-          順序: seg.order, 階段: seg.stage, 方案: seg.plan, 備註: seg.note, prize_ids: next.trim() }, '已更新獎項連動');
+        write({ action: 'save_rundown_segment', segment_id: segId, 節目內容: seg.title, duration_min: seg.duration_min, 錨定時間: seg.anchor_time,
+          順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: next.trim() }, '已更新獎項連動');
       });
 
       // 工作人員
