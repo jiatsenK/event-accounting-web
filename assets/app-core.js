@@ -7,6 +7,7 @@ const state = {
   activity: {},
   allocation: null,
   expenses: [],
+  vendors: [],
   editingExpenseId: '',
   backendVersion: '',
   capabilities: []
@@ -150,11 +151,67 @@ async function refresh() {
   try {
     const data = await apiRead('activity', { activity_id: state.activityId });
     render(data);
+    await loadVendors();
     setStatus('');
     return data;
   } catch (err) {
     handleError(err);
     throw err;
+  }
+}
+
+function safeExternalUrl(value) {
+  const url = String(value || '').trim();
+  return /^https:\/\//i.test(url) ? url : '';
+}
+
+function vendorDocumentLinks(vendor) {
+  const links = [
+    ['匯款同意書', safeExternalUrl(vendor && vendor.agreement_url)],
+    ['報價單', safeExternalUrl(vendor && vendor.quote_url)]
+  ].filter(item => item[1]);
+  return links.length ? links.map(item => `<a href="${escapeHtml(item[1])}" target="_blank" rel="noopener noreferrer">${item[0]}</a>`).join('<span aria-hidden="true"> · </span>') : '—';
+}
+
+function renderVendors(query) {
+  const rows = Array.isArray(state.vendors) ? state.vendors : [];
+  const keyword = String(query || '').trim().toLowerCase();
+  const filtered = keyword ? rows.filter(vendor =>
+    String(vendor.tax_id || '').includes(keyword) || String(vendor.name || '').toLowerCase().includes(keyword)
+  ) : rows;
+  const body = $('#vendorRows');
+  if (!body) return;
+  body.innerHTML = filtered.length ? filtered.map(vendor => {
+    const remittanceStatus = String(vendor.remittance_status || '').trim();
+    const statusLabel = remittanceStatus || '零售／單次';
+    const statusClass = remittanceStatus === '使用中' ? 'active' : (remittanceStatus === '已停用' ? 'disabled' : 'retail');
+    return `<tr><td><strong>${escapeHtml(vendor.name)}</strong></td><td class="vendor-tax-id">${escapeHtml(vendor.tax_id || '—')}</td><td><span class="vendor-status ${statusClass}">${escapeHtml(statusLabel)}</span></td><td class="vendor-links">${vendorDocumentLinks(vendor)}</td><td>${escapeHtml(vendor.updated_at || '—')}</td></tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty">找不到符合的廠商</td></tr>';
+  const status = $('#vendorStatus');
+  if (status) {
+    status.textContent = keyword ? `找到 ${filtered.length} 筆` : `共 ${rows.length} 筆廠商`;
+    status.className = 'status form-status';
+  }
+}
+
+async function loadVendors() {
+  const body = $('#vendorRows');
+  if (!body) return;
+  if (!state.capabilities.includes('vendors')) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">後端尚未提供廠商主檔</td></tr>';
+    return;
+  }
+  try {
+    const data = await apiRead('vendors');
+    state.vendors = Array.isArray(data && data.vendors) ? data.vendors : [];
+    renderVendors($('#vendorSearch') && $('#vendorSearch').value);
+  } catch (error) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">廠商主檔讀取失敗</td></tr>';
+    const status = $('#vendorStatus');
+    if (status) {
+      status.textContent = error && error.message || '讀取失敗';
+      status.className = 'status form-status error';
+    }
   }
 }
 

@@ -52,6 +52,7 @@
       modules: {
         'accounting:overview': win.AccountingViews,
         'accounting:expenses': win.AccountingViews,
+        'accounting:vendors': win.AccountingViews,
         'accounting:reimbursement': win.AccountingViews,
         'planning:history': win.PlanningViews && win.PlanningViews.history,
         'planning:forecast': win.PlanningViews && win.PlanningViews.forecast,
@@ -80,7 +81,7 @@
         activities.map(item => '<option value="' + escapeHtml(item.activity_id) + '"' +
           (String(item.activity_id) === route.activityId ? ' selected' : '') + '>' + escapeHtml(canonicalActivityName(item)) + '</option>').join('') +
         '</select></label></header><div class="area-grid" aria-label="活動區塊">' +
-        '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、支出明細、核銷整理</small><b aria-hidden="true">→</b></button>' +
+        '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、支出明細、廠商主檔、核銷整理</small><b aria-hidden="true">→</b></button>' +
         '<button type="button" class="area-card" data-area="planning"><span>活動規劃</span><small>歷史紀錄、規劃試算、流程表</small><b aria-hidden="true">→</b></button></div>';
       const selector = entryView.querySelector('#platformActivitySelector');
       selector.disabled = activities.length <= 1;

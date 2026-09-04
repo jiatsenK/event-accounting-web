@@ -3,9 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const views = require('../accounting-views.js');
 
-test('帳務掛載模板保留三個既有 panel 並移除內部分頁列', () => {
+test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
   assert.match(views.template, /data-tab-panel="overview"/);
   assert.match(views.template, /data-tab-panel="expenses"/);
+  assert.match(views.template, /data-tab-panel="vendors"/);
+  assert.match(views.template, /id="vendorSearch"/);
+  assert.match(views.template, /id="vendorRows"/);
   assert.match(views.template, /data-tab-panel="reimbursement"/);
   assert.doesNotMatch(views.template, /class="tabs"/);
   assert.doesNotMatch(views.template, /class="page-header"/);
