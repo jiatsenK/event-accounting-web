@@ -8,6 +8,7 @@ const state = {
   allocation: null,
   expenses: [],
   vendors: [],
+  activityBudget: null,
   editingExpenseId: '',
   backendVersion: '',
   capabilities: []
@@ -88,11 +89,14 @@ function expenseMatches(row, expense) {
 
 async function apiWrite(fields) {
   if (!state.apiUrl || !state.token) throw new Error('尚未輸入存取碼');
-  const before = await apiRead('activity', { activity_id: fields.activity_id });
   const action = fields.action;
+  const budgetAction = ['save_activity_budget_line', 'delete_activity_budget_line', 'update_budget_status'].includes(action);
+  const before = await apiRead(budgetAction ? 'activity_budget' : 'activity', { activity_id: fields.activity_id });
   const beforeCount = action === 'add_expense'
     ? before.expenses.filter(row => expenseMatches(row, fields)).length
-    : 0;
+    : budgetAction && action === 'save_activity_budget_line'
+      ? before.rows.filter(row => window.ActivityBudget && window.ActivityBudget.lineMatches(row, fields)).length
+      : 0;
 
   const iframeName = 'gas-write-' + Date.now();
   const iframe = document.createElement('iframe');
@@ -128,8 +132,18 @@ async function apiWrite(fields) {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(attempt === 0 ? 500 : 750);
       if (serverResult && !serverResult.ok) throw new Error(serverResult.error || 'GAS 寫入失敗');
-      const after = await apiRead('activity', { activity_id: fields.activity_id });
-      if (action === 'update_expense') {
+      const after = await apiRead(budgetAction ? 'activity_budget' : 'activity', { activity_id: fields.activity_id });
+      if (action === 'save_activity_budget_line') {
+        const targetId = String(fields.budget_line_id || (serverResult && serverResult.data && serverResult.data.saved_budget_line_id) || '');
+        const matched = targetId
+          ? after.rows.find(row => String(row.budget_line_id || '') === targetId && window.ActivityBudget.lineMatches(row, fields))
+          : after.rows.filter(row => window.ActivityBudget.lineMatches(row, fields)).length > beforeCount;
+        if (matched) return after;
+      } else if (action === 'delete_activity_budget_line') {
+        if (!after.rows.some(row => String(row.budget_line_id || '') === String(fields.budget_line_id || ''))) return after;
+      } else if (action === 'update_budget_status') {
+        if (String(after.activity && after.activity.budget_status || '') === String(fields.budget_status || '')) return after;
+      } else if (action === 'update_expense') {
         const updated = after.expenses.find(row => String(row.expense_id || '') === String(fields.expense_id || ''));
         if (updated && expenseMatches(updated, fields)) return after;
       } else {
@@ -152,6 +166,7 @@ async function refresh() {
     const data = await apiRead('activity', { activity_id: state.activityId });
     render(data);
     await loadVendors();
+    if (typeof window.loadActivityBudget === 'function') await window.loadActivityBudget();
     setStatus('');
     return data;
   } catch (err) {

@@ -6,6 +6,10 @@ const views = require('../accounting-views.js');
 test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
   assert.match(views.template, /data-tab-panel="overview"/);
   assert.match(views.template, /data-tab-panel="expenses"/);
+  assert.match(views.template, /data-tab-panel="budget"/);
+  assert.match(views.template, /id="activityBudgetForm"/);
+  assert.match(views.template, /id="advanceBudgetStatus"/);
+  assert.match(views.template, /id="downloadBudgetProposal"/);
   assert.match(views.template, /data-tab-panel="vendors"/);
   assert.match(views.template, /id="vendorSearch"/);
   assert.match(views.template, /id="vendorRows"/);
@@ -16,7 +20,7 @@ test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
 
 test('帳務既有 scripts 由同一 mount 依序載入', () => {
   assert.deepEqual(views.scriptSources.map(item => item.key), [
-    'exceljs', 'accounting-domain', 'accounting-core', 'accounting-ui', 'accounting-issue17'
+    'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui', 'accounting-issue17'
   ]);
   assert.equal(views.cacheKey, 'accounting');
 });

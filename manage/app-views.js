@@ -10,6 +10,7 @@
       label: '活動帳務',
       views: Object.freeze([
         Object.freeze({ id: 'overview', label: '總覽' }),
+        Object.freeze({ id: 'budget', label: '活動預算' }),
         Object.freeze({ id: 'expenses', label: '支出明細' }),
         Object.freeze({ id: 'vendors', label: '廠商主檔' }),
         Object.freeze({ id: 'reimbursement', label: '核銷整理' })
@@ -55,6 +56,7 @@
       }
     }),
     'accounting:expenses': stubView('支出明細', '此 view 將沿用既有支出清單、篩選與編輯邏輯。'),
+    'accounting:budget': stubView('活動預算', '此 view 將建立與核准活動預算。'),
     'accounting:vendors': stubView('廠商主檔', '此 view 將讀取正式廠商主檔。'),
     'accounting:reimbursement': stubView('核銷整理', '此 view 將沿用既有核銷預覽與 Excel 匯出邏輯。'),
     'planning:history': stubView('歷史紀錄', '此 view 將接上規劃資料層的歷史資料讀取。'),
