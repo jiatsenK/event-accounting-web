@@ -65,6 +65,9 @@
 .rd-in-duration { width: 4rem; }
 .rd-time-readout { min-width: 8.5rem; padding: 0 var(--space-2xs); font-variant-numeric: tabular-nums; font-weight: 640; color: var(--color-muted); white-space: nowrap; }
 .rd-prize-cell { display: flex; flex-wrap: wrap; gap: var(--space-3xs); align-items: center; font-size: var(--text-sm); }
+.rd-drag-handle { display: inline-block; padding: 0 var(--space-2xs); color: var(--color-muted); cursor: grab; touch-action: none; user-select: none; }
+.rd-table tbody tr.rd-dragging { opacity: 0.4; }
+.rd-add-btn { margin-top: var(--space-md); padding: 0 var(--space-md); min-height: 2.5rem; color: var(--color-accent-ink); background: var(--color-accent); border: 0; border-radius: var(--radius-input); font-weight: 640; }
 
 /* ---- 流程時間設定 ---- */
 .rd-config-row { display: flex; align-items: center; gap: var(--space-lg); flex-wrap: wrap; }
@@ -75,9 +78,7 @@
 .rd-icon.rd-danger:hover { background: oklch(95% 0.03 25); color: var(--color-danger); }
 .rd-link { padding: 0; color: var(--color-accent); background: none; border: 0; font: inherit; font-weight: 640; }
 
-.rd-add-row { display: flex; flex-wrap: wrap; gap: var(--space-2xs); align-items: center; margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--rd-line); }
-.rd-add-row .rd-in { border: 1px solid var(--rd-line); background: var(--color-surface); }
-.rd-add-row button, .rd-add-inline button, .rd-task-add button { padding: 0 var(--space-md); min-height: 2.5rem; color: var(--color-accent-ink); background: var(--color-accent); border: 0; border-radius: var(--radius-input); font-weight: 640; }
+.rd-add-inline button, .rd-task-add button { padding: 0 var(--space-md); min-height: 2.5rem; color: var(--color-accent-ink); background: var(--color-accent); border: 0; border-radius: var(--radius-input); font-weight: 640; }
 .rd-add-inline { display: inline-flex; gap: var(--space-3xs); align-items: center; }
 .rd-add-inline input { min-height: 2.5rem; padding: 0 var(--space-sm); border: 1px solid var(--rd-line); border-radius: var(--radius-input); background: var(--color-surface); }
 
