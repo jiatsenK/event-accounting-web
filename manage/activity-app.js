@@ -53,6 +53,7 @@
         'accounting:overview': win.AccountingViews,
         'accounting:budget': win.AccountingViews,
         'accounting:expenses': win.AccountingViews,
+        'accounting:prizes': win.PrizeViews,
         'accounting:vendors': win.AccountingViews,
         'accounting:reimbursement': win.AccountingViews,
         'accounting:payment_requests': win.AccountingViews,

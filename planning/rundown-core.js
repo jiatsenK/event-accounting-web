@@ -100,7 +100,8 @@
       count: num(row['名額'] != null ? row['名額'] : row.count),
       amount: num(row['單筆金額'] != null ? row['單筆金額'] : row.amount),
       presenter: str(row['頒獎人'] || row.presenter),
-      status: str(row['狀態'] || row.status)
+      status: str(row['狀態'] || row.status),
+      note: str(row['備註'] || row.note)
     })).filter(row => row.prize_id);
 
     return {
