@@ -43,7 +43,6 @@
     };
     state.templateId = (core().templates()[0] || {}).id || null;
     state.importTemplateId = state.templateId;
-    state.anchorEditing = new Set(); // 正在編輯錨定時間的 segment_id；多數段落用不到，預設收起來
 
     function setMessage(message, error) {
       state.message = message || '';
@@ -278,16 +277,6 @@
       const timed = core().calculateTimeline(d.segments, d.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s]));
 
-      // 錨定時間絕大多數段落用不到（只有少數要釘死時刻），預設收成一個小按鈕；
-      // 點開才變成真正的時間欄位，不是每一列都攤開一個空的時間框。
-      function anchorCellHtml(seg, readOnly) {
-        if (readOnly) return seg.anchor_time ? esc(seg.anchor_time) : '';
-        if (seg.anchor_time || state.anchorEditing.has(seg.segment_id)) {
-          return '<input class="rd-in rd-in-time" type="time" data-field="錨定時間" value="' + esc(seg.anchor_time) + '">';
-        }
-        return '<button type="button" class="rd-link" data-action="add-anchor" data-seg="' + esc(seg.segment_id) + '" title="把這段釘在固定時刻，其餘段落不用設">📌 釘時刻</button>';
-      }
-
       // 獎項：直接列出可用獎項當可點的標籤，點一下就連結／取消連結，不用打 prize_id。
       function prizeCellHtml(seg, readOnly) {
         if (!d.prizes.length) return '';
@@ -302,18 +291,15 @@
         }).join('');
       }
 
-      // 順序不給手打：拖把手調（滑鼠），或按 ▲▼（觸控／鍵盤都能用，拖曳在手機上常常失靈）。
-      // 順序值本身用隱藏欄位跟著列一起送出。
-      const segmentRows = timed.map((seg, i) =>
+      // 順序只用拖曳調（不做上下箭頭）；順序值用隱藏欄位跟著列一起送出，
+      // 錨定時間畫面上不開放編輯，但既有值仍要跟著列一起送出，不能被其他欄位的存檔洗掉。
+      const segmentRows = timed.map(seg =>
         '<tr data-seg="' + esc(seg.segment_id) + '">' +
-          '<td class="rd-order-cell">' + (readOnly ? '' :
-            '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>' +
-            '<button type="button" class="rd-icon rd-order-btn" data-action="move-seg" data-dir="up"' + (i === 0 ? ' disabled' : '') + ' title="上移">▲</button>' +
-            '<button type="button" class="rd-icon rd-order-btn" data-action="move-seg" data-dir="down"' + (i === timed.length - 1 ? ' disabled' : '') + ' title="下移">▼</button>') +
-            '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '"></td>' +
+          '<td class="rd-order-cell">' + (readOnly ? '' : '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>') +
+            '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '">' +
+            '<input type="hidden" data-field="錨定時間" value="' + esc(seg.anchor_time) + '"></td>' +
           '<td class="rd-time-readout">' + esc(seg.time) + '</td>' +
           '<td><input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></td>' +
-          '<td class="rd-anchor-cell">' + anchorCellHtml(seg, readOnly) + '</td>' +
           '<td><input class="rd-in" data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></td>' +
           '<td><select class="rd-in" data-field="階段"' + dis + '>' + stageOptions.replace('value="' + seg.stage + '"', 'value="' + seg.stage + '" selected') + '</select></td>' +
           '<td class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</td>' +
@@ -347,10 +333,10 @@
         configPanel() +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>時段</h3>' +
           '<span class="rd-muted">' +
-          (readOnly ? '' : '拖 ⠿ 調順序；改「持續」或「錨定時間」自動存，牆上時間欄是算出來的，唯讀') + '</span></div>' +
+          (readOnly ? '' : '拖曳最左邊調整順序；改「持續」會自動存檔，「時間」是算出來的，不能直接改') + '</span></div>' +
           '<div class="rd-scroll"><table class="rd-table"><thead><tr>' +
-            '<th></th><th>時間</th><th>持續(分)</th><th>錨定</th><th>節目內容</th><th>階段</th><th>獎項</th><th></th>' +
-          '</tr></thead><tbody>' + (segmentRows || '<tr><td colspan="8" class="rd-empty">尚無時段</td></tr>') + '</tbody></table></div>' +
+            '<th></th><th>時間</th><th>持續(分)</th><th>節目內容</th><th>階段</th><th>獎項</th><th></th>' +
+          '</tr></thead><tbody>' + (segmentRows || '<tr><td colspan="7" class="rd-empty">尚無時段</td></tr>') + '</tbody></table></div>' +
           (readOnly ? '' : '<button type="button" class="rd-add-btn" data-action="add-seg">＋ 新增時段</button>') +
         '</section>' +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>角色</h3><span class="rd-muted">從主流程拆出的固定角色，人員之後再排</span></div>' +
@@ -619,11 +605,6 @@
         if (!root.confirm('刪除這個時段？它的任務也會一併刪除。')) return;
         write({ action: 'save_rundown_segment', segment_id: tr.dataset.seg, _delete: '1' }, '已刪除時段');
       });
-      // ▲▼：跟拖曳走同一條 reorderAndSave，觸控／鍵盤都能操作
-      on('[data-action="move-seg"]', 'click', event => {
-        const tr = event.target.closest('tr[data-seg]');
-        if (tr) moveSegment(tr.dataset.seg, event.target.dataset.dir);
-      });
       bindSegmentDrag();
 
       // 角色
@@ -667,14 +648,6 @@
           錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: seg.prize_ids.join(',') },
           '已更新獎項連動', { noRender: true, optimistic: false });
       });
-      // 錨定時間：預設收成按鈕，點開才變成真正的時間欄位
-      on('[data-action="add-anchor"]', 'click', event => {
-        state.anchorEditing.add(event.target.dataset.seg);
-        render();
-        const input = container.querySelector('[data-seg="' + event.target.dataset.seg + '"] [data-field="錨定時間"]');
-        if (input) input.focus();
-      });
-
       // 工作人員
       on('[data-action="add-crew"]', 'click', () => {
         const wrap = container.querySelector('.rd-crew .rd-add-inline');
@@ -755,18 +728,6 @@
         }
         dragId = '';
       });
-    }
-
-    // 鍵盤／觸控可用的順序調整：跟拖曳共用同一套「取新鄰居中間值」寫入邏輯。
-    function moveSegment(segmentId, dir) {
-      const ids = state.data.segments.map(s => s.segment_id);
-      const index = ids.indexOf(segmentId);
-      const swapWith = dir === 'up' ? index - 1 : index + 1;
-      if (index < 0 || swapWith < 0 || swapWith >= ids.length) return;
-      const next = ids.slice();
-      next[index] = ids[swapWith];
-      next[swapWith] = ids[index];
-      reorderAndSave(next, segmentId);
     }
 
     function reorderAndSave(ids, movedId) {
