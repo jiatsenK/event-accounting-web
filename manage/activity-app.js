@@ -56,6 +56,7 @@
         'accounting:prizes': win.PrizeViews,
         'accounting:vendors': win.AccountingViews,
         'accounting:reimbursement': win.AccountingViews,
+        'accounting:payment_requests': win.AccountingViews,
         'planning:history': win.PlanningViews && win.PlanningViews.history,
         'planning:forecast': win.PlanningViews && win.PlanningViews.forecast,
         'planning:rundown': win.RundownViews && win.RundownViews.rundown

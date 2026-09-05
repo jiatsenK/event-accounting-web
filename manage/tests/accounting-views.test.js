@@ -13,6 +13,9 @@ test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
   assert.match(views.template, /data-tab-panel="vendors"/);
   assert.match(views.template, /id="vendorSearch"/);
   assert.match(views.template, /id="vendorRows"/);
+  assert.match(views.template, /data-tab-panel="payment_requests"/);
+  assert.match(views.template, /id="paymentRequestForm"/);
+  assert.match(views.template, /id="paymentRequestRows"/);
   assert.match(views.template, /data-tab-panel="reimbursement"/);
   assert.doesNotMatch(views.template, /class="tabs"/);
   assert.doesNotMatch(views.template, /class="page-header"/);
@@ -20,7 +23,8 @@ test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
 
 test('帳務既有 scripts 由同一 mount 依序載入', () => {
   assert.deepEqual(views.scriptSources.map(item => item.key), [
-    'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui', 'accounting-issue17'
+    'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui',
+    'payment-request', 'payment-request-ui', 'accounting-issue17'
   ]);
   assert.equal(views.cacheKey, 'accounting');
 });
