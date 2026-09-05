@@ -105,7 +105,10 @@
         printArea: 'A1:AC18'
       }
     });
-    for (let col = 1; col <= 28; col += 1) sheet.getColumn(col).width = col === 1 ? 3 : 3.2;
+    // 範例檔只有 A 欄特別窄（邊界留白），其餘欄位是 Excel 預設寬度（~8.8）；
+    // 之前把全部 28 欄都設成 3.2，整張表被壓成一條，這是「完全跑掉」的根因。
+    sheet.getColumn(1).width = 3;
+    for (let col = 2; col <= 28; col += 1) sheet.getColumn(col).width = 8.84;
 
     const font = (size, opts) => Object.assign({ name: 'DFKai-SB', size }, opts || {});
     const put = (ref, value, opts) => {
