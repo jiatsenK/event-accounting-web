@@ -4,7 +4,7 @@ const views = require('../app-views.js');
 
 assert.deepEqual(
   views.AREAS.accounting.views.map(item => item.label),
-  ['總覽', '活動預算', '支出明細', '廠商主檔', '核銷整理']
+  ['總覽', '活動預算', '支出明細', '獎項', '廠商主檔', '核銷整理']
 );
 assert.deepEqual(
   views.AREAS.planning.views.map(item => item.label),
