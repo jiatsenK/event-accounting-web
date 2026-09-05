@@ -31,7 +31,12 @@
   }
   const SCRIPT_SOURCES = Object.freeze([
     Object.freeze({ key: 'exceljs', src: 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js' }),
-    Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.umd.cjs' }),
+    // index.umd.cjs 這個檔名讓 jsdelivr 回傳 Content-Type: application/node，
+    // 嚴格 MIME 檢查的瀏覽器會直接拒絕當 script 執行，整個帳務模組因此掛掉
+    // （後面所有 script 都是同一條 Promise chain，一個失敗全部不會載入）。
+    // index.iife.js 是同一個套件專門給瀏覽器 <script> 用的建置，掛同一個
+    // window.docx 全域變數，MIME type 正確。
+    Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js' }),
     Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260831-01' }),
     Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260904-49' }),
     Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260904-49' }),
