@@ -7,7 +7,7 @@
 
   const DEFAULT_ACTIVITY_ID = 'midyear2026';
   const AREA_VIEWS = Object.freeze({
-    accounting: Object.freeze(['overview', 'budget', 'expenses', 'vendors', 'reimbursement']),
+    accounting: Object.freeze(['overview', 'budget', 'expenses', 'vendors', 'payment_requests', 'reimbursement']),
     planning: Object.freeze(['history', 'forecast', 'rundown'])
   });
 
