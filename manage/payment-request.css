@@ -1,0 +1,15 @@
+.accounting-app .payment-request-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.accounting-app .payment-request-table-wrap { overflow: auto; }
+.accounting-app .payment-request-table { min-width: 960px; }
+.accounting-app .payment-request-table td { vertical-align: top; }
+.accounting-app .payment-request-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.accounting-app .payment-request-status.pending { color: #7a5712; background: #fff4d9; }
+.accounting-app .payment-request-status.submitted { color: #28566f; background: #e8f0f6; }
+.accounting-app .payment-request-status.paid { color: #28603c; background: #e8f4eb; }

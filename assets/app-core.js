@@ -91,7 +91,12 @@ async function apiWrite(fields) {
   if (!state.apiUrl || !state.token) throw new Error('尚未輸入存取碼');
   const action = fields.action;
   const budgetAction = ['save_activity_budget_line', 'delete_activity_budget_line', 'update_budget_status'].includes(action);
-  const before = await apiRead(budgetAction ? 'activity_budget' : 'activity', { activity_id: fields.activity_id });
+  const paymentRequestAction = action === 'save_payment_request';
+  const readAction = budgetAction ? 'activity_budget' : paymentRequestAction ? 'payment_requests' : 'activity';
+  const before = await apiRead(readAction, { activity_id: fields.activity_id });
+  const beforeRequestCount = paymentRequestAction && !fields.request_id && !fields._delete
+    ? before.requests.filter(row => window.PaymentRequest && window.PaymentRequest.requestMatches(row, fields)).length
+    : 0;
   const beforeCount = action === 'add_expense'
     ? before.expenses.filter(row => expenseMatches(row, fields)).length
     : budgetAction && action === 'save_activity_budget_line'
@@ -132,8 +137,19 @@ async function apiWrite(fields) {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       await sleep(attempt === 0 ? 500 : 750);
       if (serverResult && !serverResult.ok) throw new Error(serverResult.error || 'GAS 寫入失敗');
-      const after = await apiRead(budgetAction ? 'activity_budget' : 'activity', { activity_id: fields.activity_id });
-      if (action === 'save_activity_budget_line') {
+      const after = await apiRead(readAction, { activity_id: fields.activity_id });
+      if (paymentRequestAction) {
+        const del = String(fields._delete || '') === '1';
+        if (del) {
+          if (!after.requests.some(row => String(row.request_id || '') === String(fields.request_id || ''))) return after;
+        } else if (fields.request_id) {
+          const updated = after.requests.find(row => String(row.request_id || '') === String(fields.request_id));
+          if (updated && window.PaymentRequest && window.PaymentRequest.requestMatches(updated, fields)) return after;
+        } else {
+          const afterCount = after.requests.filter(row => window.PaymentRequest && window.PaymentRequest.requestMatches(row, fields)).length;
+          if (afterCount > beforeRequestCount) return after;
+        }
+      } else if (action === 'save_activity_budget_line') {
         const targetId = String(fields.budget_line_id || (serverResult && serverResult.data && serverResult.data.saved_budget_line_id) || '');
         const matched = targetId
           ? after.rows.find(row => String(row.budget_line_id || '') === targetId && window.ActivityBudget.lineMatches(row, fields))
@@ -167,6 +183,7 @@ async function refresh() {
     render(data);
     await loadVendors();
     if (typeof window.loadActivityBudget === 'function') await window.loadActivityBudget();
+    if (typeof window.loadPaymentRequests === 'function') await window.loadPaymentRequests();
     setStatus('');
     return data;
   } catch (err) {

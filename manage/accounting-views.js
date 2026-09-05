@@ -25,9 +25,23 @@
     '<textarea name="note" placeholder="備註／價差原因"></textarea><div class="form-actions"><button id="submitBudgetLine" type="submit">儲存品項</button><button id="cancelBudgetEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="activityBudgetFormStatus" class="status form-status" aria-live="polite"></div></form></div>' +
     '<div id="activityBudgetStatusMessage" class="status form-status" aria-live="polite"></div><div class="budget-table-wrap"><table class="budget-table"><thead><tr><th>預算項目</th><th>廠商</th><th>品項</th><th class="num">單價</th><th class="num">數量</th><th class="num">含稅金額</th><th class="num">廠商總額</th><th class="num">去年同項</th><th>付款／備註</th><th></th></tr></thead>' +
     '<tbody id="activityBudgetRows"><tr><td colspan="10" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
+  const PAYMENT_REQUEST_PANEL = '<section class="tab-panel" data-tab-panel="payment_requests" role="tabpanel" hidden>' +
+    '<div class="card"><div class="section-heading"><div><h2>款項申請單</h2><div class="muted">一張＝單一收款對象的單一付款階段；何時跟公司請了什麼錢，看這裡</div></div>' +
+    '<div class="payment-request-toolbar"><select id="paymentRequestStatusFilter"><option value="">全部狀態</option><option value="待申請">待申請</option><option value="已申請">已申請</option><option value="公司已匯款">公司已匯款</option></select><button id="showPaymentRequestEditor" type="button">新增申請單</button></div></div>' +
+    '<div id="paymentRequestEditor" class="editor-panel" hidden><div class="section-heading"><h2 id="paymentRequestFormTitle">新增款項申請單</h2><button id="closePaymentRequestEditor" class="secondary" type="button">關閉</button></div>' +
+    '<form id="paymentRequestForm"><div class="row"><input name="收款對象" placeholder="收款對象（廠商名稱或個人帳戶）" required><input name="付款階段" placeholder="付款階段，例如：訂金／尾款"></div>' +
+    '<div class="row"><input name="金額合計" type="number" step="1" placeholder="金額合計" required><input name="申請日期" type="date"><input name="匯款期限" type="date" placeholder="匯款期限"></div>' +
+    '<input name="用途說明" placeholder="用途說明，一句話：活動＋用途">' +
+    '<div class="row"><input name="expense_ids" placeholder="涵蓋的 expense_id（逗號分隔，選填）"><input name="附憑證張數" type="number" min="0" step="1" placeholder="附憑證張數"></div>' +
+    '<div class="row"><select name="簽核狀態"><option value="待申請">待申請</option><option value="已申請">已申請</option><option value="公司已匯款">公司已匯款</option></select></div>' +
+    '<textarea name="備註" placeholder="備註（選填）"></textarea>' +
+    '<div class="form-actions"><button id="submitPaymentRequest" type="submit">儲存申請單</button><button id="cancelPaymentRequestEdit" class="secondary" type="button" hidden>取消修改</button></div>' +
+    '<div id="paymentRequestFormStatus" class="status form-status" aria-live="polite"></div></form></div>' +
+    '<div id="paymentRequestStatusMessage" class="status form-status" aria-live="polite"></div><div class="payment-request-table-wrap"><table class="payment-request-table"><thead><tr><th>申請日期</th><th>收款對象</th><th>付款階段</th><th class="num">金額合計</th><th>用途說明</th><th>匯款期限</th><th>簽核狀態</th><th></th></tr></thead>' +
+    '<tbody id="paymentRequestRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
   function templateWithAccountingPanels() {
     const marker = '<section class="tab-panel" data-tab-panel="reimbursement"';
-    return ACCOUNTING_TEMPLATE.replace(marker, BUDGET_PANEL + VENDOR_PANEL + marker);
+    return ACCOUNTING_TEMPLATE.replace(marker, BUDGET_PANEL + VENDOR_PANEL + PAYMENT_REQUEST_PANEL + marker);
   }
   const SCRIPT_SOURCES = Object.freeze([
     Object.freeze({ key: 'exceljs', src: 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js' }),
@@ -42,6 +56,8 @@
     Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260904-49' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
     Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260904-49' }),
+    Object.freeze({ key: 'payment-request', src: '../assets/payment-request.js?v=20260905-01' }),
+    Object.freeze({ key: 'payment-request-ui', src: '../assets/payment-request-ui.js?v=20260905-01' }),
     Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260902-app1' })
   ]);
   let dependenciesPromise = null;
