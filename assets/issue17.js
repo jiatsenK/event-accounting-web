@@ -170,6 +170,14 @@
       setInlineExpenseStatus('新版核銷後端尚未部署，暫時不能完成核銷。', true);
       return;
     }
+    let settlementFields = {};
+    try {
+      if (typeof window.pettyCashFinalizeFields === 'function') settlementFields = window.pettyCashFinalizeFields();
+    } catch (error) {
+      setInlineExpenseStatus(error.message, true);
+      window.alert(error.message);
+      return;
+    }
     const pending = (state.expenses || []).filter(row => String(row.reimbursement_status || '') === '待核銷');
     const message = pending.length
       ? `將 ${pending.length} 筆待核銷改為「已核銷」，並永久鎖定此活動帳務。確定繼續？`
@@ -179,7 +187,9 @@
     if (button) button.disabled = true;
     setInlineExpenseStatus('正在完成核銷並鎖定帳務…');
     try {
-      const confirmed = await postReimbursementAction({ action: 'finalize_reimbursements', activity_id: state.activityId }, after => Boolean(after.activity && after.activity.reimbursement_locked));
+      const activityId = state.activityId;
+      const confirmed = await postReimbursementAction({ action: 'finalize_reimbursements', activity_id: activityId, ...settlementFields }, after => Boolean(after.activity && after.activity.reimbursement_locked));
+      if (state.activityId !== activityId) return;
       render(confirmed);
       setInlineExpenseStatus('已核銷完成，帳務已鎖定。');
     } catch (err) {
