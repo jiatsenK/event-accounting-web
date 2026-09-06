@@ -116,12 +116,35 @@
     };
   }
 
-  async function fetchRundown(activityId) {
-    return apiRead('rundown', { activity_id: String(activityId || '') });
+  function rundownCacheKey(activityId) {
+    return 'rundown:v1:' + DEFAULT_API_URL + ':' + String(activityId || '');
+  }
+
+  function getCachedRundown(activityId) {
+    try {
+      if (!root.sessionStorage.getItem(TOKEN_STORAGE_KEY)) return null;
+      const cached = JSON.parse(root.sessionStorage.getItem(rundownCacheKey(activityId)) || 'null');
+      if (!cached || cached.activity_id !== String(activityId) || !Array.isArray(cached.segments)) return null;
+      if (['segments', 'roles', 'tasks', 'crew', 'assignments', 'prizes'].some(key => cached[key] != null &&
+          (!Array.isArray(cached[key]) || cached[key].some(row => !row || typeof row !== 'object' || Array.isArray(row))))) return null;
+      return cached;
+    } catch (err) { return null; }
+  }
+
+  function cacheRundown(activityId, data) {
+    try {
+      root.sessionStorage.setItem(rundownCacheKey(activityId), JSON.stringify(Object.assign({}, data, { activity_id: String(activityId) })));
+    } catch (err) { /* 儲存空間不足或被停用，不影響讀寫 */ }
+  }
+
+  async function fetchRundown(activityId, options) {
+    const data = await apiRead('rundown', { activity_id: String(activityId || '') });
+    if (!options || options.cache !== false) cacheRundown(activityId, data);
+    return data;
   }
 
   // 寫入走 POST（隱藏 form + iframe）。GAS 的 postMessage 回覆有時被瀏覽器擋掉，
-  // 所以同時輪詢一個 confirm() 判斷式（通常是重讀後檢查變更是否生效），兩者任一成立就算成功。
+  // 流程表以 nonce 收據確認；其他呼叫端仍可提供 confirm() 判斷式。
   function apiWrite(fields, options) {
     const opts = options || {};
     return new Promise((resolve, reject) => {
@@ -170,13 +193,19 @@
       doc.body.append(iframe, form);
       form.submit();
 
-      // postMessage 收不到時的後備：重讀比對。首輪等久一點讓 postMessage 先到。
+      // 流程表首輪 400ms 查收據，不等 2.5s，也不開整份 rundown。
       let polls = 0;
       const maxPolls = 12;
       const poll = async () => {
         if (settled) return;
         polls += 1;
-        if (typeof opts.confirm === 'function') {
+        if (opts.receipt) {
+          let receipt;
+          try { receipt = await apiRead('rundown_write_result', { activity_id: fields.activity_id, write_action: fields.action, nonce }); }
+          catch (err) { /* 傳輸失敗下輪再試；不可當成成功 */ }
+          if (receipt && receipt.ok === false) return finish(reject, new Error(receipt.error || '寫入失敗'));
+          if (receipt && receipt.ok === true) return finish(resolve, receipt.data);
+        } else if (typeof opts.confirm === 'function') {
           try {
             const ok = await opts.confirm();
             if (ok) return finish(resolve, ok === true ? { confirmed: true } : ok);
@@ -186,7 +215,7 @@
         if (polls >= maxPolls) return finish(reject, new Error('還沒確認寫入是否成功，請按「重新讀取」看看'));
         timer = win.setTimeout(poll, 2000);
       };
-      timer = win.setTimeout(poll, 2500);
+      timer = win.setTimeout(poll, opts.receipt ? 400 : 2500);
     });
   }
 
@@ -199,6 +228,8 @@
     fetchPlanningHistory,
     fetchPlanningForecast,
     fetchRundown,
+    getCachedRundown,
+    cacheRundown,
     getHistory,
     calculateRows
   };
