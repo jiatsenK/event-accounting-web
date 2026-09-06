@@ -321,3 +321,118 @@ test('切回同活動保留草稿，切換活動後較晚回覆不覆蓋新畫�
     assert.match(host.innerHTML,/新活動標題/);assert.doesNotMatch(host.innerHTML,/節目17/);
   }finally{global.PlanningCore=PlanningCore;}
 });
+
+
+// #71 interaction harness: exercise event handlers with the existing transport stub.
+function redesignHarness() {
+  const host=stubElement(), controls=new Map();
+  const element=(key,dataset={})=>{
+    if(!controls.has(key)) controls.set(key,{...stubElement(),dataset,handlers:{},value:'',textContent:'',
+      addEventListener(type,fn){this.handlers[type]=fn;}, focus(){this.focused=true;}, select(){}, setAttribute(){},
+      parentElement:{querySelector:()=>stubElement()}, getBoundingClientRect(){return {height:120};}});
+    return controls.get(key);
+  };
+  const row=element('row',{seg:'a'}),anchor=element('anchor',{field:'錨定時間'});
+  anchor.value='19:30';row.querySelector=()=>anchor;
+  host.querySelector=selector=>selector==='.rd-segments'?element('segments'):element(selector);
+  host.querySelectorAll=selector=>{
+    if(selector==='[data-stage]')return [element('stage',{stage:'彩排'})];
+    if(selector.startsWith('[data-action='))return [element(selector)];
+    return [];
+  };
+  const ctrl=views.createController(host,{activityId:'redesign'});
+  ctrl.state.source='backend';ctrl.state.data=RundownCore.normalize({config:{official_start:'18:00'},
+    segments:[{segment_id:'a',title:'迎賓',duration_min:30,order:10,stage:'正式',anchor_time:'18:00',note:'保留備註',prize_ids:['p']},{segment_id:'b',title:'開場',duration_min:10,order:20}],
+    roles:[{role:'主持'}],tasks:[{task_id:'t',segment_id:'a',role:'主持',content:'引導來賓'}],prizes:[{prize_id:'p',tier:'頭獎',amount:5000,count:2,presenter:'頒獎人'}]});
+  ctrl.render();
+  for(const el of controls.values())el.closest=()=>row;
+  const click=name=>{const el=element('[data-action="'+name+'"]');el.closest=()=>row;return el.handlers.click({target:el,currentTarget:el});};
+  return {host,ctrl,controls,element,row,anchor,click};
+}
+
+test('#71 工具列層級、單一匯入、角色與獎項收進選單',()=>{
+  const h=redesignHarness();
+  assert.match(h.host.innerHTML,/class="rd-primary" data-action="add-segment"/);
+  assert.doesNotMatch(h.host.innerHTML,/class="rd-modes"|class="rd-status|data-quick-segment|✕/);
+  assert.equal((h.host.innerHTML.match(/帶入起始流程/g)||[]).length,1);
+  assert.match(h.host.innerHTML,/rd-role-manager/);assert.match(h.host.innerHTML,/rd-prize-popover/);
+  assert.match(h.host.innerHTML,/aria-pressed="true" data-action="toggle-prize"/);
+  assert.match(h.host.innerHTML,/頭獎 \$5,000 × 2名／頒獎人/);
+});
+
+test('#71 階段與錨定沿用完整時段契約，不遺失其餘欄位',async()=>{
+  const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {segment_id:'a'};}};
+  try{
+    const h=redesignHarness(),stage=h.element('stage');
+    await stage.handlers.click({currentTarget:stage});
+    assert.equal(sent[0].階段,'彩排');assert.equal(sent[0].節目內容,'迎賓');assert.equal(sent[0].duration_min,30);
+    assert.equal(sent[0].錨定時間,'18:00');assert.equal(sent[0].prize_ids,'p');assert.equal(sent[0].備註,'保留備註');
+    await h.click('save-anchor');assert.equal(sent[1].錨定時間,'19:30');assert.equal(sent[1].階段,'彩排');
+    assert.equal(h.ctrl.state.data.segments[0].anchor_time,'19:30');
+  }finally{global.PlanningCore=PlanningCore;}
+});
+
+test('#71 新增接在焦點段後並沿用長度、成功使用收據 ID',async()=>{
+  const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {segment_id:'new'};}};
+  try{
+    const h=redesignHarness();h.ctrl.state.focusedSegment='a';await h.click('add-segment');
+    assert.equal(sent.length,1);assert.equal(sent[0].duration_min,30);assert.equal(sent[0].順序,15);
+    assert.deepEqual(h.ctrl.state.data.segments.map(s=>s.segment_id),['a','new','b']);
+  }finally{global.PlanningCore=PlanningCore;}
+});
+
+test('#71 刪除先保留資料 8 秒，原位復原不寫入也不移除任務',async()=>{
+  const set=global.setTimeout,clear=global.clearTimeout;let timer,delay,writes=0,cancelled=false;
+  global.setTimeout=(fn,ms)=>{timer=fn;delay=ms;return 1;};global.clearTimeout=()=>{cancelled=true;};
+  global.PlanningCore={apiWrite:async()=>{writes++;return {};}};
+  try{
+    const h=redesignHarness();await h.click('del-seg');assert.equal(delay,8000);assert.equal(writes,0);
+    assert.match(h.host.innerHTML,/已刪除「迎賓」· 含 1 個任務/);assert.equal(h.ctrl.state.data.tasks.length,1);
+    await h.click('undo-delete');await timer();assert.equal(cancelled,true);assert.equal(writes,0);
+    assert.equal(h.ctrl.state.pendingDelete,null);assert.equal(h.ctrl.state.data.segments.length,2);
+  }finally{global.setTimeout=set;global.clearTimeout=clear;global.PlanningCore=PlanningCore;}
+});
+
+test('#71 復原期限結束才送一次既有刪除，成功移除關聯任務',async()=>{
+  const set=global.setTimeout;let timer;const sent=[];global.setTimeout=fn=>{timer=fn;return 1;};
+  global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {};}};
+  try{
+    const h=redesignHarness();h.click('del-seg');await timer();
+    assert.equal(sent.length,1);assert.equal(sent[0]._delete,'1');assert.equal(sent[0].segment_id,'a');
+    assert.equal(h.ctrl.state.data.tasks.length,0);assert.deepEqual(h.ctrl.state.data.segments.map(s=>s.segment_id),['b']);
+  }finally{global.setTimeout=set;global.PlanningCore=PlanningCore;}
+});
+
+test('#71 刪除失敗還原原位資料並提供就地錯誤',async()=>{
+  const set=global.setTimeout;let timer;global.setTimeout=fn=>{timer=fn;return 1;};
+  global.PlanningCore={apiWrite:async()=>{throw Error('刪除失敗');},fetchRundown:async()=>{throw Error('offline');}};
+  try{
+    const h=redesignHarness();h.click('del-seg');await timer();assert.equal(h.ctrl.state.error,true);
+    assert.equal(h.ctrl.state.data.tasks.length,1);assert.equal(h.ctrl.state.data.segments.length,2);
+    assert.match(h.ctrl.state.feedback.selector,/data-seg="a"/);assert.equal(h.ctrl.state.pendingDelete,null);
+  }finally{global.setTimeout=set;global.PlanningCore=PlanningCore;}
+});
+
+test('#71 活動已卸載時不執行延後刪除，草稿存在時不開始刪除',async()=>{
+  const set=global.setTimeout;let timer,writes=0;global.setTimeout=fn=>{timer=fn;return 1;};
+  global.PlanningCore={apiWrite:async()=>{writes++;return {};}};
+  try{
+    const h=redesignHarness();h.ctrl.state.dirty=true;h.click('del-seg');assert.equal(timer,undefined);
+    h.ctrl.state.dirty=false;h.click('del-seg');h.ctrl.state.disposed=true;await timer();assert.equal(writes,0);
+  }finally{global.setTimeout=set;global.PlanningCore=PlanningCore;}
+});
+
+test('#71 鍵盤上下移動沿用草稿排序並播報新位置與時間',()=>{
+  const h=perfHarness(eighteen);let prevented=false;
+  h.handles[0].handlers.keydown({key:'ArrowDown',preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);assert.equal(h.ctrl.state.data.segments[1].segment_id,'s0');assert.equal(h.ctrl.state.dirty,true);
+  assert.match(h.host.querySelector('[data-rd-live]').textContent,/第 2 個時段，18:05–18:10/);
+});
+
+test('#71 CSS 保留 token、焦點 outline、44px 觸控與 reduced-motion',()=>{
+  const fs=require('node:fs'),path=require('node:path');const css=fs.readFileSync(path.join(__dirname,'../rundown.css'),'utf8');
+  assert.doesNotMatch(css,/oklch\(|#[0-9a-f]{3,8}\b/i);assert.match(css,/macrostructure: Workbench/);
+  assert.match(css,/:focus-visible \{ outline: 2px solid var\(--color-accent\)/);
+  assert.match(css,/min-height: 2\.75rem/);assert.match(css,/@media \(max-width: 52rem\)/);
+  assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);assert.doesNotMatch(css,/min-width: 1340px/);
+});

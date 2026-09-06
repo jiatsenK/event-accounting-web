@@ -32,7 +32,7 @@
   }
 
   function icon(name) {
-    const paths = { close: '<path d="m6 6 12 12M18 6 6 18"/>', more: '<path d="M4 12h1m6 0h1m6 0h1"/>', drag: '<path d="M8 5h1m6 0h1M8 12h1m6 0h1M8 19h1m6 0h1"/>', pin: '<path d="m8 3 8 0-1 6 3 4H6l3-4-1-6m4 10v8"/>' };
+    const paths = { chevron: '<path d="m6 9 6 6 6-6"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', more: '<path d="M4 12h1m6 0h1m6 0h1"/>', drag: '<path d="M8 5h1m6 0h1M8 12h1m6 0h1M8 19h1m6 0h1"/>', pin: '<path d="m8 3 8 0-1 6 3 4H6l3-4-1-6m4 10v8"/>' };
     return '<svg class="rd-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
   }
 
@@ -319,6 +319,7 @@
       el.classList.toggle('rd-save-pulse', success);
       if (success) root.setTimeout(() => el.classList.remove('rd-save-pulse'), 220);
       el.setAttribute('aria-invalid', String(error));
+      el.setAttribute('aria-busy', String(state.busy));
       let note = el.parentElement.querySelector('.rd-field-message');
       if (!note) { note = el.ownerDocument.createElement('small'); note.className = 'rd-field-message'; note.setAttribute('role', 'status'); el.parentElement.appendChild(note); }
       note.id = 'rd-feedback-' + [...container.querySelectorAll('.rd-field-message')].indexOf(note);
@@ -332,6 +333,7 @@
     function patchMarkup(markup) {
       const doc = container.ownerDocument;
       if (!doc || !doc.createElement) { container.innerHTML = markup; return; }
+      const positions = new Map([...container.querySelectorAll('.rd-segment-card')].map(el => [el.dataset.seg, el.getBoundingClientRect().top]));
       const template = doc.createElement('template'); template.innerHTML = markup;
       const key = node => node.nodeType === 1 ? node.tagName + ':' + ['data-seg','data-field','data-action','data-config','data-prize','data-task','data-mode','data-new','name'].map(k => node.getAttribute(k) || '').join(':') : node.nodeType;
       function sync(parent, source) {
@@ -348,7 +350,7 @@
             for (const a of [...old.attributes]) if (!fresh.hasAttribute(a.name)) old.removeAttribute(a.name);
             for (const a of [...fresh.attributes]) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
             if (open != null) old.open = open;
-            if ('value' in old && old.tagName !== 'SELECT' && old.value !== fresh.value && doc.activeElement !== old) old.value = fresh.value;
+            if ('value' in old && old.tagName !== 'SELECT' && (old.hasAttribute('data-field') || old.hasAttribute('data-config') || old.hasAttribute('data-prize-field')) && old.value !== fresh.value && doc.activeElement !== old) old.value = fresh.value;
             sync(old, fresh);
           } else if (old.textContent !== fresh.textContent) old.textContent = fresh.textContent;
           cursor = old.nextSibling;
@@ -357,10 +359,22 @@
         for (const n of parent.childNodes) delete n.__rdUsed;
       }
       sync(container, template.content);
+      if (!root.matchMedia || !root.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        container.querySelectorAll('.rd-segment-card').forEach(el => {
+          const previous = positions.get(el.dataset.seg), delta = previous - el.getBoundingClientRect().top;
+          if (Number.isFinite(delta) && delta && el.animate) el.animate([{ transform: 'translateY(' + delta + 'px)' }, { transform: 'translateY(0)' }], { duration: parseFloat(root.getComputedStyle(el).getPropertyValue('--dur-short')) || 140, easing: root.getComputedStyle(el).getPropertyValue('--ease-out').trim() });
+        });
+      }
     }
 
     function lockControls() {
       container.querySelectorAll('button, input, select, textarea').forEach(el => {
+        if (el.tagName === 'BUTTON' && el.matches) {
+          const feedback = state.feedback;
+          const trigger = feedback && (feedback.selectors ? el.dataset.action === 'save-draft' :
+            feedback.selector && (el.matches(feedback.selector) || el.type === 'submit' && el.closest(feedback.selector)));
+          el.setAttribute('aria-busy', String(!!(state.busy && trigger)));
+        }
         if ((state.busy || state.pendingDelete) && el.dataset.action !== 'undo-delete' && el.dataset.writeDisabled == null) {
           el.dataset.writeDisabled = el.disabled ? '1' : '0';
           el.disabled = true;
@@ -387,8 +401,33 @@
       bind();
       paintFeedback();
       if (state.busy) container.querySelectorAll('button, input, select').forEach(el => { el.disabled = true; });
-      if (root.PrizeViews) root.PrizeViews.attachStaffSuggestions(container, state.staff);
+      bindStaffSuggestions();
       lockControls();
+    }
+
+    function bindStaffSuggestions() {
+      container.querySelectorAll('[data-rd-staff]').forEach(input => {
+        const suggestions = input.ownerDocument.createElement('div'); suggestions.className = 'prize-staff-suggestions';
+        input.insertAdjacentElement('afterend', suggestions);
+        let selected = -1;
+        const choose = name => { input.value = name; suggestions.innerHTML = ''; input.dispatchEvent(new root.Event('change', { bubbles: true })); };
+        listen(input, 'input', () => {
+          selected = -1;
+          const matches = root.PrizeViews ? root.PrizeViews.staffMatches(state.staff, input.value) : [];
+          suggestions.innerHTML = matches.map(p => '<button type="button" data-staff-name="' + esc(p.name) + '">' + esc(p.name) + '<small>' + esc([p.department, p.title].filter(Boolean).join('／')) + '</small></button>').join('');
+        });
+        listen(suggestions, 'mousedown', event => event.preventDefault());
+        listen(suggestions, 'click', event => { const button = event.target.closest('[data-staff-name]'); if (button) choose(button.dataset.staffName); });
+        listen(input, 'keydown', event => {
+          const buttons = [...suggestions.querySelectorAll('button')];
+          if (event.key === 'Escape') { suggestions.innerHTML = ''; event.stopPropagation(); }
+          if (['ArrowDown', 'ArrowUp'].includes(event.key) && buttons.length) {
+            event.preventDefault(); selected = (selected + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+            buttons.forEach((button, index) => button.classList.toggle('staff-selected', index === selected));
+          }
+          if (event.key === 'Enter' && buttons[selected]) { event.preventDefault(); choose(buttons[selected].dataset.staffName); }
+        });
+      });
     }
 
     function templateOptions(selectedId) {
@@ -446,14 +485,14 @@
           return '<button type="button" class="rd-prize-toggle' + (active ? ' rd-prize-toggle-active' : '') +
             '" aria-pressed="' + active + '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(core().prizeLabel(p)) + '</button>';
         }).join('') + '<button type="button" class="rd-prize-toggle" data-action="new-prize">＋ 獎項</button>' +
-          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別" required></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" list="rd-staff"></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
+          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別" required></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" data-rd-staff></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
       }
 
       function prizeField(seg, field, key) {
         const prizes = core().segmentPrizes(seg, prizeIndex);
         if (!prizes.length) return '—';
         return prizes.map(p => '<label class="rd-prize-field"><span>' + esc(p.tier) + '</span><input class="rd-in" data-prize-id="' + esc(p.prize_id) + '" data-prize-field="' + field + '" aria-label="' + esc(p.tier + ' ' + field) + '" value="' + esc(p[key]) + '"' +
-          (key === 'presenter' ? ' list="rd-staff"' : key === 'tier' ? '' : ' type="number" min="0" step="' + (key === 'count' ? '1' : '0.01') + '"') + dis + '></label>').join('');
+          (key === 'presenter' ? ' data-rd-staff' : key === 'tier' ? '' : ' type="number" min="0" step="' + (key === 'count' ? '1' : '0.01') + '"') + dis + '></label>').join('');
       }
 
       // 順序沿用 #92 草稿；階段／錨點沿用既有 segment 寫入。
@@ -465,14 +504,13 @@
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
           '<span class="rd-time-readout">' + esc(timeText(seg.time)) + '</span>' +
-          '<label class="rd-segment-title">節目<input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
-          '<label>長度（分）<input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></label>' +
+          '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
+          '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></label>' +
           '<div class="rd-stage-toggle" role="group" aria-label="階段">' + ['彩排', '正式'].map(stage => '<button type="button" data-stage="' + stage + '" aria-pressed="' + (seg.stage === stage) + '"' + dis + '>' + stage + '</button>').join('') + '</div>' +
           (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><label>錨定時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"></label><small>從這裡重新計算；清空可取消錨定</small><button type="button" data-action="save-anchor">套用錨定</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
           (seg.anchor_time ? '<span class="rd-anchor">' + icon('pin') + '從這裡重新計算 ' + esc(clockText(seg.anchor_time)) + '</span>' : '') +
           '<div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' +
-          (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') +
-          '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary>任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
+          '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary>' + icon('chevron') + '任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
           taskContent(seg.segment_id) + '</details></article>').join('');
 
       return '<div class="rd-edit">' +
@@ -502,9 +540,18 @@
       if (handle && handle.focus) handle.focus();
     }
 
+    function segmentFields(id, patch) {
+      const seg = state.data.segments.find(s => s.segment_id === id);
+      return Object.assign({ action: 'save_rundown_segment', segment_id: id, 節目內容: seg.title, duration_min: seg.duration_min,
+        順序: seg.order, 階段: seg.stage, 錨定時間: seg.anchor_time, 備註: seg.note, prize_ids: (seg.prize_ids || []).join(',') }, patch);
+    }
+
     async function uiWrite(fields, message, options, selector) {
       state.feedback = { selector: selector || '[data-seg="' + fields.segment_id + '"] .rd-segment-main' };
-      return write(fields, message, options);
+      const result = await write(fields, message, options);
+      const live = container.querySelector('[data-rd-live]');
+      if (live) live.textContent = result ? (message || '已儲存') : state.message;
+      return result;
     }
 
     function taskRoles() {
@@ -528,7 +575,7 @@
       return (rows || '<p class="rd-empty">尚無任務</p>') + (readOnly ? '' : adding ?
         '<form class="rd-task-add" data-task-form><label>角色<select data-new="角色">' + roles.map(r => '<option value="' + esc(r) + '"' + (r === draft.role ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>' +
         '<label>任務內容<input data-new="任務內容" required value="' + esc(draft.content) + '"></label>' +
-        '<label>列印對象<select data-new="對象">' + core().AUDIENCES.map(a => '<option value="' + esc(a) + '"' + (a === draft.audience ? ' selected' : '') + '>' + esc(a) + '</option>').join('') + '</select></label>' +
+        '<div class="rd-audience" role="group" aria-label="列印對象"><span>列印對象</span><input type="hidden" data-new="對象" value="' + esc(draft.audience) + '">' + core().AUDIENCES.map(a => '<button type="button" data-audience="' + esc(a) + '" aria-pressed="' + (a === draft.audience) + '">' + esc(a) + '</button>').join('') + '</div>' +
         '<button type="submit">儲存任務</button><button type="button" data-action="cancel-task">取消</button></form>' :
         roles.length ? '<button type="button" data-action="open-task">＋ 加任務</button>' : '<p class="rd-hint">先從「⋯ → 管理角色」新增角色，才能新增任務。</p>');
     }
@@ -725,11 +772,11 @@
       });
       on('[data-stage]', 'click', event => {
         const el = event.currentTarget, id = el.closest('[data-seg]').dataset.seg;
-        return uiWrite({ action: 'save_rundown_segment', segment_id: id, 階段: el.dataset.stage }, '階段已更新', {}, '[data-seg="' + id + '"] .rd-stage-toggle');
+        return uiWrite(segmentFields(id, { 階段: el.dataset.stage }), '階段已更新', {}, '[data-seg="' + id + '"] .rd-stage-toggle');
       });
       on('[data-action="save-anchor"]', 'click', event => {
         const row = event.currentTarget.closest('[data-seg]'), input = row.querySelector('[data-field="錨定時間"]');
-        return uiWrite({ action: 'save_rundown_segment', segment_id: row.dataset.seg, 錨定時間: input.value }, '錨定已更新', {}, '[data-seg="' + row.dataset.seg + '"] [data-field="錨定時間"]');
+        return uiWrite(segmentFields(row.dataset.seg, { 錨定時間: input.value }), '錨定已更新', {}, '[data-seg="' + row.dataset.seg + '"] [data-field="錨定時間"]');
       });
       on('[data-action="add-segment"]', 'click', async () => {
         if (state.busy || state.pendingDelete) return;
@@ -749,6 +796,12 @@
         const id = state.pendingDelete.id; root.clearTimeout(state.pendingDelete.timer); state.pendingDelete = null; render(); announceMove(id);
       });
 
+      on('.rundown', 'click', event => {
+        if (!container.contains(event.target)) return;
+        container.querySelectorAll('.rd-menu[open], .rd-config[open], .rd-prize-popover[open]').forEach(menu => {
+          if (!menu.contains(event.target)) menu.open = false;
+        });
+      });
       on('[data-task-view]', 'click', event => {
         state.taskView = event.currentTarget.dataset.taskView;
         render();
@@ -769,6 +822,13 @@
         render();
         const input = container.querySelector('[data-task-form] [data-new="任務內容"]');
         if (input) input.focus();
+      });
+      on('[data-audience]', 'click', event => {
+        const el = event.currentTarget, group = el.closest('.rd-audience');
+        if (!state.taskDraft) return;
+        state.taskDraft.audience = el.dataset.audience;
+        group.querySelector('[data-new="對象"]').value = el.dataset.audience;
+        group.querySelectorAll('[data-audience]').forEach(button => button.setAttribute('aria-pressed', String(button === el)));
       });
       on('[data-action="cancel-task"]', 'click', () => { state.taskDraft = null; render(); });
       on('[data-task-form] [data-new]', 'input', event => {
@@ -798,9 +858,9 @@
         uiWrite(fields, '流程時間設定已更新', {}, '.rd-config-row');
       });
 
-      on('[data-action="reload"]', 'click', () => load(state.source === 'demo' ? 'demo' : 'backend'));
-      on('[data-action="load-demo"]', 'click', () => load('demo'));
-      on('[data-action="load-backend"]', 'click', () => load('backend'));
+      on('[data-action="reload"]', 'click', () => { state.feedback = null; return load(state.source === 'demo' ? 'demo' : 'backend'); });
+      on('[data-action="load-demo"]', 'click', () => { state.feedback = null; return load('demo'); });
+      on('[data-action="load-backend"]', 'click', () => { state.feedback = null; return load('backend'); });
       on('[data-action="import-current"]', 'click', () => importTemplate(state.templateId, 'replace'));
       on('[data-action="import-template"]', 'click', () => {
         const wrap = container.querySelector('.rd-import-row');
@@ -851,11 +911,17 @@
       };
       on('.rd-segments [data-field]', 'input', editSegment);
       on('.rd-segments [data-field]', 'change', editSegment);
-      on('[data-action="save-draft"]', 'click', saveDraft);
+      on('[data-action="save-draft"]', 'click', async () => {
+        if (!state.feedback || !state.feedback.selectors) state.feedback = { selector: '[data-action="save-draft"]' };
+        const result = await saveDraft();
+        const live = container.querySelector('[data-rd-live]'); if (live) live.textContent = result ? '變更已儲存' : state.message;
+        return result;
+      });
       on('[data-action="cancel-draft"]', 'click', () => {
         if (state.busy) return;
         state.data = JSON.parse(JSON.stringify(state.savedData || state.data));
         state.dirty = false; state.revision++;
+        state.feedback = { selector: '[data-action="cancel-draft"]' };
         setMessage('已取消未儲存變更', false); render();
       });
       on('[data-action="del-seg"]', 'click', event => {
@@ -863,7 +929,7 @@
         const row = event.currentTarget.closest('[data-seg]');
         if (state.dirty) { state.feedback = { selector: '[data-seg="' + row.dataset.seg + '"] .rd-segment-main' }; setMessage('請先儲存或取消變更，再刪除時段。', true); paintFeedback(); return; }
         const pending = { id: row.dataset.seg, height: row.getBoundingClientRect ? row.getBoundingClientRect().height : 120 };
-        state.pendingDelete = pending;
+        state.feedback = null; state.pendingDelete = pending;
         pending.timer = root.setTimeout(async () => {
           if (state.pendingDelete !== pending) return;
           state.pendingDelete = null;
@@ -880,12 +946,12 @@
         const input = container.querySelector('[data-add="角色"]');
         const role = input.value.trim();
         if (!role) return;
-        write({ action: 'save_rundown_role', 角色: role }, '已新增角色');
+        uiWrite({ action: 'save_rundown_role', 角色: role }, '已新增角色', {}, '[data-action="add-role"]');
       });
       on('[data-action="del-role"]', 'click', event => {
         const chip = event.target.closest('[data-role]');
         if (!root.confirm('刪除角色「' + chip.dataset.role + '」？')) return;
-        write({ action: 'save_rundown_role', 角色: chip.dataset.role, _delete: '1' }, '已刪除角色');
+        uiWrite({ action: 'save_rundown_role', 角色: chip.dataset.role, _delete: '1' }, '已刪除角色', {}, '.rd-role-chips');
       });
 
       // 任務
@@ -900,7 +966,7 @@
       });
       on('[data-action="del-task"]', 'click', event => {
         const li = event.target.closest('[data-task]');
-        write({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務');
+        uiWrite({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務', {}, '[data-seg="' + li.closest('[data-seg]').dataset.seg + '"] [data-task-details]');
       });
 
       // 獎項：點標籤直接連結／取消連結，不用打 prize_id
@@ -954,14 +1020,14 @@
         const fields = { action: 'save_rundown_crew' };
         wrap.querySelectorAll('[data-add]').forEach(el => { fields[el.dataset.add] = el.value.trim(); });
         if (!fields['姓名']) return;
-        write(fields, '已新增人員');
+        uiWrite(fields, '已新增人員', {}, '[data-action="add-crew"]');
       });
       on('[data-action="del-crew"]', 'click', event => {
         const chip = event.target.closest('[data-person]');
-        write({ action: 'save_rundown_crew', 姓名: chip.dataset.person, _delete: '1' }, '已移除人員');
+        uiWrite({ action: 'save_rundown_crew', 姓名: chip.dataset.person, _delete: '1' }, '已移除人員', {}, '.rd-crew');
       });
       on('[data-action="unassign"]', 'click', event => {
-        write({ action: 'save_rundown_assignment', 角色: event.currentTarget.dataset.role, 人員姓名: event.currentTarget.dataset.person, _delete: '1' }, '已取消指派');
+        uiWrite({ action: 'save_rundown_assignment', 角色: event.currentTarget.dataset.role, 人員姓名: event.currentTarget.dataset.person, _delete: '1' }, '已取消指派', {}, '.rd-roles');
       });
 
       bindDragAssign();
@@ -1118,6 +1184,8 @@
     function bindDragAssign() {
       let dragging = '';
       container.querySelectorAll('.rd-person[draggable="true"]').forEach(chip => {
+        if (chip.setAttribute) { chip.setAttribute('tabindex', '0'); chip.setAttribute('aria-label', '選取人員 ' + chip.dataset.person); }
+        listen(chip, 'keydown', event => { if (event.target === chip && ['Enter', ' '].includes(event.key)) { event.preventDefault(); chip.click(); } });
         listen(chip, 'dragstart', e => {
           dragging = chip.dataset.person;
           if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', dragging); }
@@ -1131,6 +1199,8 @@
         });
       });
       container.querySelectorAll('.rd-drop').forEach(zone => {
+        if (zone.setAttribute) { zone.setAttribute('tabindex', '0'); zone.setAttribute('aria-label', '指派到角色 ' + zone.dataset.role); }
+        listen(zone, 'keydown', event => { if (event.target === zone && ['Enter', ' '].includes(event.key)) { event.preventDefault(); zone.click(); } });
         listen(zone, 'dragover', e => { e.preventDefault(); zone.classList.add('rd-drop-over'); });
         listen(zone, 'dragleave', () => zone.classList.remove('rd-drop-over'));
         listen(zone, 'drop', e => {
@@ -1149,7 +1219,7 @@
       if (!role || !person) return;
       const exists = state.data.assignments.some(a => a.role === role && a.person === person);
       if (exists) { setMessage(person + ' 已在「' + role + '」', false); render(); return; }
-      write({ action: 'save_rundown_assignment', 角色: role, 人員姓名: person }, person + ' → ' + role);
+      uiWrite({ action: 'save_rundown_assignment', 角色: role, 人員姓名: person }, person + ' → ' + role, {}, '.rd-roles');
     }
 
     return { render, load, state };
@@ -1162,7 +1232,7 @@
       let controller = controllers.get(container);
       if (controller && controller.state.activityId === activityId) {
         controller.render();
-        if (!controller.state.dirty && !controller.state.busy) await controller.load('backend');
+        if (!controller.state.dirty && !controller.state.busy && !controller.state.pendingDelete) await controller.load('backend');
         return;
       }
       if (controller) { controller.state.disposed = true; controller.state.loadId++; }
