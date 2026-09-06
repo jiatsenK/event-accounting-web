@@ -303,3 +303,21 @@ test('快取先畫、員工查詢不阻塞；背景結果不覆蓋草稿或剛�
     assert.equal(h.ctrl.state.data.segments[0].title,'遠端新標題');assert.equal(cache.at(-1).segments[0].title,'遠端新標題');
   }finally{global.PlanningCore=PlanningCore;}
 });
+
+
+test('切回同活動保留草稿，切換活動後較晚回覆不覆蓋新畫面',async()=>{
+  const host=stubElement();let loads=0;
+  const field={...stubElement(),dataset:{field:'節目內容'},value:'未存標題',handlers:{},closest:()=>({dataset:{seg:'s0'}}),addEventListener(name,fn){this.handlers[name]=fn;}};
+  host.querySelectorAll=selector=>selector==='.rd-segments [data-field]'?[field]:[];
+  global.PlanningCore={getCachedRundown:()=>eighteen,apiRead:async()=>({staff:[]}),fetchRundown:async()=>{loads++;return eighteen;}};
+  try{
+    await views.rundown.mount(host,{activityId:'a'});field.handlers.input({target:field});
+    await views.rundown.mount(host,{activityId:'a'});assert.equal(loads,1);assert.match(host.innerHTML,/未存標題/);
+    let finishOld;
+    global.PlanningCore.fetchRundown=()=>new Promise(resolve=>{finishOld=resolve;});
+    const oldLoad=views.rundown.mount(host,{activityId:'old'});
+    global.PlanningCore.fetchRundown=async()=>({...eighteen,segments:[{...eighteen.segments[0],title:'新活動標題'}]});
+    await views.rundown.mount(host,{activityId:'new'});finishOld(eighteen);await oldLoad;
+    assert.match(host.innerHTML,/新活動標題/);assert.doesNotMatch(host.innerHTML,/節目17/);
+  }finally{global.PlanningCore=PlanningCore;}
+});

@@ -281,6 +281,7 @@
     }
 
     function renderStatusOnly() {
+      if (state.disposed) return;
       lockControls();
       const el = container.querySelector('.rd-status');
       if (!el) { render(); return; }
@@ -308,6 +309,7 @@
     // -- rendering -----------------------------------------------------------
 
     function render() {
+      if (state.disposed) return;
       container.innerHTML =
         '<div class="rundown">' +
           header() +
@@ -1025,9 +1027,19 @@
     return { render, load, state };
   }
 
+  const controllers = new WeakMap();
   const rundown = Object.freeze({
     async mount(container, context) {
-      const controller = createController(container, context || {});
+      const activityId = String(context && context.activityId || '');
+      let controller = controllers.get(container);
+      if (controller && controller.state.activityId === activityId) {
+        controller.render();
+        if (!controller.state.dirty && !controller.state.busy) await controller.load('backend');
+        return;
+      }
+      if (controller) { controller.state.disposed = true; controller.state.loadId++; }
+      controller = createController(container, context || {});
+      controllers.set(container, controller);
       controller.render();
       await controller.load('backend');
     }
