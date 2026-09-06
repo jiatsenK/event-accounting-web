@@ -12,6 +12,7 @@
         Object.freeze({ id: 'overview', label: '總覽' }),
         Object.freeze({ id: 'budget', label: '活動預算' }),
         Object.freeze({ id: 'expenses', label: '支出明細' }),
+        Object.freeze({ id: 'prizes', label: '獎項' }),
         Object.freeze({ id: 'vendors', label: '廠商主檔' }),
         Object.freeze({ id: 'payment_requests', label: '款項申請' }),
         Object.freeze({ id: 'reimbursement', label: '核銷整理' })

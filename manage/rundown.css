@@ -195,3 +195,25 @@
   body.rd-printing .rd-sheet-table td, body.rd-printing .rd-sheet-foot { border-color: #bbb; }
   .rd-seg-row, tr { break-inside: avoid; }
 }
+.rd-stage-rehearsal > td:first-child { border-left: 4px solid #EF9F27; }
+.rd-stage-official > td:first-child { border-left: 4px solid #378ADD; }
+.rd-quick-segments { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.rd-prize-field { display: block; min-width: 88px; margin-bottom: 6px; }
+.rd-prize-field > span { display: block; font-size: 11px; color: #777; }
+.rd-prize-field input { min-width: 80px; }
+.rd-prize-cell form { min-width: 180px; display: grid; gap: 6px; padding: 10px 0; }
+.rd-prize-cell form label { display: grid; gap: 2px; }
+.rd-table { min-width: 1340px; table-layout: auto; }
+.rd-table [data-field="節目內容"] { min-width: 180px; }
+.rd-table [data-prize-field="頒獎人"] { min-width: 150px; }
+.rd-prize-cell { min-width: 160px; max-width: 230px; }
+.prize-staff-suggestions { display: grid; gap: 2px; }
+.prize-staff-suggestions:empty { display: none; }
+.prize-staff-suggestions button { text-align: left; background: #fff; color: #263d40; border: 1px solid #d4deda; padding: 6px 8px; border-radius: 4px; }
+.prize-staff-suggestions small { display: block; color: #667672; }
+.prize-staff-suggestions .staff-selected { background: #e4eeeb; }
+.prize-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 16px 0; }
+.prize-form label { display: grid; gap: 6px; }
+.prize-form input, .prize-form select { width: 100%; min-width: 0; padding: 8px; }
+.prize-scroll { overflow-x: auto; }
+.prize-scroll th, .prize-scroll td { padding: 10px; white-space: nowrap; text-align: left; }
