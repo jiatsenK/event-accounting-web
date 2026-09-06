@@ -28,3 +28,18 @@ test('核銷 Excel 不再定義或呼叫兩張淘汰工作表', () => {
   }
   assert.doesNotMatch(core + ui, /addWorksheet\('(?:預算與結算|核銷憑證)'/);
 });
+
+test('settlement transport waits for matching status, date and note readback', async () => {
+  const vm = require('node:vm');
+  const source = core.slice(core.indexOf('async function apiWrite(fields)'), core.indexOf('async function refresh()'));
+  const requested = {action:'update_petty_cash_settlement',activity_id:'a',settlement_status:'已沖銷',settlement_date:'2026-09-06',note:'done'};
+  let reads = 0; let submitted = false; let removed = 0;
+  const node = () => ({style:{},setAttribute(){},appendChild(){},remove(){removed++;},submit(){submitted=true;}});
+  const context = {state:{apiUrl:'https://example.invalid',token:'test'},location:{origin:'https://example.invalid'},
+    document:{createElement:node,body:{append(){}}}, window:{addEventListener(){},removeEventListener(){}},sleep:async()=>{},
+    apiRead:async()=> { reads++; return {expenses:[],petty_cash_settlement:{'沖銷狀態':'已沖銷','沖銷日期':reads<3 ? '2026-09-05':'2026-09-06','備註':'done'}}; }};
+  vm.createContext(context);vm.runInContext(source,context);
+  const after=await context.apiWrite(requested);
+  assert.equal(submitted,true);assert.equal(reads,3);assert.equal(removed,2);
+  assert.equal(after.petty_cash_settlement['沖銷日期'],'2026-09-06');
+});

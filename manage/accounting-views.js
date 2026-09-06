@@ -41,7 +41,11 @@
     '<tbody id="paymentRequestRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
   function templateWithAccountingPanels() {
     const marker = '<section class="tab-panel" data-tab-panel="reimbursement"';
-    return ACCOUNTING_TEMPLATE.replace(marker, BUDGET_PANEL + VENDOR_PANEL + PAYMENT_REQUEST_PANEL + marker);
+    const settlement = '<section class="card section"><h2>零用金結算</h2><div id="pettySettlement"></div></section>';
+    const advances = '<section class="card section"><h2>個人代墊明細</h2><form id="advanceQuery" class="table-tools"><label>代墊人（完整姓名；留空看本活動全部）<input id="advancePayer" type="search"></label><label><input id="advanceHistory" type="checkbox">跨活動查詢</label><button type="submit">查詢</button></form><p class="muted">已請款依請款單編號計算，與核銷狀態分開。歷史舊狀態保留原值。</p><div id="personalAdvanceGroups" aria-live="polite"></div></section>';
+    return ACCOUNTING_TEMPLATE.replace(marker, BUDGET_PANEL + VENDOR_PANEL + PAYMENT_REQUEST_PANEL + marker)
+      .replace('<div class="overview-split section">', settlement + '<div class="overview-split section">')
+      .replace('<section class="tab-panel" data-tab-panel="expenses" role="tabpanel" hidden>', '<section class="tab-panel" data-tab-panel="expenses" role="tabpanel" hidden>' + advances);
   }
   const SCRIPT_SOURCES = Object.freeze([
     Object.freeze({ key: 'exceljs', src: 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js' }),
@@ -53,12 +57,13 @@
     Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js' }),
     Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260831-01' }),
     Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260904-49' }),
-    Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260904-49' }),
+    Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260906-52' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
     Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260904-49' }),
     Object.freeze({ key: 'payment-request', src: '../assets/payment-request.js?v=20260905-01' }),
     Object.freeze({ key: 'payment-request-ui', src: '../assets/payment-request-ui.js?v=20260905-01' }),
-    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260902-app1' })
+    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260906-52' }),
+    Object.freeze({ key: 'accounting-settlement', src: '../assets/settlement-ui.js?v=20260906-52' })
   ]);
   let dependenciesPromise = null;
   let initialized = false;

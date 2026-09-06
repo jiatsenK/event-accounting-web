@@ -159,6 +159,12 @@ async function apiWrite(fields) {
         if (!after.rows.some(row => String(row.budget_line_id || '') === String(fields.budget_line_id || ''))) return after;
       } else if (action === 'update_budget_status') {
         if (String(after.activity && after.activity.budget_status || '') === String(fields.budget_status || '')) return after;
+      } else if (action === 'update_petty_cash_settlement') {
+        const saved = after.petty_cash_settlement;
+        const note = String(fields.note || '');
+        const storedNote = /^[=+\-@]/.test(note) ? "'" + note : note;
+        if (saved && saved['沖銷狀態'] === fields.settlement_status && saved['沖銷日期'] === fields.settlement_date &&
+            [note, storedNote].includes(String(saved['備註'] || ''))) return after;
       } else if (action === 'update_expense') {
         const updated = after.expenses.find(row => String(row.expense_id || '') === String(fields.expense_id || ''));
         if (updated && expenseMatches(updated, fields)) return after;

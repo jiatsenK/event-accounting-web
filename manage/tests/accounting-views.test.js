@@ -24,7 +24,7 @@ test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
 test('帳務既有 scripts 由同一 mount 依序載入', () => {
   assert.deepEqual(views.scriptSources.map(item => item.key), [
     'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui',
-    'payment-request', 'payment-request-ui', 'accounting-issue17'
+    'payment-request', 'payment-request-ui', 'accounting-issue17', 'accounting-settlement'
   ]);
   assert.equal(views.cacheKey, 'accounting');
 });
