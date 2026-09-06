@@ -188,7 +188,9 @@
           return del ? !d.roles.some(r => r.role === fields['角色']) : d.roles.some(r => r.role === fields['角色']);
         case 'save_rundown_task':
           if (del) return !d.tasks.some(x => x.task_id === fields.task_id);
-          return d.tasks.some(x => x.segment_id === fields.segment_id && x.content === t(fields['任務內容']));
+          return d.tasks.some(x => (fields.task_id ? x.task_id === fields.task_id : !state.taskIdsBefore.has(x.task_id)) &&
+            x.segment_id === fields.segment_id && x.role === t(fields['角色']) &&
+            x.content === t(fields['任務內容']) && x.audience === t(fields['對象']));
         case 'save_rundown_assignment': {
           const has = d.assignments.some(a => a.role === fields['角色'] && a.person === fields['人員姓名']);
           return del ? !has : has;
@@ -215,6 +217,7 @@
       state._fresh = null;
       state.prizeIdsBefore = new Set(state.data.prizes.map(p => p.prize_id));
       state.segmentIdsBefore = new Set(state.data.segments.map(s => s.segment_id));
+      state.taskIdsBefore = new Set(state.data.tasks.map(t => t.task_id));
       if (state.source === 'demo' && !opts.allowDemo) {
         setMessage('這是範例流程（唯讀）。用上方的「帶入到目前活動」寫進實際活動。', true);
         render();

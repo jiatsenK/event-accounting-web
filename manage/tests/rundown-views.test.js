@@ -118,6 +118,72 @@ test('時段與角色共用任務，預設無新增表單且編輯區不重複�
   assert.match(host.innerHTML, /更新後音樂/);
 });
 
+test('顯示層拒絕異常時間，保留跨日鐘面格式', () => {
+  const host = stubElement();
+  const ctrl = views.createController(host, { activityId: 'test' });
+  ctrl.state.data = RundownCore.normalize({ config: { official_start: '23:50' }, segments: [{ segment_id: 's', duration_min: 30 }] });
+  ctrl.render();
+  assert.match(host.innerHTML, /23:50–翌 00:20/);
+  const invalid = 'Sat Dec 30 1899 16:00:00 GMT+0800';
+  const badRow = { time: invalid, start: invalid, end: invalid, tasks: [], prizeLabels: [] };
+  global.RundownCore = { ...RundownCore,
+    calculateTimeline: segments => segments.map(s => ({ ...s, time: new Date('1899-12-30T08:00:00Z') })),
+    projectControl: () => ({ stages: [{ stage: '正式', segments: [badRow] }], unassignedRoles: [] }),
+    projectCrew: () => ({ people: [{ name: '測試人員', roles: [], rows: [badRow] }], idlePeople: [] }),
+    projectVenue: () => ({ rows: [badRow] }),
+    projectDesigner: () => ({ segments: [badRow] })
+  };
+  try {
+    for (const mode of ['edit', 'assign', 'print']) {
+      ctrl.state.mode = mode;
+      for (const version of ['control', 'crew', 'venue', 'designer']) {
+        ctrl.state.printVersion = version; ctrl.render();
+        assert.doesNotMatch(host.innerHTML, /1899|GMT|Sat Dec|Invalid Date/);
+      }
+    }
+  } finally { global.RundownCore = RundownCore; }
+});
+
+test('新增任務回讀需確認新 ID、角色與對象，失敗保留草稿', async () => {
+  const host = stubElement();
+  const form = { ...stubElement(), handlers: {}, reportValidity: () => true,
+    closest: () => ({ dataset: { seg: 's' } }),
+    querySelectorAll: () => Object.entries({ 角色: '音控', 任務內容: '播放', 對象: '全部' }).map(([key, value]) => ({ dataset: { new: key }, value })),
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+  };
+  host.querySelectorAll = selector => selector === '[data-task-form]' ? [form] : [];
+  const ctrl = views.createController(host, { activityId: 'test' });
+  const old = { task_id: 'old', segment_id: 's', role: '音控', content: '播放', audience: '全部' };
+  const raw = { segments: [{ segment_id: 's' }], roles: [{ role: '音控' }], tasks: [old] };
+  let fresh = raw;
+  ctrl.state.data = RundownCore.normalize(raw); ctrl.state.source = 'backend';
+  ctrl.state.taskDraft = { segmentId: 's', role: '音控', content: '播放', audience: '全部' };
+  ctrl.render();
+  global.PlanningCore = {
+    fetchRundown: async () => fresh,
+    apiWrite: async (fields, options) => {
+      assert.equal(fields.segment_id, 's');
+      assert.equal(await options.confirm(), false, '不能把原有同文任務當新增成功');
+      fresh = { ...raw, tasks: [old, { ...old, task_id: 'new', role: '主持' }] };
+      assert.equal(await options.confirm(), false, '角色必須吻合');
+      fresh.tasks[1] = { ...old, task_id: 'new', audience: '飯店' };
+      assert.equal(await options.confirm(), false, '對象必須吻合');
+      fresh.tasks[1] = { ...old, task_id: 'new' };
+      assert.equal(await options.confirm(), true);
+    }
+  };
+  try {
+    await form.handlers.submit({ preventDefault() {}, currentTarget: form });
+    assert.equal(ctrl.state.taskDraft, null);
+    assert.equal(ctrl.state.data.tasks.length, 2);
+    ctrl.state.taskDraft = { segmentId: 's', role: '音控', content: '播放', audience: '全部' };
+    global.PlanningCore.apiWrite = async () => { throw new Error('offline'); };
+    await form.handlers.submit({ preventDefault() {}, currentTarget: form });
+    assert.equal(ctrl.state.taskDraft.content, '播放');
+    assert.equal(ctrl.state.error, true);
+  } finally { global.PlanningCore = PlanningCore; }
+});
+
 // Exercise the actual click handlers and deferred transport, not source matching.
 test('點選排序立即重算，只送順序；成功不重讀，失敗重讀', async () => {
   let handles=[];
