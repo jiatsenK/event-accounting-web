@@ -71,6 +71,10 @@
       printVersion: 'control',
       templateId: null,    // 目前預覽／要帶入的範本
       busy: false,
+      dirty: false,
+      savedData: null,
+      revision: 0,
+      loadId: 0,
       staff: [],
       staffError: false,
       newPrizeSegment: '',
@@ -85,33 +89,51 @@
       state.error = Boolean(error);
     }
 
+    function rememberSaved() {
+      state.savedData = JSON.parse(JSON.stringify(state.data));
+      if (planning().cacheRundown) planning().cacheRundown(state.activityId, state.data);
+    }
+
     async function load(source) {
-      state.busy = true;
+      if (state.busy) return;
+      if (state.dirty) { setMessage('尚有未儲存變更，請先儲存或取消變更。', true); renderStatusOnly(); return; }
+      const loadId = ++state.loadId;
+      const revision = state.revision;
+      const cached = source !== 'demo' && planning().getCachedRundown && planning().getCachedRundown(state.activityId);
+      if (cached) {
+        state.data = core().normalize(cached);
+        state.source = 'backend';
+        state.savedData = JSON.parse(JSON.stringify(state.data));
+        setMessage('已顯示上次資料，背景更新中…', false);
+      }
+      state.busy = !cached;
       render();
+      if (source === 'demo') {
+        const tpl = core().template(state.templateId);
+        state.templateId = tpl.id; state.data = tpl; state.source = 'demo';
+        setMessage('範例流程「' + tpl.label + '」（唯讀）。按「帶入到目前活動」寫進實際活動即可編輯。', false);
+        state.busy = false; render(); return;
+      }
+      // 員工建議不阻擋流程表出現，也不因較晚回覆重繪正在編輯的欄位。
+      const staff = planning().apiRead ? planning().apiRead('staff_directory') : Promise.resolve({ staff: [] });
+      staff.then(result => {
+        if (loadId !== state.loadId) return;
+        state.staff = result.staff || []; state.staffError = false;
+        if (root.PrizeViews) root.PrizeViews.attachStaffSuggestions(container, state.staff);
+      }).catch(() => { if (loadId === state.loadId) state.staffError = true; });
       try {
-        if (source === 'demo') {
-          const tpl = core().template(state.templateId);
-          state.templateId = tpl.id;
-          state.data = tpl;
-          state.source = 'demo';
-          setMessage('範例流程「' + tpl.label + '」（唯讀）。按「帶入到目前活動」寫進實際活動即可編輯。', false);
-        } else {
-          const raw = await planning().fetchRundown(state.activityId);
-          state.data = core().normalize(raw);
-          state.source = 'backend';
-          try { state.staff = (await planning().apiRead('staff_directory')).staff || []; state.staffError = false; }
-          catch (err) { state.staffError = true; }
-          const empty = !state.data.segments.length && !state.data.roles.length;
-          setMessage(empty ? '這場活動還沒有流程表內容，可從「編輯流程」開始，或按「看範例流程」帶入去年的流程。' : '', false);
-        }
+        const raw = await planning().fetchRundown(state.activityId, { cache: false });
+        if (loadId !== state.loadId || revision !== state.revision || state.dirty) return;
+        state.data = core().normalize(raw); state.source = 'backend';
+        rememberSaved();
+        const empty = !state.data.segments.length && !state.data.roles.length;
+        setMessage(empty ? '這場活動還沒有流程表內容，可開始編輯或帶入範例流程。' : '', false);
       } catch (err) {
-        if (source !== 'demo') {
-          state.source = 'empty';
-          setMessage((err && err.message || '讀取失敗') + '；可先按「看範例流程」預覽版面。', true);
-        }
+        if (loadId !== state.loadId || revision !== state.revision || state.dirty) return;
+        if (!cached) state.source = 'empty';
+        setMessage((err.message || '讀取失敗') + (cached ? '；目前顯示上次資料。' : '；可先看範例流程。'), true);
       } finally {
-        state.busy = false;
-        render();
+        if (loadId === state.loadId && revision === state.revision && !state.dirty) { state.busy = false; render(); }
       }
     }
 
@@ -169,55 +191,43 @@
       }
     }
 
-    // 用重讀結果確認寫入是否生效（postMessage 常被瀏覽器擋掉）
-    async function confirmWrite(fields) {
-      const d = core().normalize(await planning().fetchRundown(state.activityId));
-      state._fresh = d;
-      const del = String(fields._delete || '') === '1';
-      const t = s => String(s == null ? '' : s).trim();
-      switch (fields.action) {
-        case 'save_prize':
-          return d.prizes.some(p => (fields.prize_id ? p.prize_id === fields.prize_id : !state.prizeIdsBefore.has(p.prize_id)) &&
-            Object.keys(PRIZE_KEYS).every(k => fields[k] == null || t(p[PRIZE_KEYS[k]]) === t(fields[k])));
-        case 'save_rundown_segment':
-          if (del) return !d.segments.some(s => s.segment_id === fields.segment_id);
-          return d.segments.some(s => (fields.segment_id ? s.segment_id === fields.segment_id : !state.segmentIdsBefore.has(s.segment_id)) &&
-            Object.entries({ 節目內容: 'title', duration_min: 'duration_min', 順序: 'order', 階段: 'stage', 錨定時間: 'anchor_time', 備註: 'note' }).every(([k, key]) => fields[k] == null || t(s[key]) === t(fields[k])) &&
-            (fields.prize_ids == null || (s.prize_ids || []).join(',') === fields.prize_ids));
-        case 'save_rundown_role':
-          return del ? !d.roles.some(r => r.role === fields['角色']) : d.roles.some(r => r.role === fields['角色']);
-        case 'save_rundown_task':
-          if (del) return !d.tasks.some(x => x.task_id === fields.task_id);
-          return d.tasks.some(x => (fields.task_id ? x.task_id === fields.task_id : !state.taskIdsBefore.has(x.task_id)) &&
-            x.segment_id === fields.segment_id && x.role === t(fields['角色']) &&
-            x.content === t(fields['任務內容']) && x.audience === t(fields['對象']));
-        case 'save_rundown_assignment': {
-          const has = d.assignments.some(a => a.role === fields['角色'] && a.person === fields['人員姓名']);
-          return del ? !has : has;
-        }
-        case 'save_rundown_crew':
-          return del ? !d.crew.some(c => c.name === fields['姓名']) : d.crew.some(c => c.name === fields['姓名']);
-        case 'save_rundown_config':
-          return !!(d.config && (fields['正式_基準開始'] == null || d.config.official_start === t(fields['正式_基準開始'])));
-        case 'import_rundown': {
-          // 清空（帶空 data）跟一般帶入的「成功」判斷相反：清空要看到變空，不是變有內容
-          let expected;
-          try { expected = JSON.parse(fields.data || '{}'); } catch (e) { expected = {}; }
-          const expectEmpty = !(expected.segments || []).length && !(expected.roles || []).length;
-          return expectEmpty ? (d.segments.length === 0 && d.roles.length === 0) : (d.segments.length > 0 || d.roles.length > 0);
-        }
-        default:
-          return null;
+    // 成功採用回覆的 ID 與已送出的欄位，不為確認寫入而重讀整份表。
+    function applySaved(fields, result) {
+      const f = Object.assign({}, fields);
+      const d = state.data;
+      const del = String(f._delete || '') === '1';
+      const addNormalized = (key, record) => core().normalize({ [key]: [record] })[key][0];
+      if (!del && f.action === 'save_rundown_segment') {
+        f.segment_id = f.segment_id || result.segment_id;
+        if (!f.segment_id) throw new Error('未取得新增時段 ID');
+        let seg = d.segments.find(x => x.segment_id === f.segment_id);
+        if (!seg) { seg = addNormalized('segments', f); d.segments.push(seg); }
+        if (f.prize_ids != null) seg.prize_ids = String(f.prize_ids).split(',').filter(Boolean);
+        if (f['備註'] != null) seg.note = f['備註'];
+      } else if (!del && f.action === 'save_rundown_task') {
+        f.task_id = f.task_id || result.task_id;
+        if (!f.task_id) throw new Error('未取得新增任務 ID');
+        d.tasks = d.tasks.filter(x => x.task_id !== f.task_id).concat(addNormalized('tasks', f));
+      } else if (!del && f.action === 'save_rundown_role') {
+        d.roles = d.roles.filter(x => x.role !== f['角色']).concat(addNormalized('roles', f));
+      } else if (!del && f.action === 'save_rundown_crew') {
+        d.crew = d.crew.filter(x => x.name !== f['姓名']).concat(addNormalized('crew', f));
+      } else if (f.action === 'save_prize') {
+        f.prize_id = f.prize_id || result.prize_id;
+        if (!f.prize_id) throw new Error('未取得獎項 ID');
+        if (del) d.prizes = d.prizes.filter(x => x.prize_id !== f.prize_id);
+        else if (!d.prizes.some(x => x.prize_id === f.prize_id)) d.prizes.push(addNormalized('prizes', f));
       }
+      applyLocal(f);
+      d.segments.sort((a, b) => a.order - b.order);
     }
 
     async function write(fields, okMessage, options) {
       const opts = options || {};
       if (state.busy) return false;
-      state._fresh = null;
-      state.prizeIdsBefore = new Set(state.data.prizes.map(p => p.prize_id));
-      state.segmentIdsBefore = new Set(state.data.segments.map(s => s.segment_id));
-      state.taskIdsBefore = new Set(state.data.tasks.map(t => t.task_id));
+      if (state.dirty) { setMessage('請先儲存或取消時段變更，再執行其他寫入。', true); renderStatusOnly(); return false; }
+      const previous = JSON.parse(JSON.stringify(state.data));
+      state.revision++;
       if (state.source === 'demo' && !opts.allowDemo) {
         setMessage('這是範例流程（唯讀）。用上方的「帶入到目前活動」寫進實際活動。', true);
         render();
@@ -229,21 +239,24 @@
       setMessage(opts.pending || '處理中…', false);
       paint();
       try {
-        await planning().apiWrite(
+        const result = await planning().apiWrite(
           Object.assign({ activity_id: state.activityId }, fields),
-          { confirm: () => confirmWrite(fields) }
+          { receipt: true }
         );
-        if (state._fresh) { state.data = state._fresh; state._fresh = null; }
-        else { try { state.data = core().normalize(await planning().fetchRundown(state.activityId)); } catch (e) { /* keep local */ } }
+        if (fields.action === 'import_rundown') state.data = core().normalize(await planning().fetchRundown(state.activityId));
+        else applySaved(fields, result || {});
+        rememberSaved();
         state.source = 'backend';
         state.busy = false;
         setMessage(okMessage || '已儲存', false);
         paint();
         return true;
       } catch (err) {
-        state.busy = false;
         setMessage((err && err.message) || '寫入失敗', true);
-        try { state.data = core().normalize(await planning().fetchRundown(state.activityId)); } catch (e) { /* keep local */ }
+        state.data = previous;
+        try { state.data = core().normalize(await planning().fetchRundown(state.activityId)); rememberSaved(); }
+        catch (e) { setMessage((err.message || '寫入失敗') + '；無法重讀，目前顯示操作前資料，請重新讀取確認。', true); }
+        state.busy = false;
         render();
         return false;
       }
@@ -268,9 +281,14 @@
     }
 
     function renderStatusOnly() {
+      if (state.disposed) return;
       lockControls();
       const el = container.querySelector('.rd-status');
       if (!el) { render(); return; }
+      const save = container.querySelector('[data-action="save-draft"]');
+      const cancel = container.querySelector('[data-action="cancel-draft"]');
+      if (save) save.disabled = state.busy || !state.dirty;
+      if (cancel) cancel.disabled = state.busy || !state.dirty;
       el.textContent = state.message;
       el.classList.toggle('error', state.error);
       el.classList.toggle('rd-hidden', !state.message);
@@ -291,6 +309,7 @@
     // -- rendering -----------------------------------------------------------
 
     function render() {
+      if (state.disposed) return;
       container.innerHTML =
         '<div class="rundown">' +
           header() +
@@ -317,6 +336,8 @@
       const editable = state.source === 'backend';
       return '<header class="rd-head">' +
         '<div class="rd-head-actions">' +
+        (editable ? '<button type="button" class="rd-primary" data-action="save-draft"' + (!state.dirty || state.busy ? ' disabled' : '') + '>儲存</button>' +
+          '<button type="button" data-action="cancel-draft"' + (!state.dirty || state.busy ? ' disabled' : '') + '>取消變更</button>' : '') +
         '<button type="button" data-action="reload"' + (state.busy ? ' disabled' : '') + '>重新讀取</button>' +
         (state.source === 'demo'
           ? '<label class="rd-tpl-pick">範本 <select data-tpl-pick' + (state.busy ? ' disabled' : '') + '>' + templateOptions(state.templateId) + '</select></label>' +
@@ -708,17 +729,27 @@
         const input = added && container.querySelector('[data-seg="' + added.segment_id + '"] [data-field="節目內容"]');
         if (input) { input.focus(); input.select(); }
       });
-      // 時段欄位：改完（blur / 選完）就地存，不整頁重繪；牆上時間欄靠下面的即時重算，不等網路
-      on('.rd-segments [data-field]', 'change', event => {
-        const tr = event.target.closest('[data-seg]');
-        const fields = { action: 'save_rundown_segment', segment_id: tr.dataset.seg };
-        tr.querySelectorAll('[data-field]').forEach(el => { fields[el.dataset.field] = el.value.trim(); });
-        if (!fields['節目內容']) { setMessage('節目內容不可空白', true); renderStatusOnly(); return; }
-        write(fields, '時段已更新', { noRender: true });
-      });
-      // 打字當下就照目前畫面上的欄位重算牆上時間，不必等存檔完成才看到後面時段跟著動
-      on('.rd-segments [data-field="duration_min"], .rd-segments [data-field="錨定時間"], .rd-segments [data-field="階段"]', 'input', () => {
-        refreshTimeReadouts();
+      // 輸入即留在草稿；不重繪 input、不等待 blur，也不送後端。
+      const editSegment = event => {
+        if (state.busy || state.source !== 'backend') return;
+        const el = event.target;
+        const tr = el.closest('[data-seg]');
+        const seg = state.data.segments.find(s => s.segment_id === tr.dataset.seg);
+        if (!seg || !['節目內容', 'duration_min'].includes(el.dataset.field)) return;
+        beginDraft();
+        if (el.dataset.field === '節目內容') seg.title = el.value;
+        else seg.duration_min = el.value === '' ? '' : Number(el.value);
+        setMessage('尚有未儲存變更', false);
+        refreshTimeReadouts(); renderStatusOnly();
+      };
+      on('.rd-segments [data-field]', 'input', editSegment);
+      on('.rd-segments [data-field]', 'change', editSegment);
+      on('[data-action="save-draft"]', 'click', saveDraft);
+      on('[data-action="cancel-draft"]', 'click', () => {
+        if (state.busy) return;
+        state.data = JSON.parse(JSON.stringify(state.savedData || state.data));
+        state.dirty = false; state.revision++;
+        setMessage('已取消未儲存變更', false); render();
       });
       on('[data-action="del-seg"]', 'click', event => {
         const tr = event.target.closest('[data-seg]');
@@ -795,10 +826,9 @@
         const prizeId = event.target.dataset.prize;
         const nowActive = !linked.has(prizeId);
         if (nowActive) linked.add(prizeId); else linked.delete(prizeId);
-        seg.prize_ids = Array.from(linked);
-        event.target.classList.toggle('rd-prize-toggle-active', nowActive);
+
         write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
-          錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: seg.prize_ids.join(',') },
+          錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: Array.from(linked).join(',') },
           '已更新獎項連動', { optimistic: false });
       });
       // 工作人員
@@ -904,40 +934,57 @@
       });
     }
 
-    async function reorderAndSave(ids, movedId) {
+    function beginDraft() {
+      if (!state.dirty) state.savedData = JSON.parse(JSON.stringify(state.data));
+      state.dirty = true; state.revision++;
+    }
+
+    function reorderAndSave(ids, movedId) {
       if (state.busy || state.source !== 'backend') return;
-      const previous = state.data;
-      const byId = new Map(previous.segments.map(s => [s.segment_id, s]));
+      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
       if (!byId.has(movedId) || ids.length !== byId.size || new Set(ids).size !== ids.length || ids.some(id => !byId.has(id))) return;
-      if (ids.every((id, i) => id === previous.segments[i].segment_id)) { render(); return; }
-      const reordered = ids.map((id, i) => Object.assign({}, byId.get(id), { order: (i + 1) * 10 }));
-      const changed = reordered.filter(s => s.order !== byId.get(s.segment_id).order);
-      state.data = Object.assign({}, previous, { segments: reordered });
-      state.busy = true;
-      setMessage('順序儲存中…', false);
-      render(); // 先由新順序重算時間及所有投影，再送出寫入。
-      try {
-        for (const seg of changed) {
-          await planning().apiWrite({ action: 'save_rundown_segment', activity_id: state.activityId, segment_id: seg.segment_id, 順序: seg.order }, {
-            confirm: async () => {
-              const fresh = core().normalize(await planning().fetchRundown(state.activityId));
-              return fresh.segments.some(s => s.segment_id === seg.segment_id && s.order === seg.order);
-            }
-          });
+      if (ids.every((id, i) => id === state.data.segments[i].segment_id)) { render(); return; }
+      beginDraft();
+      state.data.segments = ids.map((id, i) => Object.assign({}, byId.get(id), { order: (i + 1) * 10 }));
+      setMessage('順序已調整，尚未儲存', false); render();
+    }
+
+    async function saveDraft() {
+      if (state.busy || !state.dirty || state.source !== 'backend') return false;
+      const before = new Map(state.savedData.segments.map(s => [s.segment_id, s]));
+      const edits = [];
+      for (const seg of state.data.segments) {
+        const old = before.get(seg.segment_id);
+        if (!old || !seg.title.trim() || /^[=+@-]/.test(seg.title.trim()) || !Number.isSafeInteger(seg.duration_min) || seg.duration_min < 0) {
+          setMessage('請填寫有效節目名與非負整數長度。', true); renderStatusOnly(); return false;
         }
-        setMessage('順序已更新', false);
-      } catch (err) {
-        state.data = previous;
-        try {
-          state.data = core().normalize(await planning().fetchRundown(state.activityId));
-          setMessage((err.message || '排序失敗') + '；已重讀後端順序', true);
-        } catch (readError) {
-          setMessage('排序失敗且無法重讀；目前顯示操作前資料，請重新讀取確認', true);
-        }
-      } finally {
-        state.busy = false;
-        render();
+        const edit = { segment_id: seg.segment_id };
+        if (seg.title.trim() !== old.title) edit['節目內容'] = seg.title.trim();
+        if (seg.duration_min !== old.duration_min) edit.duration_min = seg.duration_min;
+        if (Object.keys(edit).length > 1) edits.push(edit);
       }
+      const data = {};
+      if (state.data.segments.some(s => s.order !== before.get(s.segment_id).order)) data.order = state.data.segments.map(s => ({ segment_id: s.segment_id, 順序: s.order }));
+      if (edits.length) data.edits = edits;
+      if (!Object.keys(data).length) { state.dirty = false; setMessage('沒有需要儲存的變更', false); render(); return true; }
+      state.busy = true; state.revision++;
+      setMessage('儲存中…', false); render();
+      try {
+        await planning().apiWrite({ action: 'save_rundown_order', activity_id: state.activityId, data: JSON.stringify(data) }, { receipt: true });
+        state.data.segments.forEach(s => { s.title = s.title.trim(); });
+        state.dirty = false; rememberSaved();
+        setMessage('已儲存', false); return true;
+      } catch (err) {
+        state.data = JSON.parse(JSON.stringify(state.savedData));
+        state.dirty = false;
+        try {
+          state.data = core().normalize(await planning().fetchRundown(state.activityId)); rememberSaved();
+          setMessage((err.message || '儲存失敗') + '；已重讀後端資料', true);
+        } catch (readError) {
+          setMessage((err.message || '儲存失敗') + '；無法重讀，目前顯示上次已確認資料，請重新讀取確認。', true);
+        }
+        return false;
+      } finally { state.busy = false; render(); }
     }
 
     function bindDragAssign() {
@@ -980,9 +1027,19 @@
     return { render, load, state };
   }
 
+  const controllers = new WeakMap();
   const rundown = Object.freeze({
     async mount(container, context) {
-      const controller = createController(container, context || {});
+      const activityId = String(context && context.activityId || '');
+      let controller = controllers.get(container);
+      if (controller && controller.state.activityId === activityId) {
+        controller.render();
+        if (!controller.state.dirty && !controller.state.busy) await controller.load('backend');
+        return;
+      }
+      if (controller) { controller.state.disposed = true; controller.state.loadId++; }
+      controller = createController(container, context || {});
+      controllers.set(container, controller);
       controller.render();
       await controller.load('backend');
     }
