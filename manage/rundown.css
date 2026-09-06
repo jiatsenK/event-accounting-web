@@ -151,7 +151,7 @@
 /* ---- printable sheet: editorial ---- */
 .rd-sheet { padding: clamp(var(--space-lg), 4vw, var(--space-xl)); background: var(--color-surface); border-radius: var(--radius-card); box-shadow: var(--rd-shadow); }
 .rd-sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-sm); padding-bottom: var(--space-sm); margin-bottom: var(--space-lg); border-bottom: 1px solid var(--color-ink); }
-.rd-sheet-head h3 { margin: 0; font-family: var(--font-display); font-size: var(--text-lg); font-weight: 640; }
+.rd-sheet-head h3 { display: none; margin: 0; font-family: var(--font-display); font-size: var(--text-lg); font-weight: 640; }
 .rd-sheet-head span { color: var(--color-muted); font-weight: 640; font-size: var(--text-sm); }
 .rd-stage { margin: var(--space-lg) 0 var(--space-sm); font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); }
 .rd-stage:first-child { margin-top: 0; }
@@ -179,6 +179,7 @@
 
 /* ---- print ---- */
 @media print {
+  .rd-sheet-head h3 { display: block; }
   body.rd-printing > *:not(.shell),
   body.rd-printing .shell > *:not(#sectionView),
   body.rd-printing #sectionView .section-header,
@@ -217,3 +218,17 @@
 .prize-form input, .prize-form select { width: 100%; min-width: 0; padding: 8px; }
 .prize-scroll { overflow-x: auto; }
 .prize-scroll th, .prize-scroll td { padding: 10px; white-space: nowrap; text-align: left; }
+
+/* #70 結構：一個時段包含編輯欄位、獎項與可展開任務，沿用既有樣式。 */
+.rd-task-views { display: flex; gap: var(--space-xs); margin-bottom: var(--space-md); }
+.rd-task-views [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
+.rd-segment-card { min-width: 0; padding: var(--space-md); border: 1px solid var(--rd-line); margin-bottom: var(--space-md); }
+.rd-segment-card.rd-stage-rehearsal { border-left: 4px solid #EF9F27; }
+.rd-segment-card.rd-stage-official { border-left: 4px solid #378ADD; }
+.rd-segment-main, .rd-prize-fields { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+.rd-segment-title { flex: 1; min-width: 10rem; }
+.rd-segment-card .rd-prize-cell { max-width: none; margin: var(--space-xs) 0; }
+.rd-segment-card details { margin-top: var(--space-sm); }
+.rd-segment-card summary { cursor: pointer; }
+.rd-segment-card.rd-dragging { opacity: 0.4; }
+.rd-task-add label { display: grid; gap: var(--space-3xs); }

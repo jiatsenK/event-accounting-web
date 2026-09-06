@@ -79,6 +79,45 @@ test('時段編輯只寫 duration 與錨定時間，牆上時間唯讀顯示', (
 
 console.log('rundown-views tests PASS');
 
+test('時段與角色共用任務，預設無新增表單且編輯區不重複活動名稱', () => {
+  const host = stubElement();
+  const ctrl = views.createController(host, { activityId: 'test', activity: { name: '唯一活動名稱' } });
+  ctrl.state.source = 'backend';
+  ctrl.state.data = RundownCore.normalize({
+    config: { official_start: '16:00' },
+    segments: [{ segment_id: 's1', title: '開場', duration_min: 30, order: 10 }, { segment_id: 's2', title: '抽獎', duration_min: 15, order: 20 }],
+    roles: [{ role: '音控' }, { role: '主持' }],
+    tasks: [{ task_id: 't1', segment_id: 's1', role: '音控', content: '播放音樂', audience: '工作人員' },
+      { task_id: 't2', segment_id: 's1', role: '主持', content: '介紹來賓', audience: '全部' },
+      { task_id: 't3', segment_id: 's2', role: '音控', content: '播放音效', audience: '全部' }]
+  });
+  ctrl.render();
+  assert.equal((host.innerHTML.match(/<article data-seg=/g) || []).length, 2);
+  assert.equal((host.innerHTML.match(/data-task-details/g) || []).length, 2);
+  assert.match(host.innerHTML, /16:00–16:30/);
+  assert.doesNotMatch(host.innerHTML, /data-task-form|唯一活動名稱|rd-table/);
+  ctrl.state.taskDraft = { segmentId: 's1', role: '音控', content: '草稿', audience: '全部' };
+  ctrl.state.expandedSegments.add('s1');
+  ctrl.render();
+  assert.equal((host.innerHTML.match(/data-task-form/g) || []).length, 1);
+  assert.match(host.innerHTML, /data-task-details open/);
+  ctrl.state.taskView = 'role';
+  ctrl.state.selectedRole = '音控';
+  ctrl.render();
+  assert.match(host.innerHTML, /播放音樂/);
+  assert.match(host.innerHTML, /播放音效/);
+  assert.doesNotMatch(host.innerHTML, /介紹來賓/);
+  assert.ok(host.innerHTML.indexOf('播放音樂') < host.innerHTML.indexOf('播放音效'));
+  ctrl.state.data.tasks[0].content = '更新後音樂';
+  ctrl.state.data.assignments.push({ role: '音控', person: '測試人員' });
+  ctrl.state.data.crew.push({ name: '測試人員' });
+  ctrl.render();
+  assert.match(host.innerHTML, /更新後音樂/);
+  assert.match(host.innerHTML, /測試人員/);
+  ctrl.state.mode = 'assign'; ctrl.render();
+  assert.match(host.innerHTML, /更新後音樂/);
+});
+
 // Exercise the actual click handlers and deferred transport, not source matching.
 test('點選排序立即重算，只送順序；成功不重讀，失敗重讀', async () => {
   let handles=[];
@@ -87,7 +126,7 @@ test('點選排序立即重算，只送順序；成功不重讀，失敗重讀',
   body.handlers={};
   body.addEventListener=(name,fn)=>{body.handlers[name]=fn;};
   body.querySelectorAll=()=>handles;
-  host.querySelector=selector=>selector === '.rd-table tbody' ? body : stubElement();
+  host.querySelector=selector=>selector === '.rd-segments' ? body : stubElement();
   const ctrl=views.createController(host,{activityId:'test'});
   const raw={config:{official_start:'18:00'},segments:[
     {segment_id:'a',order:10,title:'A',duration_min:10,stage:'正式'},
@@ -130,7 +169,7 @@ test('點選排序立即重算，只送順序；成功不重讀，失敗重讀',
   await body.handlers.drop({preventDefault(){}});
   assert.equal(ctrl.state.data,beforeCancel,'取消拖曳不寫入');
   global.PlanningCore.apiWrite=async fields=>{sent.push(fields);};
-  host.querySelectorAll=selector=>selector === '.rd-table tbody tr[data-seg]' ? ['b','c','a'].map(seg=>({dataset:{seg}})) : [];
+  host.querySelectorAll=selector=>selector === '.rd-segments > article[data-seg]' ? ['b','c','a'].map(seg=>({dataset:{seg}})) : [];
   handles[0].handlers.dragstart({dataTransfer:{setData(){}}});
   await body.handlers.drop({preventDefault(){}});
   assert.deepEqual(ctrl.state.data.segments.map(s=>s.segment_id),['b','c','a']);
