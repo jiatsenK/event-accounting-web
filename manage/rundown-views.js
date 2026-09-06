@@ -285,6 +285,7 @@
           '<div class="rd-body">' + body() + '</div>' +
         '</div>';
       bind();
+      if (state.busy) container.querySelectorAll('button, input, select').forEach(el => { el.disabled = true; });
       if (root.PrizeViews) root.PrizeViews.attachStaffSuggestions(container, state.staff);
       lockControls();
     }
@@ -355,7 +356,7 @@
       // 錨定時間畫面上不開放編輯，但既有值仍要跟著列一起送出，不能被其他欄位的存檔洗掉。
       const segmentRows = timed.map(seg =>
         '<tr data-seg="' + esc(seg.segment_id) + '" class="' + (seg.stage === '彩排' ? 'rd-stage-rehearsal' : 'rd-stage-official') + '">' +
-          '<td class="rd-order-cell">' + (readOnly ? '' : '<span class="rd-drag-handle" draggable="true" title="拖曳調整順序">⠿</span>') +
+          '<td class="rd-order-cell">' + (readOnly ? '' : '<button type="button" class="rd-drag-handle" draggable="true" aria-pressed="false" aria-label="選取時段，再點目標把手移到其前方" title="拖曳，或先點此處再點目標把手">⠿</button>') +
             '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '">' +
             '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
             '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
@@ -401,7 +402,7 @@
         configPanel() +
         '<section class="rd-panel"><div class="rd-panel-head"><h3>時段</h3>' +
           '<span class="rd-muted">' +
-          (readOnly ? '' : '拖曳最左邊調整順序；改「持續」會自動存檔，「時間」是算出來的，不能直接改') + '</span></div>' +
+          (readOnly ? '' : '拖曳最左邊調整順序，或先點把手再點目標把手移到其前方；改「持續」會自動存檔，「時間」是算出來的，不能直接改') + '</span></div>' +
           (readOnly ? '' : '<div class="rd-quick-segments">' + QUICK_SEGMENTS.map((p, i) => '<button type="button" data-quick-segment="' + i + '">' + p[0] + (i === 5 ? '' : '・' + p[1] + '分') + '</button>').join('') + '</div>') +
           '<div class="rd-scroll"><table class="rd-table"><thead><tr>' +
             '<th></th><th>時間</th><th>持續(分)</th><th>節目內容</th><th>連結獎項</th><th>獎別</th><th>頒獎人</th><th>名額</th><th>金額</th><th></th>' +
@@ -791,13 +792,31 @@
       });
     }
 
-    // 拖 ⠿ 調整順序：放開時只送被拖動那一段的新順序值（取新鄰居的中間值），不動其他列。
+    // 拖曳與點選共用排序；取消拖曳時重繪原順序。
     function bindSegmentDrag() {
       const tbody = container.querySelector('.rd-table tbody');
-      if (!tbody) return;
+      if (!tbody || state.source !== 'backend' || state.busy) return;
       let dragId = '';
+      let pickedId = '';
       tbody.querySelectorAll('.rd-drag-handle').forEach(handle => {
+        handle.addEventListener('click', () => {
+          if (state.busy) return;
+          const id = handle.closest('tr[data-seg]').dataset.seg;
+          if (!pickedId) {
+            pickedId = id;
+            handle.setAttribute('aria-pressed', 'true');
+            handle.classList.add('rd-picked');
+            return;
+          }
+          if (pickedId === id) { pickedId = ''; render(); return; }
+          const ids = state.data.segments.map(s => s.segment_id).filter(x => x !== pickedId);
+          ids.splice(ids.indexOf(id), 0, pickedId);
+          const moved = pickedId;
+          pickedId = '';
+          return reorderAndSave(ids, moved);
+        });
         handle.addEventListener('dragstart', event => {
+          if (state.busy) { event.preventDefault(); return; }
           const tr = handle.closest('tr[data-seg]');
           dragId = tr ? tr.dataset.seg : '';
           if (tr) tr.classList.add('rd-dragging');
@@ -806,6 +825,7 @@
         handle.addEventListener('dragend', () => {
           const tr = handle.closest('tr[data-seg]');
           if (tr) tr.classList.remove('rd-dragging');
+          if (dragId) { dragId = ''; render(); }
         });
       });
       tbody.addEventListener('dragover', event => {
@@ -822,25 +842,48 @@
         event.preventDefault();
         if (dragId) {
           const ids = Array.from(container.querySelectorAll('.rd-table tbody tr[data-seg]')).map(tr => tr.dataset.seg);
-          reorderAndSave(ids, dragId);
+          const moved = dragId;
+          dragId = '';
+          return reorderAndSave(ids, moved);
         }
         dragId = '';
       });
     }
 
-    function reorderAndSave(ids, movedId) {
-      const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
-      const seg = byId.get(movedId);
-      const index = ids.indexOf(movedId);
-      if (!seg || index < 0) return;
-      const prev = index > 0 ? byId.get(ids[index - 1]) : null;
-      const next = index < ids.length - 1 ? byId.get(ids[index + 1]) : null;
-      const prevOrder = prev ? prev.order : (next ? next.order - 20 : 0);
-      const nextOrder = next ? next.order : (prev ? prev.order + 20 : 20);
-      state.data.segments = ids.map(id => byId.get(id));
-      write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
-        錨定時間: seg.anchor_time, 順序: (prevOrder + nextOrder) / 2, 階段: seg.stage, 備註: seg.note,
-        prize_ids: (seg.prize_ids || []).join(',') }, '順序已更新');
+    async function reorderAndSave(ids, movedId) {
+      if (state.busy || state.source !== 'backend') return;
+      const previous = state.data;
+      const byId = new Map(previous.segments.map(s => [s.segment_id, s]));
+      if (!byId.has(movedId) || ids.length !== byId.size || new Set(ids).size !== ids.length || ids.some(id => !byId.has(id))) return;
+      if (ids.every((id, i) => id === previous.segments[i].segment_id)) { render(); return; }
+      const reordered = ids.map((id, i) => Object.assign({}, byId.get(id), { order: (i + 1) * 10 }));
+      const changed = reordered.filter(s => s.order !== byId.get(s.segment_id).order);
+      state.data = Object.assign({}, previous, { segments: reordered });
+      state.busy = true;
+      setMessage('順序儲存中…', false);
+      render(); // 先由新順序重算時間及所有投影，再送出寫入。
+      try {
+        for (const seg of changed) {
+          await planning().apiWrite({ action: 'save_rundown_segment', activity_id: state.activityId, segment_id: seg.segment_id, 順序: seg.order }, {
+            confirm: async () => {
+              const fresh = core().normalize(await planning().fetchRundown(state.activityId));
+              return fresh.segments.some(s => s.segment_id === seg.segment_id && s.order === seg.order);
+            }
+          });
+        }
+        setMessage('順序已更新', false);
+      } catch (err) {
+        state.data = previous;
+        try {
+          state.data = core().normalize(await planning().fetchRundown(state.activityId));
+          setMessage((err.message || '排序失敗') + '；已重讀後端順序', true);
+        } catch (readError) {
+          setMessage('排序失敗且無法重讀；目前顯示操作前資料，請重新讀取確認', true);
+        }
+      } finally {
+        state.busy = false;
+        render();
+      }
     }
 
     function bindDragAssign() {
