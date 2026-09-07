@@ -469,3 +469,27 @@ test('#106 新增第二個同名時段只留編號草稿，儲存一次送兩段
     await h.click('save-draft');assert.equal(sent.length,2);assert.equal(JSON.parse(sent[1].data).edits.length,2);
   } finally {global.PlanningCore=PlanningCore;}
 });
+
+test('#106 密集列只顯示摘要，獎項與任務置於預設收合抽屜', () => {
+  const h=redesignHarness();const html=h.host.innerHTML;
+  assert.doesNotMatch(html,/rd-anchor|從這裡重新計算|<summary>連結獎項/);
+  assert.match(html,/rd-time-fixed/);assert.match(html,/class="rd-fix" title="固定開始時間，之後往下重算">固定/);
+  assert.match(html,/<summary>這段頒的獎<\/summary><div class="rd-popover-panel"><p class="rd-hint">/);
+  assert.match(html,/class="rd-detail-preview"[^>]*>獎 頭獎.* · 任務 1<\/button>/);
+  assert.match(html,/<details data-task-details><summary/);
+  assert.match(html,/class="rd-segment-drawer"><div class="rd-prize-cell">/);
+  h.ctrl.state.data.segments[0].duration_min=0;h.ctrl.render();
+  assert.match(h.host.innerHTML,/data-field="duration_min" value="" placeholder="—"/);
+});
+
+test('#106 純排序不重編；重編後無差異回復已存標題', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
+  try {
+    const raw={segments:[{segment_id:'a',title:'抽獎（一）',duration_min:5,order:10},{segment_id:'b',title:'抽獎（二）',duration_min:5,order:20}]};
+    const h=perfHarness(raw);h.fields[0].value='抽獎';h.fields[0].handlers.input({target:h.fields[0]});await h.click('save-draft');
+    assert.equal(sent.length,0);assert.equal(h.ctrl.state.data.segments[0].title,'抽獎（一）');
+    h.handles[1].handlers.click();h.handles[0].handlers.click();await h.click('save-draft');
+    assert.equal(sent.length,1);assert.equal(sent[0].edits,undefined);
+    assert.equal(h.ctrl.state.data.segments[0].title,'抽獎（二）');
+  } finally {global.PlanningCore=PlanningCore;}
+});
