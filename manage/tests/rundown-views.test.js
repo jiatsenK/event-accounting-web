@@ -521,6 +521,45 @@ test('#106 定版 彩排在上、正式在下，兩區不收合，階段為列�
   assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));
 });
 
+test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料、不重讀或重畫', () => {
+  let reads=0,writes=0;
+  global.PlanningCore={apiWrite:async()=>{writes++;},fetchRundown:async()=>{reads++;}};
+  try {
+    const raw={config:{official_start:'18:00'},segments:Array.from({length:20},(_,i)=>({segment_id:'s'+i,title:'節目'+i,duration_min:5,order:(i+1)*10}))};
+    const h=perfHarness(raw),data=h.ctrl.state.data,tasks=data.tasks,prizes=data.prizes;
+    const rows=data.segments.map(seg=>{
+      const fields=new Map([['節目內容',seg.title],['duration_min',seg.duration_min],['順序',seg.order],['階段',seg.stage]].map(([field,value])=>[field,{value:String(value),dataset:{}}]));
+      fields.set('節目內容',h.fields[0]); // 第一列的真實輸入事件與回復共用同一節點。
+      if(seg.segment_id!=='s0')fields.set('節目內容',{value:seg.title,dataset:{}});
+      const toggle={...stubElement(),setAttribute(){}};
+      return {...stubElement(),dataset:{seg:seg.segment_id},drawer:{open:true},fields,
+        querySelector(selector){
+          if(selector==='[data-stage]')return toggle;
+          if(selector==='.rd-time-value')return this.time||(this.time={textContent:''});
+          const match=selector.match(/data-field="([^"]+)"/);return match?fields.get(match[1])||null:null;
+        }};
+    });
+    h.fields[0].value='未存';h.fields[0].handlers.input({target:h.fields[0]});
+    h.fields[1].value='12';h.fields[1].handlers.input({target:h.fields[1]});
+    h.handles[19].handlers.click();h.handles[0].handlers.click();
+    const oldQuery=h.host.querySelector.bind(h.host), oldAll=h.host.querySelectorAll.bind(h.host);
+    const children=[rows[19],...rows.slice(0,19)],drawers=rows.map(r=>r.drawer);
+    const list={appendChild(row){const i=children.indexOf(row);if(i>=0)children.splice(i,1);children.push(row);}};
+    h.host.querySelector=selector=>selector.includes('data-stage-group=')?{querySelector:s=>s==='.rd-stage-rows'?list:{textContent:''}}:oldQuery(selector);
+    h.host.querySelectorAll=selector=>selector==='.rd-segments article[data-seg]'?rows:oldAll(selector);
+    Object.defineProperty(h.host,'innerHTML',{set(){assert.fail('取消不應重畫整份 markup');}});
+    const started=performance.now();h.click('cancel-draft');const elapsed=performance.now()-started;
+    assert.ok(elapsed<100,'20 段就地取消低於 100ms');
+    assert.equal(h.ctrl.state.data,data);assert.equal(data.tasks,tasks);assert.equal(data.prizes,prizes);
+    assert.equal(data.segments[0].title,'節目0');assert.equal(data.segments[0].duration_min,5);
+    assert.equal(h.fields[0].value,'節目0');assert.equal(rows[0].fields.get('duration_min').value,'5');
+    assert.deepEqual(children,rows);assert.deepEqual(rows.map(r=>r.drawer),drawers);
+    assert.match(rows[1].time.textContent,/18:05/);
+    assert.equal(h.ctrl.state.dirty,false);assert.equal(reads,0);assert.equal(writes,0);
+    console.log('20-row cancel handler (DOM stub): '+elapsed.toFixed(2)+'ms');
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
 test('#106 第二輪 C 鍵盤與點選只在同階段內重排，保存仍含完整順序', async () => {
   const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
   try {

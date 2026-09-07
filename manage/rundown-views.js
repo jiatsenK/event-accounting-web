@@ -948,11 +948,60 @@
         return result;
       });
       on('[data-action="cancel-draft"]', 'click', () => {
-        if (state.busy) return;
-        state.data = JSON.parse(JSON.stringify(state.savedData || state.data));
+        if (state.busy || !state.dirty || !state.savedData) return;
+        const before = new Map(state.savedData.segments.map(seg => [seg.segment_id, seg]));
+        const rows = new Map([...container.querySelectorAll('.rd-segments article[data-seg]')].map(row => [row.dataset.seg, row]));
+        let reordered = false;
+        state.data.segments.forEach(seg => {
+          const saved = before.get(seg.segment_id), row = rows.get(seg.segment_id);
+          if (!saved) return;
+          reordered = reordered || seg.order !== saved.order || seg.stage !== saved.stage;
+          [['title', '節目內容'], ['duration_min', 'duration_min'], ['order', '順序'], ['stage', '階段']].forEach(([key, field]) => {
+            if (seg[key] === saved[key]) return;
+            seg[key] = saved[key];
+            const input = row && row.querySelector('[data-field="' + field + '"]');
+            if (input) { input.value = String(key === 'duration_min' ? seg[key] || '' : seg[key]); input.dataset.beforeEdit = input.value; }
+          });
+          if (row) {
+            row.classList.toggle('rd-stage-rehearsal', seg.stage === '彩排');
+            row.classList.toggle('rd-stage-official', seg.stage !== '彩排');
+            const toggle = row.querySelector('[data-stage]');
+            if (toggle) {
+              toggle.dataset.stage = seg.stage === '彩排' ? '正式' : '彩排';
+              toggle.textContent = seg.stage;
+              toggle.setAttribute('aria-label', '目前' + seg.stage + '，切換為' + toggle.dataset.stage);
+            }
+          }
+        });
+        if (reordered) {
+          state.data.segments.sort((a, b) => a.order - b.order);
+          ['彩排', '正式'].forEach(stage => {
+            const group = container.querySelector('[data-stage-group="' + stage + '"]');
+            if (!group) return;
+            const list = group.querySelector('.rd-stage-rows');
+            const segments = state.data.segments.filter(s => s.stage === stage);
+            segments.forEach(seg => { if (rows.has(seg.segment_id)) list.appendChild(rows.get(seg.segment_id)); });
+            const count = group.querySelector('[data-stage-count]');
+            if (count) count.textContent = String(segments.length);
+          });
+        }
         state.dirty = false; state.revision++;
-        state.feedback = { selector: '[data-action="cancel-draft"]' };
-        setMessage('已取消未儲存變更', false); render();
+        container.querySelectorAll('.rd-field-message').forEach(note => { note.textContent = ''; });
+        container.querySelectorAll('[aria-invalid]').forEach(el => {
+          el.classList.remove('rd-field-error', 'rd-save-pulse');
+          el.setAttribute('aria-invalid', 'false'); el.setAttribute('aria-busy', 'false');
+        });
+        state.feedback = null;
+        // 依時段保留全部列、抽屜與輸入節點；其他模式僅更新衍生預覽。
+        if (state.mode !== 'edit' || state.taskView !== 'segment') {
+          const content = container.querySelector('.rd-body');
+          if (content) {
+            listeners.forEach(([el, type, fn]) => el.removeEventListener && el.removeEventListener(type, fn)); listeners = [];
+            content.innerHTML = body(); bind();
+          }
+        } else refreshTimeReadouts();
+        setMessage('已取消未儲存變更', false); renderStatusOnly();
+        const live = container.querySelector('[data-rd-live]'); if (live) live.textContent = state.message;
       });
       on('[data-action="del-seg"]', 'click', event => {
         if (state.busy || state.pendingDelete) return;
