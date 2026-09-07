@@ -52,6 +52,19 @@
     if (n < 100) return (n < 20 ? '' : digits[Math.floor(n / 10)]) + '十' + (n % 10 ? digits[n % 10] : '');
     return String(n).split('').map(d => digits[Number(d)]).join('');
   }
+  function baseTitle(title) { return String(title).replace(/[（(].*$/, '').trim(); }
+  function numberedTitles(segments, bases) {
+    const groups = new Map(), titles = new Map();
+    [...segments].sort((a, b) => a.order - b.order).forEach(seg => {
+      const base = baseTitle(seg.title);
+      if (!base || !bases.has(base)) return;
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base).push(seg);
+    });
+    groups.forEach((group, base) => group.forEach((seg, i) =>
+      titles.set(seg.segment_id, base + (group.length > 1 ? '（' + chineseNumber(i + 1) + '）' : ''))));
+    return titles;
+  }
   function quickSegment(segments, index) {
     const [name, duration, numbered] = QUICK_SEGMENTS[index] || QUICK_SEGMENTS[5];
     const base = s => String(s.title || s['節目內容'] || '').replace(/[（(].*$/, '').trim();
@@ -786,8 +799,16 @@
         const fields = { action: 'save_rundown_segment', 節目內容: '新時段', duration_min: previous ? previous.duration_min : 5,
           順序: previous ? (index >= 0 && next ? (previous.order + next.order) / 2 : previous.order + 10) : 10, 階段: previous ? previous.stage : '正式' };
         if (!await uiWrite(fields, '已新增時段', {}, '[data-action="add-segment"]')) return;
-        state.mode = 'edit'; state.taskView = 'segment'; render();
         const added = state.data.segments.find(s => !ids.has(s.segment_id));
+        if (added) {
+          const titles = numberedTitles(state.data.segments, new Set([baseTitle(added.title)]));
+          if (state.data.segments.some(s => titles.has(s.segment_id) && titles.get(s.segment_id) !== s.title)) {
+            beginDraft();
+            state.data.segments.forEach(s => { if (titles.has(s.segment_id)) s.title = titles.get(s.segment_id); });
+            setMessage('已新增時段，編號尚未儲存', false);
+          }
+        }
+        state.mode = 'edit'; state.taskView = 'segment'; render();
         const input = added && container.querySelector('[data-seg="' + added.segment_id + '"] [data-field="節目內容"]');
         if (input && input.focus) { input.focus(); input.select(); }
       });
@@ -1157,6 +1178,21 @@
         if (seg.duration_min !== old.duration_min) edit.duration_min = seg.duration_min;
         if (Object.keys(edit).length > 1) edits.push(edit);
       }
+      // 純排序／長度變更不重編；改名時整理原名稱與新名稱的兄弟段。
+      const bases = new Set();
+      edits.filter(e => e['節目內容'] != null).forEach(e => {
+        bases.add(baseTitle(before.get(e.segment_id).title));
+        bases.add(baseTitle(e['節目內容']));
+      });
+      const titles = numberedTitles(state.data.segments, bases);
+      titles.forEach((title, id) => {
+        let edit = edits.find(e => e.segment_id === id);
+        if (title !== before.get(id).title) {
+          if (!edit) { edit = { segment_id: id }; edits.push(edit); }
+          edit['節目內容'] = title;
+        } else if (edit) delete edit['節目內容'];
+      });
+      for (let i = edits.length - 1; i >= 0; i--) if (Object.keys(edits[i]).length === 1) edits.splice(i, 1);
       const data = {};
       if (state.data.segments.some(s => s.order !== before.get(s.segment_id).order)) data.order = state.data.segments.map(s => ({ segment_id: s.segment_id, 順序: s.order }));
       if (edits.length) data.edits = edits;
@@ -1165,7 +1201,7 @@
       setMessage('儲存中…', false); render();
       try {
         await planning().apiWrite({ action: 'save_rundown_order', activity_id: state.activityId, data: JSON.stringify(data) }, { receipt: true });
-        state.data.segments.forEach(s => { s.title = s.title.trim(); });
+        state.data.segments.forEach(s => { s.title = titles.get(s.segment_id) || s.title.trim(); });
         state.dirty = false; rememberSaved();
         setMessage('已儲存', false); return true;
       } catch (err) {

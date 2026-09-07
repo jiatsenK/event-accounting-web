@@ -436,3 +436,36 @@ test('#71 CSS 保留 token、焦點 outline、44px 觸控與 reduced-motion',()=
   assert.match(css,/min-height: 2\.75rem/);assert.match(css,/@media \(max-width: 52rem\)/);
   assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);assert.doesNotMatch(css,/min-width: 1340px/);
 });
+
+test('#106 改名合併整組依順序編號，一次送出並更新快取', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(f);return {};}};
+  try {
+    const h=perfHarness({segments:[{segment_id:'a',title:'開場',duration_min:5,order:30},{segment_id:'b',title:'抽獎',duration_min:5,order:10}]});
+    h.fields[0].value='抽獎';h.fields[0].handlers.input({target:h.fields[0]});
+    assert.equal(sent.length,0);await h.click('save-draft');
+    assert.equal(sent.length,1);assert.equal(sent[0].action,'save_rundown_order');
+    assert.deepEqual(JSON.parse(sent[0].data).edits,[{segment_id:'a',節目內容:'抽獎（二）'},{segment_id:'b',節目內容:'抽獎（一）'}]);
+    assert.equal(h.ctrl.state.data.segments.find(s=>s.segment_id==='a').title,'抽獎（二）');
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 改名離開同名組後移除單段編號；單改長度不重編', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
+  try {
+    const raw={segments:[{segment_id:'a',title:'抽獎（一）',duration_min:5,order:10},{segment_id:'b',title:'抽獎(二)',duration_min:5,order:20}]};
+    const h=perfHarness(raw);h.fields[1].value='6';h.fields[1].handlers.input({target:h.fields[1]});await h.click('save-draft');
+    assert.deepEqual(sent[0].edits,[{segment_id:'a',duration_min:6}]);
+    h.fields[0].value='唱歌';h.fields[0].handlers.input({target:h.fields[0]});await h.click('save-draft');
+    assert.deepEqual(sent[1].edits,[{segment_id:'a',節目內容:'唱歌'},{segment_id:'b',節目內容:'抽獎'}]);
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 新增第二個同名時段只留編號草稿，儲存一次送兩段', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(f);return {segment_id:'new'};}};
+  try {
+    const h=redesignHarness();h.ctrl.state.data.segments[0].title='新時段';
+    await h.click('add-segment');assert.equal(sent.length,1);assert.equal(h.ctrl.state.dirty,true);
+    assert.deepEqual(h.ctrl.state.data.segments.filter(s=>s.title.startsWith('新時段')).map(s=>s.title),['新時段（一）','新時段（二）']);
+    await h.click('save-draft');assert.equal(sent.length,2);assert.equal(JSON.parse(sent[1].data).edits.length,2);
+  } finally {global.PlanningCore=PlanningCore;}
+});
