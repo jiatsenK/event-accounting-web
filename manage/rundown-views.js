@@ -31,6 +31,11 @@
     return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : '';
   }
 
+  function icon(name) {
+    const paths = { chevron: '<path d="m6 9 6 6 6-6"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', more: '<path d="M4 12h1m6 0h1m6 0h1"/>', drag: '<path d="M8 5h1m6 0h1M8 12h1m6 0h1M8 19h1m6 0h1"/>', pin: '<path d="m8 3 8 0-1 6 3 4H6l3-4-1-6m4 10v8"/>' };
+    return '<svg class="rd-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
+  }
+
   const MODES = [
     { id: 'edit', label: '編輯流程' },
     { id: 'assign', label: '排人' },
@@ -78,6 +83,9 @@
       staff: [],
       staffError: false,
       newPrizeSegment: '',
+      focusedSegment: '',
+      pendingDelete: null,
+      feedback: null,
       message: '',
       error: false
     };
@@ -283,23 +291,94 @@
     function renderStatusOnly() {
       if (state.disposed) return;
       lockControls();
-      const el = container.querySelector('.rd-status');
-      if (!el) { render(); return; }
       const save = container.querySelector('[data-action="save-draft"]');
       const cancel = container.querySelector('[data-action="cancel-draft"]');
       if (save) save.disabled = state.busy || !state.dirty;
       if (cancel) cancel.disabled = state.busy || !state.dirty;
-      el.textContent = state.message;
-      el.classList.toggle('error', state.error);
-      el.classList.toggle('rd-hidden', !state.message);
+      const el = container.querySelector('.rd-load-status');
+      if (el) {
+        el.textContent = state.feedback ? '' : state.message;
+        el.classList.toggle('error', state.error);
+        el.classList.toggle('rd-hidden', !!state.feedback || !state.message);
+      }
+      paintFeedback();
+    }
+
+    function paintFeedback() {
+      if (state.feedback && state.feedback.selectors) {
+        const feedback = state.feedback;
+        feedback.selectors.forEach(selector => { state.feedback = { selector }; paintFeedback(); });
+        state.feedback = feedback; return;
+      }
+      if (!state.feedback) return;
+      const el = container.querySelector(state.feedback.selector);
+      if (!el || !el.setAttribute) return;
+      const error = state.error;
+      el.classList.toggle('rd-field-error', error);
+      const success = !state.busy && !state.dirty && !error;
+      el.classList.toggle('rd-save-pulse', success);
+      if (success) root.setTimeout(() => el.classList.remove('rd-save-pulse'), 220);
+      el.setAttribute('aria-invalid', String(error));
+      el.setAttribute('aria-busy', String(state.busy));
+      let note = el.parentElement.querySelector('.rd-field-message');
+      if (!note) { note = el.ownerDocument.createElement('small'); note.className = 'rd-field-message'; note.setAttribute('role', 'status'); el.parentElement.appendChild(note); }
+      note.id = 'rd-feedback-' + [...container.querySelectorAll('.rd-field-message')].indexOf(note);
+      el.setAttribute('aria-describedby', note.id);
+      note.textContent = error ? state.message : state.busy ? '儲存中…' : state.dirty ? '尚未儲存' : '';
+    }
+
+    // 僅協調呈現：沿用原節點與焦點，存取函式不變。
+    let listeners = [];
+    function listen(el, type, fn) { el.addEventListener(type, fn); listeners.push([el, type, fn]); }
+    function patchMarkup(markup) {
+      const doc = container.ownerDocument;
+      if (!doc || !doc.createElement) { container.innerHTML = markup; return; }
+      const positions = new Map([...container.querySelectorAll('.rd-segment-card')].map(el => [el.dataset.seg, el.getBoundingClientRect().top]));
+      const template = doc.createElement('template'); template.innerHTML = markup;
+      const key = node => node.nodeType === 1 ? node.tagName + ':' + ['data-seg','data-field','data-action','data-config','data-prize','data-task','data-mode','data-new','name'].map(k => node.getAttribute(k) || '').join(':') : node.nodeType;
+      function sync(parent, source) {
+        let cursor = parent.firstChild;
+        for (const fresh of [...source.childNodes]) {
+          let old = cursor;
+          if (!old || key(old) !== key(fresh)) {
+            old = [...parent.childNodes].find(n => key(n) === key(fresh) && (n === cursor || !n.__rdUsed));
+            if (old) parent.insertBefore(old, cursor); else { old = fresh.cloneNode(true); parent.insertBefore(old, cursor); }
+          }
+          old.__rdUsed = true;
+          if (old.nodeType === 1) {
+            const open = old.tagName === 'DETAILS' && !old.hasAttribute('data-task-details') ? old.open : null;
+            for (const a of [...old.attributes]) if (!fresh.hasAttribute(a.name)) old.removeAttribute(a.name);
+            for (const a of [...fresh.attributes]) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
+            if (open != null) old.open = open;
+            if ('value' in old && old.tagName !== 'SELECT' && (old.hasAttribute('data-field') || old.hasAttribute('data-config') || old.hasAttribute('data-prize-field')) && old.value !== fresh.value && doc.activeElement !== old) old.value = fresh.value;
+            sync(old, fresh);
+          } else if (old.textContent !== fresh.textContent) old.textContent = fresh.textContent;
+          cursor = old.nextSibling;
+        }
+        while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
+        for (const n of parent.childNodes) delete n.__rdUsed;
+      }
+      sync(container, template.content);
+      if (!root.matchMedia || !root.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        container.querySelectorAll('.rd-segment-card').forEach(el => {
+          const previous = positions.get(el.dataset.seg), delta = previous - el.getBoundingClientRect().top;
+          if (Number.isFinite(delta) && delta && el.animate) el.animate([{ transform: 'translateY(' + delta + 'px)' }, { transform: 'translateY(0)' }], { duration: parseFloat(root.getComputedStyle(el).getPropertyValue('--dur-short')) || 140, easing: root.getComputedStyle(el).getPropertyValue('--ease-out').trim() });
+        });
+      }
     }
 
     function lockControls() {
       container.querySelectorAll('button, input, select, textarea').forEach(el => {
-        if (state.busy && el.dataset.writeDisabled == null) {
+        if (el.tagName === 'BUTTON' && el.matches) {
+          const feedback = state.feedback;
+          const trigger = feedback && (feedback.selectors ? el.dataset.action === 'save-draft' :
+            feedback.selector && (el.matches(feedback.selector) || el.type === 'submit' && el.closest(feedback.selector)));
+          el.setAttribute('aria-busy', String(!!(state.busy && trigger)));
+        }
+        if ((state.busy || state.pendingDelete) && el.dataset.action !== 'undo-delete' && el.dataset.writeDisabled == null) {
           el.dataset.writeDisabled = el.disabled ? '1' : '0';
           el.disabled = true;
-        } else if (!state.busy && el.dataset.writeDisabled != null) {
+        } else if (!state.busy && !state.pendingDelete && el.dataset.writeDisabled != null) {
           el.disabled = el.dataset.writeDisabled === '1';
           delete el.dataset.writeDisabled;
         }
@@ -310,20 +389,45 @@
 
     function render() {
       if (state.disposed) return;
-      container.innerHTML =
+      listeners.forEach(([el, type, fn]) => el.removeEventListener && el.removeEventListener(type, fn)); listeners = [];
+      patchMarkup(
         '<div class="rundown">' +
           header() +
-          '<nav class="rd-modes" aria-label="流程表模式">' +
-            MODES.map(m => '<button type="button" data-mode="' + m.id + '"' +
-              (m.id === state.mode ? ' class="active" aria-current="true"' : '') + '>' + esc(m.label) + '</button>').join('') +
-          '</nav>' +
-          '<p class="rd-status' + (state.error ? ' error' : '') + (state.message ? '' : ' rd-hidden') + '" role="status">' + esc(state.message) + '</p>' +
+          '<p class="rd-load-status' + (state.error ? ' error' : '') + (state.message && !state.feedback ? '' : ' rd-hidden') + '" role="status">' + esc(state.feedback ? '' : state.message) + '</p>' +
+          '<span class="rd-sr-only" data-rd-live aria-live="polite" aria-atomic="true"></span>' +
+
           '<div class="rd-body">' + body() + '</div>' +
-        '</div>';
+        '</div>');
       bind();
+      paintFeedback();
       if (state.busy) container.querySelectorAll('button, input, select').forEach(el => { el.disabled = true; });
-      if (root.PrizeViews) root.PrizeViews.attachStaffSuggestions(container, state.staff);
+      bindStaffSuggestions();
       lockControls();
+    }
+
+    function bindStaffSuggestions() {
+      container.querySelectorAll('[data-rd-staff]').forEach(input => {
+        const suggestions = input.ownerDocument.createElement('div'); suggestions.className = 'prize-staff-suggestions';
+        input.insertAdjacentElement('afterend', suggestions);
+        let selected = -1;
+        const choose = name => { input.value = name; suggestions.innerHTML = ''; input.dispatchEvent(new root.Event('change', { bubbles: true })); };
+        listen(input, 'input', () => {
+          selected = -1;
+          const matches = root.PrizeViews ? root.PrizeViews.staffMatches(state.staff, input.value) : [];
+          suggestions.innerHTML = matches.map(p => '<button type="button" data-staff-name="' + esc(p.name) + '">' + esc(p.name) + '<small>' + esc([p.department, p.title].filter(Boolean).join('／')) + '</small></button>').join('');
+        });
+        listen(suggestions, 'mousedown', event => event.preventDefault());
+        listen(suggestions, 'click', event => { const button = event.target.closest('[data-staff-name]'); if (button) choose(button.dataset.staffName); });
+        listen(input, 'keydown', event => {
+          const buttons = [...suggestions.querySelectorAll('button')];
+          if (event.key === 'Escape') { suggestions.innerHTML = ''; event.stopPropagation(); }
+          if (['ArrowDown', 'ArrowUp'].includes(event.key) && buttons.length) {
+            event.preventDefault(); selected = (selected + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+            buttons.forEach((button, index) => button.classList.toggle('staff-selected', index === selected));
+          }
+          if (event.key === 'Enter' && buttons[selected]) { event.preventDefault(); choose(buttons[selected].dataset.staffName); }
+        });
+      });
     }
 
     function templateOptions(selectedId) {
@@ -334,19 +438,22 @@
     // 活動名稱由外殼的 section-header 顯示，這裡不重複；只留動作按鈕。
     function header() {
       const editable = state.source === 'backend';
-      return '<header class="rd-head">' +
-        '<div class="rd-head-actions">' +
-        (editable ? '<button type="button" class="rd-primary" data-action="save-draft"' + (!state.dirty || state.busy ? ' disabled' : '') + '>儲存</button>' +
-          '<button type="button" data-action="cancel-draft"' + (!state.dirty || state.busy ? ' disabled' : '') + '>取消變更</button>' : '') +
-        '<button type="button" data-action="reload"' + (state.busy ? ' disabled' : '') + '>重新讀取</button>' +
-        (state.source === 'demo'
-          ? '<label class="rd-tpl-pick">範本 <select data-tpl-pick' + (state.busy ? ' disabled' : '') + '>' + templateOptions(state.templateId) + '</select></label>' +
-            '<button type="button" data-action="import-current" class="rd-primary"' + (state.busy ? ' disabled' : '') + '>帶入到目前活動</button>' +
-            '<button type="button" data-action="load-backend"' + (state.busy ? ' disabled' : '') + '>切回實際活動</button>'
-          : '<button type="button" data-action="load-demo"' + (state.busy ? ' disabled' : '') + '>看範例流程</button>') +
-        '</div>' +
-        (editable ? '' : '<span class="rd-badge">' + (state.source === 'demo' ? '範例（唯讀）' : '尚未連線') + '</span>') +
-        '</header>';
+      return '<header class="rd-head"><div class="rd-toolbar">' +
+        (editable ? '<button type="button" class="rd-primary" data-action="add-segment">＋新增時段</button>' : '<span class="rd-badge">範例（唯讀）</span>') +
+        configPanel() + '<div class="rd-secondary">' +
+        (state.mode !== 'edit' ? '<button type="button" data-mode="edit">返回編輯</button>' : '') +
+        MODES.filter(m => m.id !== 'edit').map(m => '<button type="button" data-mode="' + m.id + '" aria-pressed="' + (state.mode === m.id) + '">' + m.label + '</button>').join('') +
+        '<details class="rd-menu"><summary aria-label="流程表更多操作">' + icon('more') + '</summary><div class="rd-menu-panel">' +
+        '<button type="button" data-action="reload">重新讀取</button><button type="button" data-action="load-demo">看範例流程</button>' +
+        (state.source === 'demo' ? '<button type="button" data-action="load-backend">切回實際活動</button>' : '') +
+        '<details class="rd-import"><summary>帶入起始流程</summary><div class="rd-import-row"><label>流程<select data-import="template">' + templateOptions(state.importTemplateId) + '</select></label><label>方式<select data-import="mode"><option value="append">加在現有內容後</option><option value="replace">清空後帶入</option></select></label><button type="button" data-action="import-template">帶入</button></div></details>' +
+        '<details class="rd-role-manager"><summary>管理角色</summary>' + roleManager() + '</details>' +
+        '<button type="button" class="rd-danger" data-action="clear-rundown">清空測試資料</button></div></details></div></div>' +
+        (editable ? '<div class="rd-draft-bar"><span>編輯後按儲存套用變更</span><button type="button" data-action="save-draft"' + (!state.dirty || state.busy ? ' disabled' : '') + '>儲存</button><button type="button" data-action="cancel-draft"' + (!state.dirty || state.busy ? ' disabled' : '') + '>取消變更</button></div>' : '') + '</header>';
+    }
+
+    function roleManager() {
+      return '<div class="rd-role-chips">' + state.data.roles.map(r => '<span class="rd-chip" data-role="' + esc(r.role) + '">' + esc(r.role) + '<button type="button" class="rd-chip-x rd-danger" data-action="del-role" aria-label="刪除角色">' + icon('close') + '</button></span>').join('') + '<span class="rd-add-inline"><input data-add="角色" aria-label="新角色" placeholder="新角色"><button type="button" data-action="add-role">加入</button></span></div>';
     }
 
     function body() {
@@ -364,7 +471,8 @@
       const readOnly = state.source === 'demo';
       const dis = readOnly ? ' disabled' : '';
       // 段落只存 duration／錨定時間；牆上時間在這裡即時算出來唯讀顯示。
-      const timed = core().calculateTimeline(d.segments, d.config);
+      const visibleTimes = new Map(core().calculateTimeline(d.segments.filter(s => !state.pendingDelete || s.segment_id !== state.pendingDelete.id), d.config).map(s => [s.segment_id, s]));
+      const timed = d.segments.map(s => visibleTimes.get(s.segment_id) || s);
 
       // 獎項：直接列出可用獎項當可點的標籤，點一下就連結／取消連結，不用打 prize_id。
       function prizeCellHtml(seg, readOnly) {
@@ -372,61 +480,78 @@
           return core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
         }
         const linked = new Set(seg.prize_ids || []);
-        return d.prizes.map(p => {
+        return '<details class="rd-prize-popover"><summary>連結獎項</summary><div class="rd-popover-panel">' + d.prizes.map(p => {
           const active = linked.has(p.prize_id);
           return '<button type="button" class="rd-prize-toggle' + (active ? ' rd-prize-toggle-active' : '') +
-            '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(p.tier || p.prize_id) + '</button>';
+            '" aria-pressed="' + active + '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(core().prizeLabel(p)) + '</button>';
         }).join('') + '<button type="button" class="rd-prize-toggle" data-action="new-prize">＋ 獎項</button>' +
-          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別" required></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" list="rd-staff"></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '');
+          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別" required></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" data-rd-staff></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
       }
 
       function prizeField(seg, field, key) {
         const prizes = core().segmentPrizes(seg, prizeIndex);
         if (!prizes.length) return '—';
         return prizes.map(p => '<label class="rd-prize-field"><span>' + esc(p.tier) + '</span><input class="rd-in" data-prize-id="' + esc(p.prize_id) + '" data-prize-field="' + field + '" aria-label="' + esc(p.tier + ' ' + field) + '" value="' + esc(p[key]) + '"' +
-          (key === 'presenter' ? ' list="rd-staff"' : key === 'tier' ? '' : ' type="number" min="0" step="' + (key === 'count' ? '1' : '0.01') + '"') + dis + '></label>').join('');
+          (key === 'presenter' ? ' data-rd-staff' : key === 'tier' ? '' : ' type="number" min="0" step="' + (key === 'count' ? '1' : '0.01') + '"') + dis + '></label>').join('');
       }
 
-      // 順序只用拖曳調（不做上下箭頭）；順序值用隱藏欄位跟著列一起送出，
-      // 錨定時間畫面上不開放編輯，但既有值仍要跟著列一起送出，不能被其他欄位的存檔洗掉。
-      const segmentRows = timed.map(seg =>
+      // 順序沿用 #92 草稿；階段／錨點沿用既有 segment 寫入。
+      const segmentRows = timed.map(seg => state.pendingDelete && state.pendingDelete.id === seg.segment_id ? undoRow(seg) :
         '<article data-seg="' + esc(seg.segment_id) + '" class="rd-segment-card ' + (seg.stage === '彩排' ? 'rd-stage-rehearsal' : 'rd-stage-official') + '">' +
-          '<div class="rd-segment-main">' + (readOnly ? '' : '<button type="button" class="rd-drag-handle" draggable="true" aria-pressed="false" aria-label="選取時段，再點目標把手移到其前方" title="拖曳，或先點此處再點目標把手">⠿</button>') +
+          '<div class="rd-segment-main">' + (readOnly ? '' : '<button type="button" class="rd-drag-handle" draggable="true" aria-pressed="false" aria-label="選取時段，再點目標把手移到其前方" title="拖曳、↑↓移動，或點選目標把手">' + icon('drag') + '</button>') +
           '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '">' +
           '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
-          '<input type="hidden" data-field="錨定時間" value="' + esc(seg.anchor_time) + '">' +
-          '<span class="rd-muted">' + esc(seg.stage) + '</span><span class="rd-time-readout">' + esc(timeText(seg.time)) + '</span>' +
-          '<label class="rd-segment-title">節目<input class="rd-in" data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
-          '<label>長度（分）<input class="rd-in rd-in-num rd-in-duration" data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></label>' +
-          (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-seg" aria-label="刪除時段">✕</button>') + '</div>' +
+          '<span class="rd-time-readout">' + esc(timeText(seg.time)) + '</span>' +
+          '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
+          '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></label>' +
+          '<div class="rd-stage-toggle" role="group" aria-label="階段">' + ['彩排', '正式'].map(stage => '<button type="button" data-stage="' + stage + '" aria-pressed="' + (seg.stage === stage) + '"' + dis + '>' + stage + '</button>').join('') + '</div>' +
+          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><label>錨定時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"></label><small>從這裡重新計算；清空可取消錨定</small><button type="button" data-action="save-anchor">套用錨定</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
+          (seg.anchor_time ? '<span class="rd-anchor">' + icon('pin') + '從這裡重新計算 ' + esc(clockText(seg.anchor_time)) + '</span>' : '') +
           '<div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' +
-          (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') +
-          '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary>任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
+          '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary>' + icon('chevron') + '任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
           taskContent(seg.segment_id) + '</details></article>').join('');
 
       return '<div class="rd-edit">' +
         '<datalist id="rd-staff">' + state.staff.map(p => '<option value="' + esc(p.name) + '">' + esc([p.department, p.title].filter(Boolean).join('／')) + '</option>').join('') + '</datalist>' +
         (state.staffError ? '<p class="rd-hint">員工名冊暫時無法讀取，請重新讀取後使用姓名建議。</p>' : '') +
-        importPanel() +
-        configPanel() +
-        '<section class="rd-panel"><div class="rd-panel-head"><h3>時段與任務</h3>' +
-          '<span class="rd-muted">' +
-          (readOnly ? '' : '拖曳最左邊調整順序，或先點把手再點目標把手移到其前方；改「持續」會自動存檔，「時間」是算出來的，不能直接改') + '</span></div>' +
-          (readOnly ? '' : '<div class="rd-quick-segments">' + QUICK_SEGMENTS.map((p, i) => '<button type="button" data-quick-segment="' + i + '">' + p[0] + (i === 5 ? '' : '・' + p[1] + '分') + '</button>').join('') + '</div>') +
+        '<section class="rd-canvas">' +
+
           '<nav class="rd-task-views" aria-label="任務檢視">' +
             [['segment', '依時段'], ['role', '依角色']].map(([id, label]) => '<button type="button" data-task-view="' + id + '" aria-pressed="' + (state.taskView === id) + '">' + label + '</button>').join('') + '</nav>' +
           (state.taskView === 'role' ? roleTimeline(timed) : '<div class="rd-segments">' + (segmentRows || '<p class="rd-empty">尚無時段</p>') + '</div>') +
         '</section>' +
-        '<section class="rd-panel"><div class="rd-panel-head"><h3>角色</h3><span class="rd-muted">從主流程拆出的固定角色，人員之後再排</span></div>' +
-          '<div class="rd-role-chips">' + d.roles.map(r =>
-            '<span class="rd-chip rd-chip-role" data-role="' + esc(r.role) + '">' + esc(r.role) +
-            (readOnly ? '' : '<button type="button" class="rd-chip-x" data-action="del-role" title="刪除">✕</button>') + '</span>').join('') +
-          (readOnly ? '' : '<span class="rd-add-inline"><input data-add="角色" placeholder="新角色（音控、報到…）"><button type="button" data-action="add-role">加</button></span>') +
-          '</div>' +
-        '</section>' +
+
+
       '</div>';
+    }
+
+    function undoRow(seg) {
+      return '<article data-seg="' + esc(seg.segment_id) + '" class="rd-undo-slot" style="min-height:' + state.pendingDelete.height + 'px"><div class="rd-undo-bar" role="status">已刪除「' + esc(seg.title) + '」· 含 ' + state.data.tasks.filter(t => t.segment_id === seg.segment_id).length + ' 個任務 <button type="button" data-action="undo-delete">復原</button></div></article>';
+    }
+
+    function announceMove(id) {
+      const timed = core().calculateTimeline(state.data.segments, state.data.config);
+      const i = timed.findIndex(s => s.segment_id === id);
+      const live = container.querySelector('[data-rd-live]');
+      if (live && i >= 0) live.textContent = timed[i].title + '，第 ' + (i + 1) + ' 個時段，' + timeText(timed[i].time) + '，尚未儲存';
+      const handle = container.querySelector('[data-seg="' + id + '"] .rd-drag-handle');
+      if (handle && handle.focus) handle.focus();
+    }
+
+    function segmentFields(id, patch) {
+      const seg = state.data.segments.find(s => s.segment_id === id);
+      return Object.assign({ action: 'save_rundown_segment', segment_id: id, 節目內容: seg.title, duration_min: seg.duration_min,
+        順序: seg.order, 階段: seg.stage, 錨定時間: seg.anchor_time, 備註: seg.note, prize_ids: (seg.prize_ids || []).join(',') }, patch);
+    }
+
+    async function uiWrite(fields, message, options, selector) {
+      state.feedback = { selector: selector || '[data-seg="' + fields.segment_id + '"] .rd-segment-main' };
+      const result = await write(fields, message, options);
+      const live = container.querySelector('[data-rd-live]');
+      if (live) live.textContent = result ? (message || '已儲存') : state.message;
+      return result;
     }
 
     function taskRoles() {
@@ -443,16 +568,16 @@
         '<span class="rd-muted"> · ' + esc((people.get(name) || []).join('、') || '未排人') + '</span></h4>' +
         '<ul class="rd-task-list">' + items.map(t => '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-content">' + esc(t.content) + '</span>' +
           '<span class="rd-task-aud">' + esc(t.audience) + '</span>' +
-          (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">✕</button>') + '</li>').join('') + '</ul></section>').join('');
+          (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul></section>').join('');
       const draft = state.taskDraft;
       const adding = draft && draft.segmentId === segmentId;
       const roles = taskRoles();
       return (rows || '<p class="rd-empty">尚無任務</p>') + (readOnly ? '' : adding ?
         '<form class="rd-task-add" data-task-form><label>角色<select data-new="角色">' + roles.map(r => '<option value="' + esc(r) + '"' + (r === draft.role ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>' +
         '<label>任務內容<input data-new="任務內容" required value="' + esc(draft.content) + '"></label>' +
-        '<label>列印對象<select data-new="對象">' + core().AUDIENCES.map(a => '<option value="' + esc(a) + '"' + (a === draft.audience ? ' selected' : '') + '>' + esc(a) + '</option>').join('') + '</select></label>' +
+        '<div class="rd-audience" role="group" aria-label="列印對象"><span>列印對象</span><input type="hidden" data-new="對象" value="' + esc(draft.audience) + '">' + core().AUDIENCES.map(a => '<button type="button" data-audience="' + esc(a) + '" aria-pressed="' + (a === draft.audience) + '">' + esc(a) + '</button>').join('') + '</div>' +
         '<button type="submit">儲存任務</button><button type="button" data-action="cancel-task">取消</button></form>' :
-        roles.length ? '<button type="button" data-action="open-task">＋ 加任務</button>' : '<p class="rd-hint">先在下方新增角色，才能新增任務。</p>');
+        roles.length ? '<button type="button" data-action="open-task">＋ 加任務</button>' : '<p class="rd-hint">先從「⋯ → 管理角色」新增角色，才能新增任務。</p>');
     }
 
     function roleTimeline(timed) {
@@ -467,23 +592,7 @@
           '<p class="rd-empty">這個角色尚無任務；切到「依時段」加入任務。</p>') + '</div>';
     }
 
-    function importPanel() {
-      const templates = core().templates();
-      if (state.source !== 'backend' || !templates.length) return '';
-      const hasContent = state.data.segments.length || state.data.roles.length;
-      return '<section class="rd-panel rd-import"><div class="rd-panel-head"><h3>帶入起始流程</h3>' +
-        '<span class="rd-muted">' + (hasContent ? '目前活動已有內容，帶入前可選清空或附加' : '從過去的流程直接帶入，不用重打') + '</span></div>' +
-        '<div class="rd-import-row">' +
-          '<select data-import="template">' + templateOptions(state.importTemplateId) + '</select>' +
-          '<select data-import="mode">' +
-            '<option value="replace">清空後帶入</option>' +
-            '<option value="append">加在現有內容後</option>' +
-          '</select>' +
-          '<button type="button" data-action="import-template"' + (state.busy ? ' disabled' : '') + '>帶入</button>' +
-        '</div>' +
-        (hasContent ? '<button type="button" class="rd-link" data-action="clear-rundown"' + (state.busy ? ' disabled' : '') + '>清空這場活動的流程表（測試資料用，無法復原）</button>' : '') +
-        '</section>';
-    }
+
 
     // 流程時間設定：正式段基準開始 + 彩排要「接續正式往前推」還是「固定開始時間」。
     // 改欄位不即時寫入；按「儲存」才送出一次。
@@ -492,8 +601,7 @@
       const c = state.data.config || {};
       const fixed = c.rehearsal_mode === '固定開始';
       const dis = state.busy ? ' disabled' : '';
-      return '<section class="rd-panel rd-config"><div class="rd-panel-head"><h3>流程時間設定</h3>' +
-        '<span class="rd-muted">正式段的基準開始時間，彩排段接續往前推或另訂固定時間；改完按「儲存」才套用</span></div>' +
+      return '<details class="rd-config"><summary>基準開始 <strong>' + esc(clockText(c.official_start) || '未設定') + '</strong></summary>' +
         '<div class="rd-config-row">' +
           '<label>正式段開始<input class="rd-in rd-in-time" type="time" data-config="正式_基準開始" value="' + esc(clockText(c.official_start)) + '"' + dis + '></label>' +
           '<label>彩排基準<select class="rd-in" data-config="彩排_基準"' + dis + '>' +
@@ -504,7 +612,7 @@
             ? '<label class="rd-config-third">彩排開始<input class="rd-in rd-in-time" type="time" data-config="彩排_固定開始" value="' + esc(clockText(c.rehearsal_start)) + '"' + dis + '></label>'
             : '<label class="rd-config-third">彩排緩衝(分)<input class="rd-in rd-in-num" data-config="彩排_緩衝分鐘" value="' + esc(c.rehearsal_buffer_min) + '" inputmode="numeric"' + dis + '></label>') +
           '<button type="button" class="rd-primary" data-action="save-config"' + dis + '>儲存</button>' +
-        '</div></section>';
+        '</div></details>';
     }
 
     // -- 排人（拖曳）-------------------------------------------------------
@@ -521,7 +629,7 @@
         [...groups.entries()].map(([g, members]) =>
           '<div class="rd-crew-group"><p class="rd-crew-group-name">' + esc(g) + '</p>' +
           members.map(m => '<span class="rd-person" draggable="true" data-person="' + esc(m.name) + '">' + esc(m.name) +
-            '<button type="button" class="rd-chip-x" data-action="del-crew" title="移除">✕</button></span>').join('') +
+            '<button type="button" class="rd-chip-x" data-action="del-crew" title="移除">' + icon('close') + '</button></span>').join('') +
           '</div>').join('') +
         (d.crew.length ? '' : '<p class="rd-hint">先新增工作人員，再拖到右邊的角色上。</p>') +
         '</aside>';
@@ -534,7 +642,7 @@
           '<p class="rd-muted">' + esc(r.description || '') + '</p>' +
           '<div class="rd-drop" data-role="' + esc(r.role) + '">' +
             people.map(p => '<span class="rd-person rd-person-set" data-person="' + esc(p) + '">' + esc(p) +
-              '<button type="button" class="rd-chip-x" data-action="unassign" data-role="' + esc(r.role) + '" data-person="' + esc(p) + '" title="取消指派">✕</button></span>').join('') +
+              '<button type="button" class="rd-chip-x" data-action="unassign" data-role="' + esc(r.role) + '" data-person="' + esc(p) + '" title="取消指派">' + icon('close') + '</button></span>').join('') +
             '<span class="rd-drop-hint">拖人到這裡</span>' +
           '</div>' +
         '</div>';
@@ -632,19 +740,68 @@
     // -- events -----------------------------------------------------------
 
     function bind() {
-      container.querySelectorAll('[data-mode]').forEach(btn => btn.addEventListener('click', () => {
+      container.querySelectorAll('[data-mode]').forEach(btn => listen(btn, 'click', () => {
         state.mode = btn.dataset.mode; render();
       }));
-      container.querySelectorAll('[data-version]').forEach(btn => btn.addEventListener('click', () => {
+      container.querySelectorAll('[data-version]').forEach(btn => listen(btn, 'click', () => {
         state.printVersion = btn.dataset.version; render();
       }));
       const tplPick = container.querySelector('[data-tpl-pick]');
-      if (tplPick) tplPick.addEventListener('change', () => { state.templateId = tplPick.value; load('demo'); });
+      if (tplPick) listen(tplPick, 'change', () => { state.templateId = tplPick.value; load('demo'); });
       const importTpl = container.querySelector('[data-import="template"]');
-      if (importTpl) importTpl.addEventListener('change', () => { state.importTemplateId = importTpl.value; render(); });
+      if (importTpl) listen(importTpl, 'change', () => { state.importTemplateId = importTpl.value; });
 
-      const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
+      const on = (selector, event, handler) => container.querySelectorAll(selector).forEach(el => listen(el, event, handler));
 
+      on('[data-seg]', 'focusin', event => { state.focusedSegment = event.currentTarget.dataset.seg; });
+      on('details > summary', 'click', event => { if (state.busy || state.pendingDelete) event.preventDefault(); });
+      on('details', 'keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector('summary').focus(); }
+      });
+      on('[data-inline]', 'focus', event => {
+        const el = event.currentTarget; el.dataset.beforeEdit = el.value; el.readOnly = false;
+      });
+      on('[data-inline]', 'blur', event => { event.currentTarget.readOnly = true; });
+      on('[data-inline]', 'keydown', event => {
+        if (event.isComposing) return;
+        if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+        if (event.key === 'Escape') {
+          event.preventDefault(); const el = event.currentTarget; el.value = el.dataset.beforeEdit;
+          el.dispatchEvent(new root.Event('input', { bubbles: true })); el.blur();
+        }
+      });
+      on('[data-stage]', 'click', event => {
+        const el = event.currentTarget, id = el.closest('[data-seg]').dataset.seg;
+        return uiWrite(segmentFields(id, { 階段: el.dataset.stage }), '階段已更新', {}, '[data-seg="' + id + '"] .rd-stage-toggle');
+      });
+      on('[data-action="save-anchor"]', 'click', event => {
+        const row = event.currentTarget.closest('[data-seg]'), input = row.querySelector('[data-field="錨定時間"]');
+        return uiWrite(segmentFields(row.dataset.seg, { 錨定時間: input.value }), '錨定已更新', {}, '[data-seg="' + row.dataset.seg + '"] [data-field="錨定時間"]');
+      });
+      on('[data-action="add-segment"]', 'click', async () => {
+        if (state.busy || state.pendingDelete) return;
+        const segments = state.data.segments, index = segments.findIndex(s => s.segment_id === state.focusedSegment);
+        const previous = segments[index < 0 ? segments.length - 1 : index], next = segments[index + 1];
+        const ids = new Set(segments.map(s => s.segment_id));
+        const fields = { action: 'save_rundown_segment', 節目內容: '新時段', duration_min: previous ? previous.duration_min : 5,
+          順序: previous ? (index >= 0 && next ? (previous.order + next.order) / 2 : previous.order + 10) : 10, 階段: previous ? previous.stage : '正式' };
+        if (!await uiWrite(fields, '已新增時段', {}, '[data-action="add-segment"]')) return;
+        state.mode = 'edit'; state.taskView = 'segment'; render();
+        const added = state.data.segments.find(s => !ids.has(s.segment_id));
+        const input = added && container.querySelector('[data-seg="' + added.segment_id + '"] [data-field="節目內容"]');
+        if (input && input.focus) { input.focus(); input.select(); }
+      });
+      on('[data-action="undo-delete"]', 'click', () => {
+        if (!state.pendingDelete) return;
+        const id = state.pendingDelete.id; root.clearTimeout(state.pendingDelete.timer); state.pendingDelete = null; render(); announceMove(id);
+      });
+
+      on('.rundown', 'click', event => {
+        if (!container.contains(event.target)) return;
+        container.querySelectorAll('.rd-menu[open], .rd-config[open], .rd-prize-popover[open]').forEach(menu => {
+          if (!menu.contains(event.target)) menu.open = false;
+        });
+      });
       on('[data-task-view]', 'click', event => {
         state.taskView = event.currentTarget.dataset.taskView;
         render();
@@ -665,6 +822,13 @@
         render();
         const input = container.querySelector('[data-task-form] [data-new="任務內容"]');
         if (input) input.focus();
+      });
+      on('[data-audience]', 'click', event => {
+        const el = event.currentTarget, group = el.closest('.rd-audience');
+        if (!state.taskDraft) return;
+        state.taskDraft.audience = el.dataset.audience;
+        group.querySelector('[data-new="對象"]').value = el.dataset.audience;
+        group.querySelectorAll('[data-audience]').forEach(button => button.setAttribute('aria-pressed', String(button === el)));
       });
       on('[data-action="cancel-task"]', 'click', () => { state.taskDraft = null; render(); });
       on('[data-task-form] [data-new]', 'input', event => {
@@ -691,12 +855,12 @@
         const panel = container.querySelector('.rd-config-row');
         const fields = { action: 'save_rundown_config' };
         panel.querySelectorAll('[data-config]').forEach(el => { fields[el.dataset.config] = el.value.trim(); });
-        write(fields, '流程時間設定已更新');
+        uiWrite(fields, '流程時間設定已更新', {}, '.rd-config-row');
       });
 
-      on('[data-action="reload"]', 'click', () => load(state.source === 'demo' ? 'demo' : 'backend'));
-      on('[data-action="load-demo"]', 'click', () => load('demo'));
-      on('[data-action="load-backend"]', 'click', () => load('backend'));
+      on('[data-action="reload"]', 'click', () => { state.feedback = null; return load(state.source === 'demo' ? 'demo' : 'backend'); });
+      on('[data-action="load-demo"]', 'click', () => { state.feedback = null; return load('demo'); });
+      on('[data-action="load-backend"]', 'click', () => { state.feedback = null; return load('backend'); });
       on('[data-action="import-current"]', 'click', () => importTemplate(state.templateId, 'replace'));
       on('[data-action="import-template"]', 'click', () => {
         const wrap = container.querySelector('.rd-import-row');
@@ -737,6 +901,9 @@
         const seg = state.data.segments.find(s => s.segment_id === tr.dataset.seg);
         if (!seg || !['節目內容', 'duration_min'].includes(el.dataset.field)) return;
         beginDraft();
+        const selector = '[data-seg="' + tr.dataset.seg + '"] [data-field="' + el.dataset.field + '"]';
+        const selectors = state.feedback && state.feedback.selectors || [];
+        state.feedback = { selectors: [...new Set(selectors.concat(selector))] };
         if (el.dataset.field === '節目內容') seg.title = el.value;
         else seg.duration_min = el.value === '' ? '' : Number(el.value);
         setMessage('尚有未儲存變更', false);
@@ -744,17 +911,33 @@
       };
       on('.rd-segments [data-field]', 'input', editSegment);
       on('.rd-segments [data-field]', 'change', editSegment);
-      on('[data-action="save-draft"]', 'click', saveDraft);
+      on('[data-action="save-draft"]', 'click', async () => {
+        if (!state.feedback || !state.feedback.selectors) state.feedback = { selector: '[data-action="save-draft"]' };
+        const result = await saveDraft();
+        const live = container.querySelector('[data-rd-live]'); if (live) live.textContent = result ? '變更已儲存' : state.message;
+        return result;
+      });
       on('[data-action="cancel-draft"]', 'click', () => {
         if (state.busy) return;
         state.data = JSON.parse(JSON.stringify(state.savedData || state.data));
         state.dirty = false; state.revision++;
+        state.feedback = { selector: '[data-action="cancel-draft"]' };
         setMessage('已取消未儲存變更', false); render();
       });
       on('[data-action="del-seg"]', 'click', event => {
-        const tr = event.target.closest('[data-seg]');
-        if (!root.confirm('刪除這個時段？它的任務也會一併刪除。')) return;
-        write({ action: 'save_rundown_segment', segment_id: tr.dataset.seg, _delete: '1' }, '已刪除時段');
+        if (state.busy || state.pendingDelete) return;
+        const row = event.currentTarget.closest('[data-seg]');
+        if (state.dirty) { state.feedback = { selector: '[data-seg="' + row.dataset.seg + '"] .rd-segment-main' }; setMessage('請先儲存或取消變更，再刪除時段。', true); paintFeedback(); return; }
+        const pending = { id: row.dataset.seg, height: row.getBoundingClientRect ? row.getBoundingClientRect().height : 120 };
+        state.feedback = null; state.pendingDelete = pending;
+        pending.timer = root.setTimeout(async () => {
+          if (state.pendingDelete !== pending) return;
+          state.pendingDelete = null;
+          if (state.disposed) return;
+          await uiWrite({ action: 'save_rundown_segment', segment_id: pending.id, _delete: '1' }, '已刪除時段');
+        }, 8000);
+        render();
+        const undo = container.querySelector('[data-action="undo-delete"]'); if (undo && undo.focus) undo.focus();
       });
       bindSegmentDrag();
 
@@ -763,12 +946,12 @@
         const input = container.querySelector('[data-add="角色"]');
         const role = input.value.trim();
         if (!role) return;
-        write({ action: 'save_rundown_role', 角色: role }, '已新增角色');
+        uiWrite({ action: 'save_rundown_role', 角色: role }, '已新增角色', {}, '[data-action="add-role"]');
       });
       on('[data-action="del-role"]', 'click', event => {
         const chip = event.target.closest('[data-role]');
         if (!root.confirm('刪除角色「' + chip.dataset.role + '」？')) return;
-        write({ action: 'save_rundown_role', 角色: chip.dataset.role, _delete: '1' }, '已刪除角色');
+        uiWrite({ action: 'save_rundown_role', 角色: chip.dataset.role, _delete: '1' }, '已刪除角色', {}, '.rd-role-chips');
       });
 
       // 任務
@@ -779,11 +962,11 @@
         const fields = { action: 'save_rundown_task', segment_id: form.closest('[data-seg]').dataset.seg };
         form.querySelectorAll('[data-new]').forEach(el => { fields[el.dataset.new] = el.value.trim(); });
         if (!fields['任務內容']) { setMessage('任務內容不可空白', true); renderStatusOnly(); return; }
-        if (await write(fields, '已新增任務')) { state.taskDraft = null; render(); }
+        if (await uiWrite(fields, '已新增任務', {}, '[data-task-form]')) { state.taskDraft = null; render(); }
       });
       on('[data-action="del-task"]', 'click', event => {
         const li = event.target.closest('[data-task]');
-        write({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務');
+        uiWrite({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務', {}, '[data-seg="' + li.closest('[data-seg]').dataset.seg + '"] [data-task-details]');
       });
 
       // 獎項：點標籤直接連結／取消連結，不用打 prize_id
@@ -802,20 +985,20 @@
         const fields = { action: 'save_prize', 獎金用途: '抽獎' };
         form.querySelectorAll('[name]').forEach(el => { fields[el.name] = el.value.trim(); });
         const before = new Set(state.data.prizes.map(p => p.prize_id));
-        if (!await write(fields, '獎項已新增，正在連結流程…', { optimistic: false })) return;
+        if (!await uiWrite(fields, '獎項已新增，正在連結流程…', { optimistic: false }, '[data-new-prize]')) return;
         const prize = state.data.prizes.find(p => !before.has(p.prize_id) && p.tier === fields['獎別']);
         const seg = state.data.segments.find(s => s.segment_id === segmentId);
         state.newPrizeSegment = '';
         if (!prize || !seg) { setMessage('獎項已新增；請重新讀取並點選獎項完成連結。', true); render(); return; }
         const linked = (seg.prize_ids || []).concat(prize.prize_id);
-        await write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
+        await uiWrite({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
           錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: linked.join(',') },
           '獎項已新增並連結', { optimistic: false });
       });
       on('[data-prize-field]', 'change', event => {
         const el = event.currentTarget;
         if (!el.reportValidity()) return;
-        write({ action: 'save_prize', prize_id: el.dataset.prizeId, [el.dataset.prizeField]: el.value.trim() }, '獎項已更新', { optimistic: false });
+        uiWrite({ action: 'save_prize', prize_id: el.dataset.prizeId, [el.dataset.prizeField]: el.value.trim() }, '獎項已更新', { optimistic: false }, '[data-prize-id="' + el.dataset.prizeId + '"][data-prize-field="' + el.dataset.prizeField + '"]');
       });
       on('[data-action="toggle-prize"]', 'click', event => {
         if (state.busy) return;
@@ -823,11 +1006,11 @@
         const seg = tr && state.data.segments.find(s => s.segment_id === tr.dataset.seg);
         if (!seg) return;
         const linked = new Set(seg.prize_ids || []);
-        const prizeId = event.target.dataset.prize;
+        const prizeId = event.currentTarget.dataset.prize;
         const nowActive = !linked.has(prizeId);
         if (nowActive) linked.add(prizeId); else linked.delete(prizeId);
 
-        write({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
+        uiWrite({ action: 'save_rundown_segment', segment_id: seg.segment_id, 節目內容: seg.title, duration_min: seg.duration_min,
           錨定時間: seg.anchor_time, 順序: seg.order, 階段: seg.stage, 備註: seg.note, prize_ids: Array.from(linked).join(',') },
           '已更新獎項連動', { optimistic: false });
       });
@@ -837,14 +1020,14 @@
         const fields = { action: 'save_rundown_crew' };
         wrap.querySelectorAll('[data-add]').forEach(el => { fields[el.dataset.add] = el.value.trim(); });
         if (!fields['姓名']) return;
-        write(fields, '已新增人員');
+        uiWrite(fields, '已新增人員', {}, '[data-action="add-crew"]');
       });
       on('[data-action="del-crew"]', 'click', event => {
         const chip = event.target.closest('[data-person]');
-        write({ action: 'save_rundown_crew', 姓名: chip.dataset.person, _delete: '1' }, '已移除人員');
+        uiWrite({ action: 'save_rundown_crew', 姓名: chip.dataset.person, _delete: '1' }, '已移除人員', {}, '.rd-crew');
       });
       on('[data-action="unassign"]', 'click', event => {
-        write({ action: 'save_rundown_assignment', 角色: event.target.dataset.role, 人員姓名: event.target.dataset.person, _delete: '1' }, '已取消指派');
+        uiWrite({ action: 'save_rundown_assignment', 角色: event.currentTarget.dataset.role, 人員姓名: event.currentTarget.dataset.person, _delete: '1' }, '已取消指派', {}, '.rd-roles');
       });
 
       bindDragAssign();
@@ -883,7 +1066,17 @@
       let dragId = '';
       let pickedId = '';
       tbody.querySelectorAll('.rd-drag-handle').forEach(handle => {
-        handle.addEventListener('click', () => {
+        listen(handle, 'keydown', event => {
+          if (!['ArrowUp', 'ArrowDown'].includes(event.key) || state.busy || state.pendingDelete) return;
+          event.preventDefault();
+          const id = handle.closest('article[data-seg]').dataset.seg;
+          const ids = state.data.segments.map(s => s.segment_id), index = ids.indexOf(id);
+          const target = index + (event.key === 'ArrowUp' ? -1 : 1);
+          if (target < 0 || target >= ids.length) return;
+          ids.splice(index, 1); ids.splice(target, 0, id);
+          reorderAndSave(ids, id); announceMove(id);
+        });
+        listen(handle, 'click', () => {
           if (state.busy) return;
           const id = handle.closest('article[data-seg]').dataset.seg;
           if (!pickedId) {
@@ -897,22 +1090,22 @@
           ids.splice(ids.indexOf(id), 0, pickedId);
           const moved = pickedId;
           pickedId = '';
-          return reorderAndSave(ids, moved);
+          reorderAndSave(ids, moved); announceMove(moved); return;
         });
-        handle.addEventListener('dragstart', event => {
+        listen(handle, 'dragstart', event => {
           if (state.busy) { event.preventDefault(); return; }
           const tr = handle.closest('article[data-seg]');
           dragId = tr ? tr.dataset.seg : '';
           if (tr) tr.classList.add('rd-dragging');
           if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', dragId); }
         });
-        handle.addEventListener('dragend', () => {
+        listen(handle, 'dragend', () => {
           const tr = handle.closest('article[data-seg]');
           if (tr) tr.classList.remove('rd-dragging');
           if (dragId) { dragId = ''; render(); }
         });
       });
-      tbody.addEventListener('dragover', event => {
+      listen(tbody, 'dragover', event => {
         if (!dragId) return;
         event.preventDefault();
         const tr = event.target.closest('article[data-seg]');
@@ -921,14 +1114,15 @@
         const rect = tr.getBoundingClientRect();
         const before = (event.clientY - rect.top) < rect.height / 2;
         tbody.insertBefore(dragRow, before ? tr : tr.nextSibling);
+        refreshTimeReadouts();
       });
-      tbody.addEventListener('drop', event => {
+      listen(tbody, 'drop', event => {
         event.preventDefault();
         if (dragId) {
           const ids = Array.from(container.querySelectorAll('.rd-segments > article[data-seg]')).map(tr => tr.dataset.seg);
           const moved = dragId;
           dragId = '';
-          return reorderAndSave(ids, moved);
+          reorderAndSave(ids, moved); announceMove(moved); return;
         }
         dragId = '';
       });
@@ -990,12 +1184,14 @@
     function bindDragAssign() {
       let dragging = '';
       container.querySelectorAll('.rd-person[draggable="true"]').forEach(chip => {
-        chip.addEventListener('dragstart', e => {
+        if (chip.setAttribute) { chip.setAttribute('tabindex', '0'); chip.setAttribute('aria-label', '選取人員 ' + chip.dataset.person); }
+        listen(chip, 'keydown', event => { if (event.target === chip && ['Enter', ' '].includes(event.key)) { event.preventDefault(); chip.click(); } });
+        listen(chip, 'dragstart', e => {
           dragging = chip.dataset.person;
           if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('text/plain', dragging); }
         });
         // 觸控 / 點擊備援：點人 → 點角色
-        chip.addEventListener('click', e => {
+        listen(chip, 'click', e => {
           if (e.target.closest('.rd-chip-x')) return;
           container.querySelectorAll('.rd-person.rd-picked').forEach(el => el.classList.remove('rd-picked'));
           chip.classList.add('rd-picked');
@@ -1003,15 +1199,17 @@
         });
       });
       container.querySelectorAll('.rd-drop').forEach(zone => {
-        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('rd-drop-over'); });
-        zone.addEventListener('dragleave', () => zone.classList.remove('rd-drop-over'));
-        zone.addEventListener('drop', e => {
+        if (zone.setAttribute) { zone.setAttribute('tabindex', '0'); zone.setAttribute('aria-label', '指派到角色 ' + zone.dataset.role); }
+        listen(zone, 'keydown', event => { if (event.target === zone && ['Enter', ' '].includes(event.key)) { event.preventDefault(); zone.click(); } });
+        listen(zone, 'dragover', e => { e.preventDefault(); zone.classList.add('rd-drop-over'); });
+        listen(zone, 'dragleave', () => zone.classList.remove('rd-drop-over'));
+        listen(zone, 'drop', e => {
           e.preventDefault();
           zone.classList.remove('rd-drop-over');
           const person = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || dragging;
           if (person) assign(zone.dataset.role, person);
         });
-        zone.addEventListener('click', () => {
+        listen(zone, 'click', () => {
           if (state._picked) { assign(zone.dataset.role, state._picked); state._picked = ''; }
         });
       });
@@ -1021,7 +1219,7 @@
       if (!role || !person) return;
       const exists = state.data.assignments.some(a => a.role === role && a.person === person);
       if (exists) { setMessage(person + ' 已在「' + role + '」', false); render(); return; }
-      write({ action: 'save_rundown_assignment', 角色: role, 人員姓名: person }, person + ' → ' + role);
+      uiWrite({ action: 'save_rundown_assignment', 角色: role, 人員姓名: person }, person + ' → ' + role, {}, '.rd-roles');
     }
 
     return { render, load, state };
@@ -1034,7 +1232,7 @@
       let controller = controllers.get(container);
       if (controller && controller.state.activityId === activityId) {
         controller.render();
-        if (!controller.state.dirty && !controller.state.busy) await controller.load('backend');
+        if (!controller.state.dirty && !controller.state.busy && !controller.state.pendingDelete) await controller.load('backend');
         return;
       }
       if (controller) { controller.state.disposed = true; controller.state.loadId++; }
