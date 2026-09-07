@@ -235,7 +235,7 @@ test('點選與拖曳排序只留本機，儲存一次送整串；失敗重讀',
   await body.handlers.drop({preventDefault(){}});
   assert.equal(ctrl.state.data,beforeCancel,'取消拖曳不寫入');
   global.PlanningCore.apiWrite=async fields=>{sent.push(fields);};
-  host.querySelectorAll=selector=>selector === '.rd-segments > article[data-seg]' ? ['b','c','a'].map(seg=>({dataset:{seg}})) : [];
+  host.querySelectorAll=selector=>selector === '.rd-segments article[data-seg]' ? ['b','c','a'].map(seg=>({dataset:{seg}})) : [];
   handles[0].handlers.dragstart({dataTransfer:{setData(){}}});
   await body.handlers.drop({preventDefault(){}});
   assert.deepEqual(ctrl.state.data.segments.map(s=>s.segment_id),['b','c','a']);
@@ -502,4 +502,30 @@ test('#106 第二輪 A 無獎段省略獎項編輯，選單才開啟新增與選
   assert.equal(h.ctrl.state.expandedSegments.has('a'),true);
   assert.match(h.host.innerHTML,/rd-prize-popover/);assert.match(h.host.innerHTML,/data-new-prize/);
   await h.click('cancel-prize');assert.doesNotMatch(h.host.innerHTML,/rd-prize-popover/);
+});
+
+test('#106 第二輪 C 正式在前、彩排預設收合，階段為列尾單一小標', () => {
+  const h=redesignHarness();h.ctrl.state.data.segments[0].stage='彩排';h.ctrl.render();
+  const html=h.host.innerHTML;
+  assert.ok(html.indexOf('<article data-seg="b"')<html.indexOf('<details data-rehearsals>'));
+  assert.ok(html.indexOf('<details data-rehearsals>')<html.indexOf('<article data-seg="a"'));
+  assert.match(html,/<summary>彩排 1 段<\/summary>/);
+  assert.equal((html.match(/data-stage=/g)||[]).length,2);
+  assert.ok(html.indexOf('class="rd-detail-preview"')<html.indexOf('class="rd-stage-toggle"'));
+  assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));
+});
+
+test('#106 第二輪 C 鍵盤與點選只在同階段內重排，保存仍含完整順序', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
+  try {
+    const h=perfHarness({segments:[
+      {segment_id:'a',title:'A',stage:'正式',order:10,duration_min:5},
+      {segment_id:'r',title:'R',stage:'彩排',order:20,duration_min:5},
+      {segment_id:'b',title:'B',stage:'正式',order:30,duration_min:5}]});
+    h.handles[0].handlers.click();h.handles[1].handlers.click();assert.equal(h.ctrl.state.dirty,false,'拒絕跨階段點選');
+    h.handles[0].handlers.keydown({key:'ArrowDown',preventDefault(){}});
+    assert.deepEqual(h.ctrl.state.data.segments.map(s=>s.segment_id),['b','r','a']);
+    assert.equal(sent.length,0);await h.click('save-draft');
+    assert.deepEqual(sent[0].order.map(s=>s.segment_id),['b','r','a']);assert.equal(sent[0].edits,undefined);
+  } finally {global.PlanningCore=PlanningCore;}
 });
