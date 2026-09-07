@@ -95,6 +95,9 @@ test('時段與角色共用任務，預設無新增表單且編輯區不重複�
   assert.equal((host.innerHTML.match(/<article data-seg=/g) || []).length, 2);
   assert.equal((host.innerHTML.match(/data-task-details/g) || []).length, 2);
   assert.match(host.innerHTML, /16:00–16:30/);
+  assert.match(host.innerHTML, /rd-task-list rd-task-compact/);
+  assert.doesNotMatch(host.innerHTML, /rd-task-block|<h4>音控/);
+  assert.match(host.innerHTML, /rd-task-role">音控/);
   assert.doesNotMatch(host.innerHTML, /data-task-form|唯一活動名稱|rd-table/);
   ctrl.state.taskDraft = { segmentId: 's1', role: '音控', content: '草稿', audience: '全部' };
   ctrl.state.expandedSegments.add('s1');
@@ -235,7 +238,7 @@ test('點選與拖曳排序只留本機，儲存一次送整串；失敗重讀',
   await body.handlers.drop({preventDefault(){}});
   assert.equal(ctrl.state.data,beforeCancel,'取消拖曳不寫入');
   global.PlanningCore.apiWrite=async fields=>{sent.push(fields);};
-  host.querySelectorAll=selector=>selector === '.rd-segments > article[data-seg]' ? ['b','c','a'].map(seg=>({dataset:{seg}})) : [];
+  host.querySelectorAll=selector=>selector === '.rd-segments article[data-seg]' ? ['b','c','a'].map(seg=>({dataset:{seg}})) : [];
   handles[0].handlers.dragstart({dataTransfer:{setData(){}}});
   await body.handlers.drop({preventDefault(){}});
   assert.deepEqual(ctrl.state.data.segments.map(s=>s.segment_id),['b','c','a']);
@@ -435,4 +438,139 @@ test('#71 CSS 保留 token、焦點 outline、44px 觸控與 reduced-motion',()=
   assert.match(css,/:focus-visible \{ outline: 2px solid var\(--color-accent\)/);
   assert.match(css,/min-height: 2\.75rem/);assert.match(css,/@media \(max-width: 52rem\)/);
   assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);assert.doesNotMatch(css,/min-width: 1340px/);
+});
+
+test('#106 改名合併整組依順序編號，一次送出並更新快取', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(f);return {};}};
+  try {
+    const h=perfHarness({segments:[{segment_id:'a',title:'開場',duration_min:5,order:30},{segment_id:'b',title:'抽獎',duration_min:5,order:10}]});
+    h.fields[0].value='抽獎';h.fields[0].handlers.input({target:h.fields[0]});
+    assert.equal(sent.length,0);await h.click('save-draft');
+    assert.equal(sent.length,1);assert.equal(sent[0].action,'save_rundown_order');
+    assert.deepEqual(JSON.parse(sent[0].data).edits,[{segment_id:'a',節目內容:'抽獎（二）'},{segment_id:'b',節目內容:'抽獎（一）'}]);
+    assert.equal(h.ctrl.state.data.segments.find(s=>s.segment_id==='a').title,'抽獎（二）');
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 改名離開同名組後移除單段編號；單改長度不重編', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
+  try {
+    const raw={segments:[{segment_id:'a',title:'抽獎（一）',duration_min:5,order:10},{segment_id:'b',title:'抽獎(二)',duration_min:5,order:20}]};
+    const h=perfHarness(raw);h.fields[1].value='6';h.fields[1].handlers.input({target:h.fields[1]});await h.click('save-draft');
+    assert.deepEqual(sent[0].edits,[{segment_id:'a',duration_min:6}]);
+    h.fields[0].value='唱歌';h.fields[0].handlers.input({target:h.fields[0]});await h.click('save-draft');
+    assert.deepEqual(sent[1].edits,[{segment_id:'a',節目內容:'唱歌'},{segment_id:'b',節目內容:'抽獎'}]);
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 新增第二個同名時段只留編號草稿，儲存一次送兩段', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(f);return {segment_id:'new'};}};
+  try {
+    const h=redesignHarness();h.ctrl.state.data.segments[0].title='新時段';
+    await h.click('add-segment');assert.equal(sent.length,1);assert.equal(h.ctrl.state.dirty,true);
+    assert.deepEqual(h.ctrl.state.data.segments.filter(s=>s.title.startsWith('新時段')).map(s=>s.title),['新時段（一）','新時段（二）']);
+    await h.click('save-draft');assert.equal(sent.length,2);assert.equal(JSON.parse(sent[1].data).edits.length,2);
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 密集列只顯示摘要，獎項與任務置於預設收合抽屜', () => {
+  const h=redesignHarness();const html=h.host.innerHTML;
+  assert.doesNotMatch(html,/rd-anchor|從這裡重新計算|<summary>連結獎項/);
+  assert.match(html,/rd-time-fixed/);assert.match(html,/class="rd-fix" title="固定開始時間，之後往下重算">固定/);
+  assert.match(html,/<summary>這段頒的獎<\/summary><div class="rd-popover-panel"><p class="rd-hint">/);
+  assert.match(html,/class="rd-detail-preview"[^>]*>獎 頭獎.* · 任務 1<\/button>/);
+  assert.match(html,/<details data-task-details><summary/);
+  assert.match(html,/class="rd-segment-drawer"><div class="rd-prize-cell">/);
+  h.ctrl.state.data.segments[0].duration_min=0;h.ctrl.render();
+  assert.match(h.host.innerHTML,/data-field="duration_min" value="" placeholder="—"/);
+});
+
+test('#106 純排序不重編；重編後無差異回復已存標題', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
+  try {
+    const raw={segments:[{segment_id:'a',title:'抽獎（一）',duration_min:5,order:10},{segment_id:'b',title:'抽獎（二）',duration_min:5,order:20}]};
+    const h=perfHarness(raw);h.fields[0].value='抽獎';h.fields[0].handlers.input({target:h.fields[0]});await h.click('save-draft');
+    assert.equal(sent.length,0);assert.equal(h.ctrl.state.data.segments[0].title,'抽獎（一）');
+    h.handles[1].handlers.click();h.handles[0].handlers.click();await h.click('save-draft');
+    assert.equal(sent.length,1);assert.equal(sent[0].edits,undefined);
+    assert.equal(h.ctrl.state.data.segments[0].title,'抽獎（二）');
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 第二輪 A 無獎段省略獎項編輯，選單才開啟新增與選獎', async () => {
+  const h=redesignHarness();h.ctrl.state.data.segments[0].prize_ids=[];h.ctrl.render();
+  assert.doesNotMatch(h.host.innerHTML,/rd-prize-popover/);
+  assert.match(h.host.innerHTML,/data-action="new-prize">＋ 這段有頒獎/);
+  await h.click('new-prize');assert.equal(h.ctrl.state.newPrizeSegment,'a');
+  assert.equal(h.ctrl.state.expandedSegments.has('a'),true);
+  assert.match(h.host.innerHTML,/rd-prize-popover/);assert.match(h.host.innerHTML,/data-new-prize/);
+  assert.match(h.host.innerHTML, /<input name="獎別">/);
+  await h.click('cancel-prize');assert.doesNotMatch(h.host.innerHTML,/rd-prize-popover/);
+});
+
+test('#106 定版 彩排在上、正式在下，兩區不收合，階段為列尾單一小標', () => {
+  const h=redesignHarness();h.ctrl.state.data.segments[0].stage='彩排';h.ctrl.render();
+  const html=h.host.innerHTML;
+  assert.ok(html.indexOf('data-stage-group="彩排"')<html.indexOf('<article data-seg="a"'));
+  assert.ok(html.indexOf('<article data-seg="a"')<html.indexOf('data-stage-group="正式"'));
+  assert.ok(html.indexOf('data-stage-group="正式"')<html.indexOf('<article data-seg="b"'));
+  assert.doesNotMatch(html,/data-rehearsals/);
+  assert.match(html, /彩排 <span data-stage-count>1<\/span> 段/);
+  assert.equal((html.match(/data-stage=/g)||[]).length,2);
+  assert.ok(html.indexOf('class="rd-detail-preview"')<html.indexOf('class="rd-stage-toggle"'));
+  assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));
+});
+
+test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料、不重讀或重畫', () => {
+  let reads=0,writes=0;
+  global.PlanningCore={apiWrite:async()=>{writes++;},fetchRundown:async()=>{reads++;}};
+  try {
+    const raw={config:{official_start:'18:00'},segments:Array.from({length:20},(_,i)=>({segment_id:'s'+i,title:'節目'+i,duration_min:5,order:(i+1)*10}))};
+    const h=perfHarness(raw),data=h.ctrl.state.data,tasks=data.tasks,prizes=data.prizes;
+    const rows=data.segments.map(seg=>{
+      const fields=new Map([['節目內容',seg.title],['duration_min',seg.duration_min],['順序',seg.order],['階段',seg.stage]].map(([field,value])=>[field,{value:String(value),dataset:{}}]));
+      fields.set('節目內容',h.fields[0]); // 第一列的真實輸入事件與回復共用同一節點。
+      if(seg.segment_id!=='s0')fields.set('節目內容',{value:seg.title,dataset:{}});
+      const toggle={...stubElement(),setAttribute(){}};
+      return {...stubElement(),dataset:{seg:seg.segment_id},drawer:{open:true},fields,
+        querySelector(selector){
+          if(selector==='[data-stage]')return toggle;
+          if(selector==='.rd-time-value')return this.time||(this.time={textContent:''});
+          const match=selector.match(/data-field="([^"]+)"/);return match?fields.get(match[1])||null:null;
+        }};
+    });
+    h.fields[0].value='未存';h.fields[0].handlers.input({target:h.fields[0]});
+    h.fields[1].value='12';h.fields[1].handlers.input({target:h.fields[1]});
+    h.handles[19].handlers.click();h.handles[0].handlers.click();
+    const oldQuery=h.host.querySelector.bind(h.host), oldAll=h.host.querySelectorAll.bind(h.host);
+    const children=[rows[19],...rows.slice(0,19)],drawers=rows.map(r=>r.drawer);
+    const list={appendChild(row){const i=children.indexOf(row);if(i>=0)children.splice(i,1);children.push(row);}};
+    h.host.querySelector=selector=>selector.includes('data-stage-group=')?{querySelector:s=>s==='.rd-stage-rows'?list:{textContent:''}}:oldQuery(selector);
+    h.host.querySelectorAll=selector=>selector==='.rd-segments article[data-seg]'?rows:oldAll(selector);
+    Object.defineProperty(h.host,'innerHTML',{set(){assert.fail('取消不應重畫整份 markup');}});
+    const started=performance.now();h.click('cancel-draft');const elapsed=performance.now()-started;
+    assert.ok(elapsed<100,'20 段就地取消低於 100ms');
+    assert.equal(h.ctrl.state.data,data);assert.equal(data.tasks,tasks);assert.equal(data.prizes,prizes);
+    assert.equal(data.segments[0].title,'節目0');assert.equal(data.segments[0].duration_min,5);
+    assert.equal(h.fields[0].value,'節目0');assert.equal(rows[0].fields.get('duration_min').value,'5');
+    assert.deepEqual(children,rows);assert.deepEqual(rows.map(r=>r.drawer),drawers);
+    assert.match(rows[1].time.textContent,/18:05/);
+    assert.equal(h.ctrl.state.dirty,false);assert.equal(reads,0);assert.equal(writes,0);
+    console.log('20-row cancel handler (DOM stub): '+elapsed.toFixed(2)+'ms');
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('#106 第二輪 C 鍵盤與點選只在同階段內重排，保存仍含完整順序', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
+  try {
+    const h=perfHarness({segments:[
+      {segment_id:'a',title:'A',stage:'正式',order:10,duration_min:5},
+      {segment_id:'r',title:'R',stage:'彩排',order:20,duration_min:5},
+      {segment_id:'b',title:'B',stage:'正式',order:30,duration_min:5}]});
+    h.handles[0].handlers.click();h.handles[1].handlers.click();assert.equal(h.ctrl.state.dirty,false,'拒絕跨階段點選');
+    h.handles[0].handlers.keydown({key:'ArrowDown',preventDefault(){}});
+    assert.deepEqual(h.ctrl.state.data.segments.map(s=>s.segment_id),['b','r','a']);
+    assert.equal(sent.length,0);await h.click('save-draft');
+    assert.deepEqual(sent[0].order.map(s=>s.segment_id),['b','r','a']);assert.equal(sent[0].edits,undefined);
+  } finally {global.PlanningCore=PlanningCore;}
 });

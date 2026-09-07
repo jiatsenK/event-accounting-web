@@ -52,6 +52,19 @@
     if (n < 100) return (n < 20 ? '' : digits[Math.floor(n / 10)]) + '十' + (n % 10 ? digits[n % 10] : '');
     return String(n).split('').map(d => digits[Number(d)]).join('');
   }
+  function baseTitle(title) { return String(title).replace(/[（(].*$/, '').trim(); }
+  function numberedTitles(segments, bases) {
+    const groups = new Map(), titles = new Map();
+    [...segments].sort((a, b) => a.order - b.order).forEach(seg => {
+      const base = baseTitle(seg.title);
+      if (!base || !bases.has(base)) return;
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base).push(seg);
+    });
+    groups.forEach((group, base) => group.forEach((seg, i) =>
+      titles.set(seg.segment_id, base + (group.length > 1 ? '（' + chineseNumber(i + 1) + '）' : ''))));
+    return titles;
+  }
   function quickSegment(segments, index) {
     const [name, duration, numbered] = QUICK_SEGMENTS[index] || QUICK_SEGMENTS[5];
     const base = s => String(s.title || s['節目內容'] || '').replace(/[（(].*$/, '').trim();
@@ -346,7 +359,7 @@
           }
           old.__rdUsed = true;
           if (old.nodeType === 1) {
-            const open = old.tagName === 'DETAILS' && !old.hasAttribute('data-task-details') ? old.open : null;
+            const open = old.tagName === 'DETAILS' && !old.hasAttribute('data-task-details') && !old.hasAttribute('data-rehearsals') ? old.open : null;
             for (const a of [...old.attributes]) if (!fresh.hasAttribute(a.name)) old.removeAttribute(a.name);
             for (const a of [...fresh.attributes]) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
             if (open != null) old.open = open;
@@ -476,16 +489,17 @@
 
       // 獎項：直接列出可用獎項當可點的標籤，點一下就連結／取消連結，不用打 prize_id。
       function prizeCellHtml(seg, readOnly) {
+        if (!seg.prize_ids.length && state.newPrizeSegment !== seg.segment_id) return '';
         if (readOnly) {
           return core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
         }
         const linked = new Set(seg.prize_ids || []);
-        return '<details class="rd-prize-popover"><summary>連結獎項</summary><div class="rd-popover-panel">' + d.prizes.map(p => {
+        return '<details class="rd-prize-popover"><summary>這段頒的獎</summary><div class="rd-popover-panel"><p class="rd-hint">從獎項名冊挑一個獎指定給這段；列印時會印在這段下面。</p>' + d.prizes.map(p => {
           const active = linked.has(p.prize_id);
           return '<button type="button" class="rd-prize-toggle' + (active ? ' rd-prize-toggle-active' : '') +
             '" aria-pressed="' + active + '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(core().prizeLabel(p)) + '</button>';
         }).join('') + '<button type="button" class="rd-prize-toggle" data-action="new-prize">＋ 獎項</button>' +
-          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別" required></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" data-rd-staff></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
+          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別"></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" data-rd-staff></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
       }
 
       function prizeField(seg, field, key) {
@@ -496,22 +510,26 @@
       }
 
       // 順序沿用 #92 草稿；階段／錨點沿用既有 segment 寫入。
-      const segmentRows = timed.map(seg => state.pendingDelete && state.pendingDelete.id === seg.segment_id ? undoRow(seg) :
+      const segmentRow = seg => state.pendingDelete && state.pendingDelete.id === seg.segment_id ? undoRow(seg) :
         '<article data-seg="' + esc(seg.segment_id) + '" class="rd-segment-card ' + (seg.stage === '彩排' ? 'rd-stage-rehearsal' : 'rd-stage-official') + '">' +
           '<div class="rd-segment-main">' + (readOnly ? '' : '<button type="button" class="rd-drag-handle" draggable="true" aria-pressed="false" aria-label="選取時段，再點目標把手移到其前方" title="拖曳、↑↓移動，或點選目標把手">' + icon('drag') + '</button>') +
           '<input type="hidden" data-field="順序" value="' + esc(seg.order) + '">' +
           '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
-          '<span class="rd-time-readout">' + esc(timeText(seg.time)) + '</span>' +
+          '<span class="rd-time-readout' + (seg.anchor_time ? ' rd-time-fixed' : '') + '">' + '<span class="rd-time-value">' + esc(timeText(seg.time)) + '</span>' + (seg.anchor_time ? ' <span class="rd-fix" title="固定開始時間，之後往下重算">固定</span>' : '') + '</span>' +
           '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
-          '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min) + '" inputmode="numeric"' + dis + '></label>' +
-          '<div class="rd-stage-toggle" role="group" aria-label="階段">' + ['彩排', '正式'].map(stage => '<button type="button" data-stage="' + stage + '" aria-pressed="' + (seg.stage === stage) + '"' + dis + '>' + stage + '</button>').join('') + '</div>' +
-          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><label>錨定時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"></label><small>從這裡重新計算；清空可取消錨定</small><button type="button" data-action="save-anchor">套用錨定</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
-          (seg.anchor_time ? '<span class="rd-anchor">' + icon('pin') + '從這裡重新計算 ' + esc(clockText(seg.anchor_time)) + '</span>' : '') +
-          '<div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' +
-          '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary>' + icon('chevron') + '任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
-          taskContent(seg.segment_id) + '</details></article>').join('');
+          '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="—" inputmode="numeric"' + dis + '></label>' +
+
+          '<button type="button" class="rd-detail-preview" data-action="toggle-details" aria-expanded="' + state.expandedSegments.has(seg.segment_id) + '" aria-label="展開或收合獎項與任務">' + esc([core().segmentPrizes(seg, prizeIndex).map(p => '獎 ' + core().prizeLabel(p)).join('；'), d.tasks.some(t => t.segment_id === seg.segment_id) ? '任務 ' + d.tasks.filter(t => t.segment_id === seg.segment_id).length : ''].filter(Boolean).join(' · ') || '＋ 任務') + '</button>' +
+          '<button type="button" class="rd-stage-toggle" data-stage="' + (seg.stage === '彩排' ? '正式' : '彩排') + '" aria-label="目前' + esc(seg.stage) + '，切換為' + (seg.stage === '彩排' ? '正式' : '彩排') + '"' + dis + '>' + esc(seg.stage) + '</button>' +
+          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><label>錨定時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"></label><button type="button" data-action="save-anchor">套用錨定</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
+          '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary class="rd-sr-only">' + icon('chevron') + '獎項與任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
+          '<div class="rd-segment-drawer"><div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' + taskContent(seg.segment_id) + '</div></details></article>';
+      const segmentRows = ['彩排', '正式'].map(stage => {
+        const segments = timed.filter(s => s.stage === stage).sort((a, b) => a.order - b.order);
+        return '<section class="rd-stage-group" data-stage-group="' + stage + '"><h3>' + stage + ' <span data-stage-count>' + segments.length + '</span> 段</h3><div class="rd-stage-rows">' + segments.map(segmentRow).join('') + '</div></section>';
+      }).join('');
 
       return '<div class="rd-edit">' +
         '<datalist id="rd-staff">' + state.staff.map(p => '<option value="' + esc(p.name) + '">' + esc([p.department, p.title].filter(Boolean).join('／')) + '</option>').join('') + '</datalist>' +
@@ -561,14 +579,12 @@
     function taskContent(segmentId, role) {
       const readOnly = state.source !== 'backend';
       const tasks = state.data.tasks.filter(t => t.segment_id === segmentId && (role == null || t.role === role));
-      const groups = new Map();
-      tasks.forEach(t => { if (!groups.has(t.role)) groups.set(t.role, []); groups.get(t.role).push(t); });
       const people = core().assigneesByRole(state.data);
-      const rows = [...groups].map(([name, items]) => '<section class="rd-task-block"><h4>' + esc(name) +
-        '<span class="rd-muted"> · ' + esc((people.get(name) || []).join('、') || '未排人') + '</span></h4>' +
-        '<ul class="rd-task-list">' + items.map(t => '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-content">' + esc(t.content) + '</span>' +
-          '<span class="rd-task-aud">' + esc(t.audience) + '</span>' +
-          (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul></section>').join('');
+      const rows = tasks.length ? '<ul class="rd-task-list rd-task-compact">' + tasks.map(t =>
+        '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) +
+        '<span class="rd-muted">（' + esc((people.get(t.role) || []).join('、') || '未排人') + '）</span></span> · ' +
+        '<span class="rd-task-content">' + esc(t.content) + '</span> · <span class="rd-task-aud">' + esc(t.audience) + '</span>' +
+        (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul>' : '';
       const draft = state.taskDraft;
       const adding = draft && draft.segmentId === segmentId;
       const roles = taskRoles();
@@ -761,7 +777,11 @@
       on('[data-inline]', 'focus', event => {
         const el = event.currentTarget; el.dataset.beforeEdit = el.value; el.readOnly = false;
       });
-      on('[data-inline]', 'blur', event => { event.currentTarget.readOnly = true; });
+      on('[data-inline]', 'blur', event => {
+        const el = event.currentTarget;
+        el.readOnly = true;
+        if (el.dataset.field === 'duration_min' && Number(el.value) === 0) el.value = '';
+      });
       on('[data-inline]', 'keydown', event => {
         if (event.isComposing) return;
         if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
@@ -786,8 +806,16 @@
         const fields = { action: 'save_rundown_segment', 節目內容: '新時段', duration_min: previous ? previous.duration_min : 5,
           順序: previous ? (index >= 0 && next ? (previous.order + next.order) / 2 : previous.order + 10) : 10, 階段: previous ? previous.stage : '正式' };
         if (!await uiWrite(fields, '已新增時段', {}, '[data-action="add-segment"]')) return;
-        state.mode = 'edit'; state.taskView = 'segment'; render();
         const added = state.data.segments.find(s => !ids.has(s.segment_id));
+        if (added) {
+          const titles = numberedTitles(state.data.segments, new Set([baseTitle(added.title)]));
+          if (state.data.segments.some(s => titles.has(s.segment_id) && titles.get(s.segment_id) !== s.title)) {
+            beginDraft();
+            state.data.segments.forEach(s => { if (titles.has(s.segment_id)) s.title = titles.get(s.segment_id); });
+            setMessage('已新增時段，編號尚未儲存', false);
+          }
+        }
+        state.mode = 'edit'; state.taskView = 'segment'; render();
         const input = added && container.querySelector('[data-seg="' + added.segment_id + '"] [data-field="節目內容"]');
         if (input && input.focus) { input.focus(); input.select(); }
       });
@@ -807,11 +835,22 @@
         render();
       });
       on('[data-role-filter]', 'change', event => { state.selectedRole = event.currentTarget.value; render(); });
+      on('[data-action="toggle-details"]', 'click', event => {
+        if (state.busy || state.pendingDelete) return;
+        const row = event.currentTarget.closest('[data-seg]');
+        const details = row.querySelector('[data-task-details]');
+        details.open = !details.open;
+        if (details.open) state.expandedSegments.add(row.dataset.seg); else state.expandedSegments.delete(row.dataset.seg);
+        const preview = row.querySelector('.rd-detail-preview');
+        if (preview) preview.setAttribute('aria-expanded', String(details.open));
+      });
       on('[data-task-details]', 'toggle', event => {
         const el = event.currentTarget;
         if (!container.contains(el)) return;
         const id = el.closest('[data-seg]').dataset.seg;
         if (el.open) state.expandedSegments.add(id); else state.expandedSegments.delete(id);
+        const preview = el.closest('[data-seg]').querySelector('.rd-detail-preview');
+        if (preview) preview.setAttribute('aria-expanded', String(el.open));
       });
       on('[data-action="open-task"]', 'click', event => {
         const segmentId = event.currentTarget.closest('[data-seg]').dataset.seg;
@@ -884,15 +923,6 @@
         root.setTimeout(clear, 1500);
       });
 
-      // 時段：「＋」直接加一列在最後面，帶預設標題，馬上可以就地改名
-      on('[data-quick-segment]', 'click', async event => {
-        if (state.busy) return;
-        const beforeIds = new Set(state.data.segments.map(s => s.segment_id));
-        await write(quickSegment(state.data.segments, Number(event.currentTarget.dataset.quickSegment)), '已新增時段');
-        const added = state.data.segments.find(s => !beforeIds.has(s.segment_id));
-        const input = added && container.querySelector('[data-seg="' + added.segment_id + '"] [data-field="節目內容"]');
-        if (input) { input.focus(); input.select(); }
-      });
       // 輸入即留在草稿；不重繪 input、不等待 blur，也不送後端。
       const editSegment = event => {
         if (state.busy || state.source !== 'backend') return;
@@ -918,11 +948,60 @@
         return result;
       });
       on('[data-action="cancel-draft"]', 'click', () => {
-        if (state.busy) return;
-        state.data = JSON.parse(JSON.stringify(state.savedData || state.data));
+        if (state.busy || !state.dirty || !state.savedData) return;
+        const before = new Map(state.savedData.segments.map(seg => [seg.segment_id, seg]));
+        const rows = new Map([...container.querySelectorAll('.rd-segments article[data-seg]')].map(row => [row.dataset.seg, row]));
+        let reordered = false;
+        state.data.segments.forEach(seg => {
+          const saved = before.get(seg.segment_id), row = rows.get(seg.segment_id);
+          if (!saved) return;
+          reordered = reordered || seg.order !== saved.order || seg.stage !== saved.stage;
+          [['title', '節目內容'], ['duration_min', 'duration_min'], ['order', '順序'], ['stage', '階段']].forEach(([key, field]) => {
+            if (seg[key] === saved[key]) return;
+            seg[key] = saved[key];
+            const input = row && row.querySelector('[data-field="' + field + '"]');
+            if (input) { input.value = String(key === 'duration_min' ? seg[key] || '' : seg[key]); input.dataset.beforeEdit = input.value; }
+          });
+          if (row) {
+            row.classList.toggle('rd-stage-rehearsal', seg.stage === '彩排');
+            row.classList.toggle('rd-stage-official', seg.stage !== '彩排');
+            const toggle = row.querySelector('[data-stage]');
+            if (toggle) {
+              toggle.dataset.stage = seg.stage === '彩排' ? '正式' : '彩排';
+              toggle.textContent = seg.stage;
+              toggle.setAttribute('aria-label', '目前' + seg.stage + '，切換為' + toggle.dataset.stage);
+            }
+          }
+        });
+        if (reordered) {
+          state.data.segments.sort((a, b) => a.order - b.order);
+          ['彩排', '正式'].forEach(stage => {
+            const group = container.querySelector('[data-stage-group="' + stage + '"]');
+            if (!group) return;
+            const list = group.querySelector('.rd-stage-rows');
+            const segments = state.data.segments.filter(s => s.stage === stage);
+            segments.forEach(seg => { if (rows.has(seg.segment_id)) list.appendChild(rows.get(seg.segment_id)); });
+            const count = group.querySelector('[data-stage-count]');
+            if (count) count.textContent = String(segments.length);
+          });
+        }
         state.dirty = false; state.revision++;
-        state.feedback = { selector: '[data-action="cancel-draft"]' };
-        setMessage('已取消未儲存變更', false); render();
+        container.querySelectorAll('.rd-field-message').forEach(note => { note.textContent = ''; });
+        container.querySelectorAll('[aria-invalid]').forEach(el => {
+          el.classList.remove('rd-field-error', 'rd-save-pulse');
+          el.setAttribute('aria-invalid', 'false'); el.setAttribute('aria-busy', 'false');
+        });
+        state.feedback = null;
+        // 依時段保留全部列、抽屜與輸入節點；其他模式僅更新衍生預覽。
+        if (state.mode !== 'edit' || state.taskView !== 'segment') {
+          const content = container.querySelector('.rd-body');
+          if (content) {
+            listeners.forEach(([el, type, fn]) => el.removeEventListener && el.removeEventListener(type, fn)); listeners = [];
+            content.innerHTML = body(); bind();
+          }
+        } else refreshTimeReadouts();
+        setMessage('已取消未儲存變更', false); renderStatusOnly();
+        const live = container.querySelector('[data-rd-live]'); if (live) live.textContent = state.message;
       });
       on('[data-action="del-seg"]', 'click', event => {
         if (state.busy || state.pendingDelete) return;
@@ -971,9 +1050,16 @@
 
       // 獎項：點標籤直接連結／取消連結，不用打 prize_id
       on('[data-action="new-prize"]', 'click', event => {
-        if (state.busy) return;
+        if (state.busy || state.pendingDelete) return;
+        if (event.stopPropagation) event.stopPropagation();
         state.newPrizeSegment = event.target.closest('article[data-seg]').dataset.seg;
+        state.expandedSegments.add(state.newPrizeSegment);
         render();
+        const row = container.querySelector('[data-seg="' + state.newPrizeSegment + '"]');
+        const editor = row && row.querySelector('.rd-prize-popover');
+        if (editor) editor.open = true;
+        const menu = row && row.querySelector('.rd-segment-menu');
+        if (menu) menu.open = false;
       });
       on('[data-action="cancel-prize"]', 'click', () => { state.newPrizeSegment = ''; render(); });
       on('[data-new-prize]', 'submit', async event => {
@@ -1036,7 +1122,7 @@
     // 讀目前畫面上每一列的欄位值（不是 state.data，因為使用者可能還沒 blur、還沒存檔），
     // 就地重算牆上時間，只更新唯讀的時間欄文字——不動任何 input，不會打斷打字。
     function refreshTimeReadouts() {
-      const rows = Array.from(container.querySelectorAll('.rd-segments > article[data-seg]'));
+      const rows = Array.from(container.querySelectorAll('.rd-segments article[data-seg]'));
       if (!rows.length) return;
       const byId = new Map(state.data.segments.map(s => [s.segment_id, s]));
       const draft = rows.map(tr => {
@@ -1054,7 +1140,7 @@
       const timed = core().calculateTimeline(draft, state.data.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s.time]));
       rows.forEach(tr => {
-        const cell = tr.querySelector('.rd-time-readout');
+        const cell = tr.querySelector('.rd-time-value') || tr.querySelector('.rd-time-readout');
         if (cell) cell.textContent = timeText(timeById.get(tr.dataset.seg));
       });
     }
@@ -1070,11 +1156,12 @@
           if (!['ArrowUp', 'ArrowDown'].includes(event.key) || state.busy || state.pendingDelete) return;
           event.preventDefault();
           const id = handle.closest('article[data-seg]').dataset.seg;
-          const ids = state.data.segments.map(s => s.segment_id), index = ids.indexOf(id);
+          const stage = state.data.segments.find(s => s.segment_id === id).stage;
+          const ids = state.data.segments.filter(s => s.stage === stage).map(s => s.segment_id), index = ids.indexOf(id);
           const target = index + (event.key === 'ArrowUp' ? -1 : 1);
           if (target < 0 || target >= ids.length) return;
           ids.splice(index, 1); ids.splice(target, 0, id);
-          reorderAndSave(ids, id); announceMove(id);
+          reorderStage(ids, id); announceMove(id);
         });
         listen(handle, 'click', () => {
           if (state.busy) return;
@@ -1086,11 +1173,13 @@
             return;
           }
           if (pickedId === id) { pickedId = ''; render(); return; }
-          const ids = state.data.segments.map(s => s.segment_id).filter(x => x !== pickedId);
+          const stage = state.data.segments.find(s => s.segment_id === pickedId).stage;
+          if (state.data.segments.find(s => s.segment_id === id).stage !== stage) { pickedId = ''; render(); return; }
+          const ids = state.data.segments.filter(s => s.stage === stage).map(s => s.segment_id).filter(x => x !== pickedId);
           ids.splice(ids.indexOf(id), 0, pickedId);
           const moved = pickedId;
           pickedId = '';
-          reorderAndSave(ids, moved); announceMove(moved); return;
+          reorderStage(ids, moved); announceMove(moved); return;
         });
         listen(handle, 'dragstart', event => {
           if (state.busy) { event.preventDefault(); return; }
@@ -1110,19 +1199,21 @@
         event.preventDefault();
         const tr = event.target.closest('article[data-seg]');
         const dragRow = tbody.querySelector('article[data-seg="' + dragId + '"]');
-        if (!tr || !dragRow || tr === dragRow) return;
+        if (!tr || !dragRow || tr === dragRow || tr.parentElement !== dragRow.parentElement) return;
         const rect = tr.getBoundingClientRect();
         const before = (event.clientY - rect.top) < rect.height / 2;
-        tbody.insertBefore(dragRow, before ? tr : tr.nextSibling);
+        dragRow.parentElement.insertBefore(dragRow, before ? tr : tr.nextSibling);
         refreshTimeReadouts();
       });
       listen(tbody, 'drop', event => {
         event.preventDefault();
         if (dragId) {
-          const ids = Array.from(container.querySelectorAll('.rd-segments > article[data-seg]')).map(tr => tr.dataset.seg);
+          const stage = state.data.segments.find(s => s.segment_id === dragId).stage;
+          const sameStage = new Set(state.data.segments.filter(s => s.stage === stage).map(s => s.segment_id));
+          const ids = Array.from(container.querySelectorAll('.rd-segments article[data-seg]')).map(tr => tr.dataset.seg).filter(id => sameStage.has(id));
           const moved = dragId;
           dragId = '';
-          reorderAndSave(ids, moved); announceMove(moved); return;
+          reorderStage(ids, moved); announceMove(moved); return;
         }
         dragId = '';
       });
@@ -1131,6 +1222,16 @@
     function beginDraft() {
       if (!state.dirty) state.savedData = JSON.parse(JSON.stringify(state.data));
       state.dirty = true; state.revision++;
+    }
+
+    function reorderStage(ids, movedId) {
+      const moved = state.data.segments.find(s => s.segment_id === movedId);
+      if (!moved) return;
+      const group = state.data.segments.filter(s => s.stage === moved.stage);
+      if (ids.length !== group.length || new Set(ids).size !== ids.length || ids.some(id => !group.some(s => s.segment_id === id))) return;
+      let i = 0;
+      // 將區塊內順序放回原有槽位，另一階段不換位，也不改階段。
+      reorderAndSave(state.data.segments.map(s => s.stage === moved.stage ? ids[i++] : s.segment_id), movedId);
     }
 
     function reorderAndSave(ids, movedId) {
@@ -1157,15 +1258,33 @@
         if (seg.duration_min !== old.duration_min) edit.duration_min = seg.duration_min;
         if (Object.keys(edit).length > 1) edits.push(edit);
       }
+      // 純排序／長度變更不重編；改名時整理原名稱與新名稱的兄弟段。
+      const bases = new Set();
+      edits.filter(e => e['節目內容'] != null).forEach(e => {
+        bases.add(baseTitle(before.get(e.segment_id).title));
+        bases.add(baseTitle(e['節目內容']));
+      });
+      const titles = numberedTitles(state.data.segments, bases);
+      titles.forEach((title, id) => {
+        let edit = edits.find(e => e.segment_id === id);
+        if (title !== before.get(id).title) {
+          if (!edit) { edit = { segment_id: id }; edits.push(edit); }
+          edit['節目內容'] = title;
+        } else if (edit) delete edit['節目內容'];
+      });
+      for (let i = edits.length - 1; i >= 0; i--) if (Object.keys(edits[i]).length === 1) edits.splice(i, 1);
       const data = {};
       if (state.data.segments.some(s => s.order !== before.get(s.segment_id).order)) data.order = state.data.segments.map(s => ({ segment_id: s.segment_id, 順序: s.order }));
       if (edits.length) data.edits = edits;
-      if (!Object.keys(data).length) { state.dirty = false; setMessage('沒有需要儲存的變更', false); render(); return true; }
+      if (!Object.keys(data).length) {
+        state.data.segments.forEach(s => { s.title = titles.get(s.segment_id) || s.title.trim(); });
+        state.dirty = false; setMessage('沒有需要儲存的變更', false); render(); return true;
+      }
       state.busy = true; state.revision++;
       setMessage('儲存中…', false); render();
       try {
         await planning().apiWrite({ action: 'save_rundown_order', activity_id: state.activityId, data: JSON.stringify(data) }, { receipt: true });
-        state.data.segments.forEach(s => { s.title = s.title.trim(); });
+        state.data.segments.forEach(s => { s.title = titles.get(s.segment_id) || s.title.trim(); });
         state.dirty = false; rememberSaved();
         setMessage('已儲存', false); return true;
       } catch (err) {

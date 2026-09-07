@@ -340,3 +340,54 @@
 .rd-audience [aria-pressed="true"] { color: var(--color-accent); background: var(--color-accent-soft); border-color: var(--color-accent); }
 [data-task-details] > summary .rd-svg { transform: rotate(-90deg); }
 [data-task-details][open] > summary .rd-svg { transform: none; }
+
+/* Issue 106: compact desktop rows; secondary editors live in the closed drawer. */
+.rd-segments .rd-segment-card { padding: 0 .35rem; margin-bottom: 0; border-radius: 0; border-top: 0; }
+.rd-segments .rd-segment-card:first-child { border-top: 1px solid var(--rd-line); }
+.rd-segments .rd-segment-card:is(.rd-stage-rehearsal, .rd-stage-official) { border-left-width: 3px; }
+.rd-segments .rd-stage-rehearsal { background: color-mix(in srgb, var(--color-rundown-rehearsal) 7%, var(--color-surface)); }
+.rd-segment-main { display: flex; flex-wrap: nowrap; min-height: 2.2rem; gap: .35rem; }
+.rundown .rd-segment-main :is(button, summary, input:not([type="hidden"])) { min-height: 1.8rem; min-width: 0; padding: .1rem .3rem; font-size: .8rem; }
+.rd-segment-main > .rd-drag-handle, .rd-segment-main > .rd-segment-menu { flex: 0 0 1.5rem; }
+.rd-segment-main > .rd-time-readout { flex: 0 0 9.5rem; white-space: nowrap; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.rd-time-readout.rd-time-fixed { color: var(--color-accent); }
+.rd-fix { display: inline-block; padding: 0 .15rem; border: 1px solid currentColor; border-radius: 3px; font-size: .62rem; vertical-align: middle; }
+.rd-segment-main > .rd-segment-title { flex: 0 1 12rem; }
+.rd-segment-main > label:not(.rd-segment-title) { flex: 0 0 3.5rem; }
+.rundown .rd-segment-main .rd-in-duration { padding-right: 1.1rem; }
+.rd-segment-main > label:not(.rd-segment-title)::after { top: .35rem; right: .3rem; }
+.rd-in-duration::placeholder { color: var(--color-muted); opacity: .65; }
+.rd-segment-main > .rd-stage-toggle { flex: 0 0 auto; padding: 0; }
+.rundown .rd-segment-main .rd-stage-toggle button { font-size: .7rem; }
+.rundown .rd-segment-main > .rd-detail-preview { flex: 1 1 8rem; overflow: hidden; text-overflow: ellipsis; text-align: left; color: var(--color-muted); background: transparent; border-color: transparent; }
+.rd-segment-card .rd-segment-menu, .rd-segment-card > [data-task-details] { margin: 0; }
+.rundown [data-task-details] > summary.rd-sr-only { min-height: 0; min-width: 0; padding: 0; }
+.rd-segment-drawer { padding: .5rem 1.8rem; border-top: 1px solid var(--rd-line); }
+@media screen and (max-width: 52rem) {
+  .rd-segment-main { flex-wrap: wrap; padding: .2rem 0; }
+  .rundown .rd-segment-main :is(button, summary, input:not([type="hidden"])) { min-height: 2.75rem; }
+  .rd-segment-main > .rd-drag-handle { flex-basis: 2.75rem; }
+  .rd-segment-main > .rd-time-readout { flex: 1 1 10rem; }
+  .rd-segment-main > .rd-segment-menu { order: 0; flex-basis: 2.75rem; }
+  .rd-segment-main > .rd-segment-title { order: 1; flex: 1 1 calc(100% - 4rem); }
+  .rd-segment-main > label:not(.rd-segment-title) { order: 1; }
+  .rd-segment-main > .rd-stage-toggle { order: 2; }
+  .rd-segment-main > .rd-detail-preview { order: 2; }
+  .rd-segment-main > label:not(.rd-segment-title)::after { top: .8rem; }
+  .rd-segment-drawer { padding: .5rem; }
+}
+
+/* Rehearsal precedes the official program; both groups stay visible. */
+.rundown .rd-segment-main > button.rd-stage-toggle { flex: 0 0 auto; color: var(--color-muted); background: transparent; border-color: transparent; font-size: .7rem; padding: .1rem .25rem; }
+.rd-stage-group > h3 { margin: .4rem 0 .2rem; color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; }
+.rd-stage-rows { min-width: 0; }
+.rundown .rd-task-compact { margin: 0; padding: 0; }
+.rundown .rd-task-compact > li { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; min-height: 2.2rem; padding: .1rem 0; font-size: .8rem; }
+.rd-task-compact .rd-task-role { flex: 0 1 auto; min-width: 0; }
+.rd-task-compact .rd-task-content { flex: 1 1 0; min-width: 0; }
+.rd-task-compact :is(.rd-task-role, .rd-task-content) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-task-compact .rd-task-aud { flex: 0 0 auto; }
+.rundown .rd-task-compact button, .rundown [data-action="open-task"] { min-height: 1.8rem; padding: .1rem .3rem; font-size: .75rem; }
+@media screen and (max-width: 52rem) {
+  .rd-segment-main > button.rd-stage-toggle { order: 2; }
+}
