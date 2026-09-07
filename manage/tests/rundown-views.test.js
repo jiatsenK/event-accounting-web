@@ -493,3 +493,13 @@ test('#106 純排序不重編；重編後無差異回復已存標題', async () 
     assert.equal(h.ctrl.state.data.segments[0].title,'抽獎（二）');
   } finally {global.PlanningCore=PlanningCore;}
 });
+
+test('#106 第二輪 A 無獎段省略獎項編輯，選單才開啟新增與選獎', async () => {
+  const h=redesignHarness();h.ctrl.state.data.segments[0].prize_ids=[];h.ctrl.render();
+  assert.doesNotMatch(h.host.innerHTML,/rd-prize-popover/);
+  assert.match(h.host.innerHTML,/data-action="new-prize">＋ 這段有頒獎/);
+  await h.click('new-prize');assert.equal(h.ctrl.state.newPrizeSegment,'a');
+  assert.equal(h.ctrl.state.expandedSegments.has('a'),true);
+  assert.match(h.host.innerHTML,/rd-prize-popover/);assert.match(h.host.innerHTML,/data-new-prize/);
+  await h.click('cancel-prize');assert.doesNotMatch(h.host.innerHTML,/rd-prize-popover/);
+});
