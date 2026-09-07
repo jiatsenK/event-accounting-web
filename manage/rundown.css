@@ -377,11 +377,17 @@
   .rd-segment-drawer { padding: .5rem; }
 }
 
-/* Second-round stage grouping keeps the main list focused on the formal program. */
+/* Rehearsal precedes the official program; both groups stay visible. */
 .rundown .rd-segment-main > button.rd-stage-toggle { flex: 0 0 auto; color: var(--color-muted); background: transparent; border-color: transparent; font-size: .7rem; padding: .1rem .25rem; }
-.rd-segments > [data-rehearsals] { margin-top: .4rem; }
-.rd-segments > [data-rehearsals] > summary { color: var(--color-muted); font-size: var(--text-sm); }
-.rd-rehearsal-rows { min-width: 0; }
+.rd-stage-group > h3 { margin: .4rem 0 .2rem; color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; }
+.rd-stage-rows { min-width: 0; }
+.rundown .rd-task-compact { margin: 0; padding: 0; }
+.rundown .rd-task-compact > li { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; min-height: 2.2rem; padding: .1rem 0; font-size: .8rem; }
+.rd-task-compact .rd-task-role { flex: 0 1 auto; min-width: 0; }
+.rd-task-compact .rd-task-content { flex: 1 1 0; min-width: 0; }
+.rd-task-compact :is(.rd-task-role, .rd-task-content) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-task-compact .rd-task-aud { flex: 0 0 auto; }
+.rundown .rd-task-compact button, .rundown [data-action="open-task"] { min-height: 1.8rem; padding: .1rem .3rem; font-size: .75rem; }
 @media screen and (max-width: 52rem) {
   .rd-segment-main > button.rd-stage-toggle { order: 2; }
 }

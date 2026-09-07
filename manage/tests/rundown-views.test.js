@@ -95,6 +95,9 @@ test('時段與角色共用任務，預設無新增表單且編輯區不重複�
   assert.equal((host.innerHTML.match(/<article data-seg=/g) || []).length, 2);
   assert.equal((host.innerHTML.match(/data-task-details/g) || []).length, 2);
   assert.match(host.innerHTML, /16:00–16:30/);
+  assert.match(host.innerHTML, /rd-task-list rd-task-compact/);
+  assert.doesNotMatch(host.innerHTML, /rd-task-block|<h4>音控/);
+  assert.match(host.innerHTML, /rd-task-role">音控/);
   assert.doesNotMatch(host.innerHTML, /data-task-form|唯一活動名稱|rd-table/);
   ctrl.state.taskDraft = { segmentId: 's1', role: '音控', content: '草稿', audience: '全部' };
   ctrl.state.expandedSegments.add('s1');
@@ -501,15 +504,18 @@ test('#106 第二輪 A 無獎段省略獎項編輯，選單才開啟新增與選
   await h.click('new-prize');assert.equal(h.ctrl.state.newPrizeSegment,'a');
   assert.equal(h.ctrl.state.expandedSegments.has('a'),true);
   assert.match(h.host.innerHTML,/rd-prize-popover/);assert.match(h.host.innerHTML,/data-new-prize/);
+  assert.match(h.host.innerHTML, /<input name="獎別">/);
   await h.click('cancel-prize');assert.doesNotMatch(h.host.innerHTML,/rd-prize-popover/);
 });
 
-test('#106 第二輪 C 正式在前、彩排預設收合，階段為列尾單一小標', () => {
+test('#106 定版 彩排在上、正式在下，兩區不收合，階段為列尾單一小標', () => {
   const h=redesignHarness();h.ctrl.state.data.segments[0].stage='彩排';h.ctrl.render();
   const html=h.host.innerHTML;
-  assert.ok(html.indexOf('<article data-seg="b"')<html.indexOf('<details data-rehearsals>'));
-  assert.ok(html.indexOf('<details data-rehearsals>')<html.indexOf('<article data-seg="a"'));
-  assert.match(html,/<summary>彩排 1 段<\/summary>/);
+  assert.ok(html.indexOf('data-stage-group="彩排"')<html.indexOf('<article data-seg="a"'));
+  assert.ok(html.indexOf('<article data-seg="a"')<html.indexOf('data-stage-group="正式"'));
+  assert.ok(html.indexOf('data-stage-group="正式"')<html.indexOf('<article data-seg="b"'));
+  assert.doesNotMatch(html,/data-rehearsals/);
+  assert.match(html, /彩排 <span data-stage-count>1<\/span> 段/);
   assert.equal((html.match(/data-stage=/g)||[]).length,2);
   assert.ok(html.indexOf('class="rd-detail-preview"')<html.indexOf('class="rd-stage-toggle"'));
   assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));

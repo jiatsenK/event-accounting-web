@@ -85,7 +85,6 @@
       taskView: 'segment',
       selectedRole: '',
       expandedSegments: new Set(),
-      rehearsalExpanded: false,
       taskDraft: null,
       printVersion: 'control',
       templateId: null,    // 目前預覽／要帶入的範本
@@ -500,7 +499,7 @@
           return '<button type="button" class="rd-prize-toggle' + (active ? ' rd-prize-toggle-active' : '') +
             '" aria-pressed="' + active + '" data-action="toggle-prize" data-prize="' + esc(p.prize_id) + '" title="' + esc(core().prizeLabel(p)) + '">' + esc(core().prizeLabel(p)) + '</button>';
         }).join('') + '<button type="button" class="rd-prize-toggle" data-action="new-prize">＋ 獎項</button>' +
-          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別" required></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" data-rd-staff></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
+          (state.newPrizeSegment === seg.segment_id ? '<form data-new-prize><label>獎別<input name="獎別"></label><label>名額<input name="名額" type="number" min="0" step="1"></label><label>單筆金額<input name="單筆金額" type="number" min="0" step="0.01"></label><label>頒獎人<input name="頒獎人" data-rd-staff></label><button type="submit">新增並連結</button><button type="button" data-action="cancel-prize">取消</button></form>' : '') + (seg.prize_ids.length ? '<div class="rd-prize-fields">' + [['獎別', 'tier'], ['頒獎人', 'presenter'], ['名額', 'count'], ['單筆金額', 'amount']].map(([field, key]) => '<div>' + field + prizeField(seg, field, key) + '</div>').join('') + '</div>' : '') + '</div></details>' + core().segmentPrizes(seg, prizeIndex).map(p => '<span class="rd-chip">' + esc(core().prizeLabel(p)) + '</span>').join('');
       }
 
       function prizeField(seg, field, key) {
@@ -527,9 +526,10 @@
           (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><label>錨定時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"></label><button type="button" data-action="save-anchor">套用錨定</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
           '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary class="rd-sr-only">' + icon('chevron') + '獎項與任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
           '<div class="rd-segment-drawer"><div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' + taskContent(seg.segment_id) + '</div></details></article>';
-      const officialRows = timed.filter(s => s.stage !== '彩排').map(segmentRow).join('');
-      const rehearsals = timed.filter(s => s.stage === '彩排');
-      const segmentRows = officialRows + (rehearsals.length ? '<details data-rehearsals' + (state.rehearsalExpanded ? ' open' : '') + '><summary>彩排 ' + rehearsals.length + ' 段</summary><div class="rd-rehearsal-rows">' + rehearsals.map(segmentRow).join('') + '</div></details>' : '');
+      const segmentRows = ['彩排', '正式'].map(stage => {
+        const segments = timed.filter(s => s.stage === stage).sort((a, b) => a.order - b.order);
+        return '<section class="rd-stage-group" data-stage-group="' + stage + '"><h3>' + stage + ' <span data-stage-count>' + segments.length + '</span> 段</h3><div class="rd-stage-rows">' + segments.map(segmentRow).join('') + '</div></section>';
+      }).join('');
 
       return '<div class="rd-edit">' +
         '<datalist id="rd-staff">' + state.staff.map(p => '<option value="' + esc(p.name) + '">' + esc([p.department, p.title].filter(Boolean).join('／')) + '</option>').join('') + '</datalist>' +
@@ -579,14 +579,12 @@
     function taskContent(segmentId, role) {
       const readOnly = state.source !== 'backend';
       const tasks = state.data.tasks.filter(t => t.segment_id === segmentId && (role == null || t.role === role));
-      const groups = new Map();
-      tasks.forEach(t => { if (!groups.has(t.role)) groups.set(t.role, []); groups.get(t.role).push(t); });
       const people = core().assigneesByRole(state.data);
-      const rows = [...groups].map(([name, items]) => '<section class="rd-task-block"><h4>' + esc(name) +
-        '<span class="rd-muted"> · ' + esc((people.get(name) || []).join('、') || '未排人') + '</span></h4>' +
-        '<ul class="rd-task-list">' + items.map(t => '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-content">' + esc(t.content) + '</span>' +
-          '<span class="rd-task-aud">' + esc(t.audience) + '</span>' +
-          (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul></section>').join('');
+      const rows = tasks.length ? '<ul class="rd-task-list rd-task-compact">' + tasks.map(t =>
+        '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) +
+        '<span class="rd-muted">（' + esc((people.get(t.role) || []).join('、') || '未排人') + '）</span></span> · ' +
+        '<span class="rd-task-content">' + esc(t.content) + '</span> · <span class="rd-task-aud">' + esc(t.audience) + '</span>' +
+        (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul>' : '';
       const draft = state.taskDraft;
       const adding = draft && draft.segmentId === segmentId;
       const roles = taskRoles();
@@ -836,7 +834,6 @@
         state.taskView = event.currentTarget.dataset.taskView;
         render();
       });
-      on('[data-rehearsals]', 'toggle', event => { state.rehearsalExpanded = event.currentTarget.open; });
       on('[data-role-filter]', 'change', event => { state.selectedRole = event.currentTarget.value; render(); });
       on('[data-action="toggle-details"]', 'click', event => {
         if (state.busy || state.pendingDelete) return;
