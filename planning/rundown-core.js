@@ -136,17 +136,26 @@
     return minute;
   }
 
-  function forwardStage(rows, baseMinute) {
+  // 只使用緊鄰的已知時間，不跨過未知段平均分配；原始 duration_min 不變。
+  function inferredDuration(segment, start, nextStart) {
+    if (segment.duration_min > 0) return segment.duration_min;
+    return start != null && nextStart != null && nextStart >= start ? nextStart - start : 0;
+  }
+
+  function forwardStage(rows, baseMinute, boundary) {
     let cursor = baseMinute;
-    return rows.map(segment => {
+    return rows.map((segment, index) => {
       const expected = cursor;
       const anchored = clockNear(segment.anchor_time, expected);
       const start = anchored == null ? expected : anchored;
-      const end = start == null ? null : start + segment.duration_min;
-      cursor = end;
+      const nextStart = index + 1 < rows.length ? clockNear(rows[index + 1].anchor_time, start) : boundary;
+      const duration = inferredDuration(segment, start, nextStart);
+      const end = start == null ? null : start + duration;
+      cursor = segment.duration_min > 0 || (start != null && nextStart != null && nextStart >= start) ? end : null;
       return Object.assign({}, segment, {
         start_min: start,
         end_min: end,
+        effective_duration_min: duration,
         gap_min: anchored != null && expected != null ? anchored - expected : 0,
         time: formatTimeRange(start, end)
       });
@@ -161,11 +170,14 @@
       const expected = cursor == null ? null : cursor - segment.duration_min;
       const anchored = clockNear(segment.anchor_time, expected);
       const start = anchored == null ? expected : anchored;
-      const end = anchored == null ? cursor : (start == null ? null : start + segment.duration_min);
-      cursor = start;
+      const nextKnown = i === rows.length - 1 || rows[i + 1].duration_min > 0 || parseClock(rows[i + 1].anchor_time) != null;
+      const duration = inferredDuration(segment, start, nextKnown ? cursor : null);
+      const end = anchored == null ? cursor : (start == null ? null : start + duration);
+      cursor = anchored != null || segment.duration_min > 0 ? start : null;
       result[i] = Object.assign({}, segment, {
         start_min: start,
         end_min: end,
+        effective_duration_min: duration,
         gap_min: anchored != null && expected != null ? anchored - expected : 0,
         time: formatTimeRange(start, end)
       });
@@ -179,7 +191,7 @@
     const official = forwardStage(segments.filter(segment => segment.stage === '正式'), officialBase);
     const rehearsalRows = segments.filter(segment => segment.stage === '彩排');
     const rehearsal = config.rehearsal_mode === '固定開始'
-      ? forwardStage(rehearsalRows, parseClock(config.rehearsal_start))
+      ? forwardStage(rehearsalRows, parseClock(config.rehearsal_start), official.length && official[0].start_min != null ? official[0].start_min - config.rehearsal_buffer_min : officialBase)
       : backwardRehearsal(rehearsalRows, officialBase == null ? null : officialBase - config.rehearsal_buffer_min);
     const byId = new Map(rehearsal.concat(official).map(segment => [segment.segment_id, segment]));
     return segments.map(segment => byId.get(segment.segment_id));

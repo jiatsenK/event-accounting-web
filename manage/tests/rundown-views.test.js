@@ -251,7 +251,7 @@ test('點選與拖曳排序只留本機，儲存一次送整串；失敗重讀',
 function perfHarness(raw) {
   const host=stubElement(), controls=new Map();
   const control=key=>{if(!controls.has(key)) controls.set(key,{...stubElement(),handlers:{},addEventListener(name,fn){this.handlers[name]=fn;}});return controls.get(key);};
-  const fields=['節目內容','duration_min'].map(field=>({...control(field),dataset:{field},value:field==='節目內容'?raw.segments[0].title:String(raw.segments[0].duration_min),closest:()=>({dataset:{seg:raw.segments[0].segment_id}})}));
+  const fields=['節目內容','duration_min','錨定時間'].map(field=>({...control(field),dataset:{field},value:field==='節目內容'?raw.segments[0].title:field==='錨定時間'?(raw.segments[0].anchor_time || ''):String(raw.segments[0].duration_min),closest:()=>({dataset:{seg:raw.segments[0].segment_id}})}));
   const handles=raw.segments.map(seg=>({...stubElement(),handlers:{},setAttribute(){},closest:()=>({dataset:{seg:seg.segment_id},classList:{add(){},remove(){}}}),addEventListener(name,fn){this.handlers[name]=fn;}}));
   const body={...stubElement(),querySelectorAll:()=>handles};
   host.querySelector=selector=>selector==='.rd-segments'?body:control(selector);
@@ -260,6 +260,28 @@ function perfHarness(raw) {
   return {host,ctrl,fields,handles,click:name=>control('[data-action="'+name+'"]').handlers.click()};
 }
 const eighteen={config:{official_start:'18:00'},segments:Array.from({length:18},(_,i)=>({segment_id:'s'+i,title:'節目'+i,duration_min:5,order:(i+1)*10}))};
+
+test('#107 時間直接編輯只留草稿；取消還原；儲存與清空各送單次批次',async()=>{
+  const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {saved:true};}};
+  try{
+    const h=perfHarness({config:{official_start:'17:30'},segments:[
+      {segment_id:'a',title:'一',order:10,duration_min:0,anchor_time:'17:30'},
+      {segment_id:'b',title:'二',order:20,duration_min:0,anchor_time:'17:45'}
+    ]});
+    assert.match(h.host.innerHTML,/data-field="duration_min" value="" placeholder="15"/);
+    assert.doesNotMatch(h.host.innerHTML,/data-action="save-anchor"/);
+    const anchor=h.fields[2];
+    const edit=value=>{anchor.value=value;anchor.handlers.input({target:anchor});};
+    edit('17:35');assert.equal(sent.length,0);assert.equal(h.ctrl.state.dirty,true);
+    h.click('cancel-draft');assert.equal(h.ctrl.state.data.segments[0].anchor_time,'17:30');
+    edit('17:35');await h.click('save-draft');
+    assert.deepEqual(JSON.parse(sent[0].data),{edits:[{segment_id:'a',錨定時間:'17:35'}]});
+    assert.equal(h.ctrl.state.data.segments[0].duration_min,0,'推導值不寫回');
+    edit('');await h.click('save-draft');
+    assert.equal(sent.length,2);assert.deepEqual(JSON.parse(sent[1].data),{edits:[{segment_id:'a',錨定時間:''}]});
+    edit('25:00');await h.click('save-draft');assert.equal(sent.length,2);
+  }finally{global.PlanningCore=PlanningCore;}
+});
 
 test('18 段拖曳與多欄草稿一次儲存、不夾帶其他欄位；快取立即更新',async()=>{
   const sent=[],cached=[];let reads=0;
@@ -283,7 +305,7 @@ test('無效草稿不送出；取消／失敗且重讀失敗保留已確認快�
   let writes=0,reads=0;global.PlanningCore={apiWrite:async()=>{writes++;throw Error('offline');},fetchRundown:async()=>{reads++;throw Error('offline');}};
   try {
     const h=perfHarness(eighteen);
-    h.fields[1].value='';h.fields[1].handlers.input({target:h.fields[1]});await h.click('save-draft');
+    h.fields[1].value='-1';h.fields[1].handlers.input({target:h.fields[1]});await h.click('save-draft');
     assert.equal(writes,0);assert.equal(h.ctrl.state.dirty,true);
     h.click('cancel-draft');assert.equal(h.ctrl.state.data.segments[0].duration_min,5);
     h.fields[0].value='未保存';h.fields[0].handlers.input({target:h.fields[0]});
@@ -363,15 +385,13 @@ test('#71 工具列層級、單一匯入、角色與獎項收進選單',()=>{
   assert.match(h.host.innerHTML,/頭獎 \$5,000 × 2名／頒獎人/);
 });
 
-test('#71 階段與錨定沿用完整時段契約，不遺失其餘欄位',async()=>{
+test('#71 階段沿用完整時段契約，不遺失其餘欄位',async()=>{
   const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {segment_id:'a'};}};
   try{
     const h=redesignHarness(),stage=h.element('stage');
     await stage.handlers.click({currentTarget:stage});
     assert.equal(sent[0].階段,'彩排');assert.equal(sent[0].節目內容,'迎賓');assert.equal(sent[0].duration_min,30);
     assert.equal(sent[0].錨定時間,'18:00');assert.equal(sent[0].prize_ids,'p');assert.equal(sent[0].備註,'保留備註');
-    await h.click('save-anchor');assert.equal(sent[1].錨定時間,'19:30');assert.equal(sent[1].階段,'彩排');
-    assert.equal(h.ctrl.state.data.segments[0].anchor_time,'19:30');
   }finally{global.PlanningCore=PlanningCore;}
 });
 
@@ -476,7 +496,7 @@ test('#106 新增第二個同名時段只留編號草稿，儲存一次送兩段
 test('#106 密集列只顯示摘要，獎項與任務置於預設收合抽屜', () => {
   const h=redesignHarness();const html=h.host.innerHTML;
   assert.doesNotMatch(html,/rd-anchor|從這裡重新計算|<summary>連結獎項/);
-  assert.match(html,/rd-time-fixed/);assert.match(html,/class="rd-fix" title="固定開始時間，之後往下重算">固定/);
+  assert.match(html,/rd-time-fixed/);assert.match(html,/class="rd-fix">固定/);
   assert.match(html,/<summary>這段頒的獎<\/summary><div class="rd-popover-panel"><p class="rd-hint">/);
   assert.match(html,/class="rd-detail-preview"[^>]*>獎 頭獎.* · 任務 1<\/button>/);
   assert.match(html,/<details data-task-details><summary/);

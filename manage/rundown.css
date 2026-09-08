@@ -349,7 +349,7 @@
 .rd-segment-main { display: flex; flex-wrap: nowrap; min-height: 2.2rem; gap: .35rem; }
 .rundown .rd-segment-main :is(button, summary, input:not([type="hidden"])) { min-height: 1.8rem; min-width: 0; padding: .1rem .3rem; font-size: .8rem; }
 .rd-segment-main > .rd-drag-handle, .rd-segment-main > .rd-segment-menu { flex: 0 0 1.5rem; }
-.rd-segment-main > .rd-time-readout { flex: 0 0 9.5rem; white-space: nowrap; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.rd-segment-main > .rd-time-editor { flex: 0 0 9.5rem; white-space: nowrap; font-size: .78rem; font-variant-numeric: tabular-nums; }
 .rd-time-readout.rd-time-fixed { color: var(--color-accent); }
 .rd-fix { display: inline-block; padding: 0 .15rem; border: 1px solid currentColor; border-radius: 3px; font-size: .62rem; vertical-align: middle; }
 .rd-segment-main > .rd-segment-title { flex: 0 1 12rem; }
@@ -367,7 +367,7 @@
   .rd-segment-main { flex-wrap: wrap; padding: .2rem 0; }
   .rundown .rd-segment-main :is(button, summary, input:not([type="hidden"])) { min-height: 2.75rem; }
   .rd-segment-main > .rd-drag-handle { flex-basis: 2.75rem; }
-  .rd-segment-main > .rd-time-readout { flex: 1 1 10rem; }
+  .rd-segment-main > .rd-time-editor { flex: 1 1 10rem; }
   .rd-segment-main > .rd-segment-menu { order: 0; flex-basis: 2.75rem; }
   .rd-segment-main > .rd-segment-title { order: 1; flex: 1 1 calc(100% - 4rem); }
   .rd-segment-main > label:not(.rd-segment-title) { order: 1; }
@@ -378,6 +378,11 @@
 }
 
 /* Rehearsal precedes the official program; both groups stay visible. */
+.rd-time-editor { position: relative; flex: 0 0 auto; }
+.rd-time-editor > summary { cursor: pointer; list-style: none; }
+.rd-time-editor > label, .rd-time-editor > small { display: block; }
+.rd-time-editor .rd-fix[hidden] { display: none; }
+.rd-time-editor input { max-width: 9rem; }
 .rundown .rd-segment-main > button.rd-stage-toggle { flex: 0 0 auto; color: var(--color-muted); background: transparent; border-color: transparent; font-size: .7rem; padding: .1rem .25rem; }
 .rd-stage-group > h3 { margin: .4rem 0 .2rem; color: var(--color-muted); font-size: var(--text-sm); font-weight: 500; }
 .rd-stage-rows { min-width: 0; }

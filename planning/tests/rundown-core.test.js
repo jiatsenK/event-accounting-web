@@ -3,6 +3,47 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const core = require('../rundown-core.js');
 
+test('#107 由相鄰既有時間推導，保留輸入且不猜最後一段', () => {
+  const data = core.normalize({config:{official_start:'17:30'},segments:[
+    {segment_id:'a',order:1,anchor_time:'17:30'},
+    {segment_id:'b',order:2,anchor_time:'17:45',duration_min:5},
+    {segment_id:'c',order:3,anchor_time:'18:00'},
+    {segment_id:'d',order:4}
+  ]});
+  const before = JSON.stringify(data);
+  const result = core.calculateTimeline(data.segments,data.config);
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[15,5,0,0]);
+  assert.equal(result[0].time,'17:30–17:45');
+  assert.equal(JSON.stringify(data),before);
+  assert.deepEqual(result.map(s=>s.duration_min),[0,5,0,0]);
+});
+
+test('#107 跨日時間差與彩排向前回推都依已知時間，不平均分配', () => {
+  const data=core.normalize({config:{official_start:'00:30',rehearsal_mode:'接續正式'},segments:[
+    {segment_id:'r1',order:1,stage:'彩排',anchor_time:'23:30'},
+    {segment_id:'r2',order:2,stage:'彩排',anchor_time:'00:00'},
+    {segment_id:'a',order:3,anchor_time:'23:50'},
+    {segment_id:'b',order:4,anchor_time:'00:10'}
+  ]});
+  const result=core.calculateTimeline(data.segments,data.config);
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[30,30,20,0]);
+  const unknown=core.normalize({config:{official_start:'17:00'},segments:[
+    {segment_id:'a',order:1},{segment_id:'b',order:2},{segment_id:'c',order:3,anchor_time:'18:00'}
+  ]});
+  assert.deepEqual(core.calculateTimeline(unknown.segments,unknown.config).map(s=>s.effective_duration_min),[0,0,0]);
+});
+
+test('#107 固定彩排的末段接下一個正式開始時間；缺基準不生出時間', () => {
+  const data=core.normalize({config:{rehearsal_mode:'固定開始'},segments:[
+    {segment_id:'r',order:1,stage:'彩排',anchor_time:'17:30'},
+    {segment_id:'o',order:2,anchor_time:'18:30'}
+  ]});
+  assert.equal(core.calculateTimeline(data.segments,data.config)[0].effective_duration_min,60);
+  const unknown=core.calculateTimeline(core.normalize({segments:[{segment_id:'r',stage:'彩排'}]}).segments,{rehearsal_mode:'固定開始'});
+  assert.equal(unknown[0].start_min,null);
+  assert.equal(unknown[0].effective_duration_min,0);
+});
+
 test('prizeLabel 組出圖文字串', () => {
   assert.equal(
     core.prizeLabel({ tier: '四等獎', amount: 5000, count: 15, presenter: '彭玉明協理' }),
