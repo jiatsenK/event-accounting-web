@@ -31,6 +31,39 @@
     return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : '';
   }
 
+  function clockFromMinute(value) {
+    if (!Number.isFinite(value)) return '';
+    const minute = ((value % 1440) + 1440) % 1440;
+    return String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+  }
+
+  function minuteFromClock(value, reference) {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value || '')) return null;
+    const [hour, minute] = value.split(':').map(Number);
+    let result = hour * 60 + minute;
+    if (Number.isFinite(reference)) {
+      while (result < reference - 720) result += 1440;
+      while (result > reference + 720) result -= 1440;
+    }
+    return result;
+  }
+
+  function rangeEnd(value) {
+    const range = timeText(value).split('–');
+    return range.length === 2 ? range[1] : '';
+  }
+
+  // 一個階段的整體時間跨距：最早開始 → 最晚結束（含長度總分），編輯草稿時即時更新，
+  // 讓使用者不必先儲存就看到整場活動時間。缺可用時間點時回空字串。
+  function stageSpanText(rows) {
+    const starts = (rows || []).map(s => s && s.start_min).filter(n => Number.isFinite(n));
+    const ends = (rows || []).map(s => s && s.end_min).filter(n => Number.isFinite(n));
+    if (!starts.length || !ends.length) return '';
+    const from = Math.min.apply(null, starts);
+    const to = Math.max.apply(null, ends);
+    return ' · ' + core().formatTimeRange(from, to) + '（' + (to - from) + ' 分）';
+  }
+
   function icon(name) {
     const paths = { chevron: '<path d="m6 9 6 6 6-6"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', more: '<path d="M4 12h1m6 0h1m6 0h1"/>', drag: '<path d="M8 5h1m6 0h1M8 12h1m6 0h1M8 19h1m6 0h1"/>', pin: '<path d="m8 3 8 0-1 6 3 4H6l3-4-1-6m4 10v8"/>' };
     return '<svg class="rd-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
@@ -483,7 +516,7 @@
 
       const readOnly = state.source === 'demo';
       const dis = readOnly ? ' disabled' : '';
-      // 段落只存 duration／錨定時間；牆上時間在這裡即時算出來唯讀顯示。
+      // 段落只存 duration／錨定時間；開始時間直接顯示計算結果，修改後才寫入錨定欄位。
       const visibleTimes = new Map(core().calculateTimeline(d.segments.filter(s => !state.pendingDelete || s.segment_id !== state.pendingDelete.id), d.config).map(s => [s.segment_id, s]));
       const timed = d.segments.map(s => visibleTimes.get(s.segment_id) || s);
 
@@ -509,7 +542,7 @@
           (key === 'presenter' ? ' data-rd-staff' : key === 'tier' ? '' : ' type="number" min="0" step="' + (key === 'count' ? '1' : '0.01') + '"') + dis + '></label>').join('');
       }
 
-      // 順序沿用 #92 草稿；階段／錨點沿用既有 segment 寫入。
+      // 順序與錨點沿用 #92 草稿；階段沿用既有 segment 寫入。
       const segmentRow = seg => state.pendingDelete && state.pendingDelete.id === seg.segment_id ? undoRow(seg) :
         '<article data-seg="' + esc(seg.segment_id) + '" class="rd-segment-card ' + (seg.stage === '彩排' ? 'rd-stage-rehearsal' : 'rd-stage-official') + '">' +
           '<div class="rd-segment-main">' + (readOnly ? '' : '<button type="button" class="rd-drag-handle" draggable="true" aria-pressed="false" aria-label="選取時段，再點目標把手移到其前方" title="拖曳、↑↓移動，或點選目標把手">' + icon('drag') + '</button>') +
@@ -517,18 +550,18 @@
           '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
-          '<span class="rd-time-readout' + (seg.anchor_time ? ' rd-time-fixed' : '') + '">' + '<span class="rd-time-value">' + esc(timeText(seg.time)) + '</span>' + (seg.anchor_time ? ' <span class="rd-fix" title="固定開始時間，之後往下重算">固定</span>' : '') + '</span>' +
+          '<label class="rd-time-editor"><span class="rd-sr-only">開始時間</span><input class="rd-in rd-in-time rd-time-start" type="text" inputmode="numeric" maxlength="5" pattern="(?:[01]\\d|2[0-3]):[0-5]\\d" autocomplete="off" data-field="錨定時間" value="' + esc(clockFromMinute(seg.start_min)) + '" data-derived="true" aria-label="開始時間（HH:MM）"' + dis + '><span aria-hidden="true">–</span><span class="rd-time-end">' + esc(rangeEnd(seg.time)) + '</span></label>' +
           '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
-          '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="—" inputmode="numeric"' + dis + '></label>' +
+          '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="' + esc(seg.effective_duration_min || '—') + '" title="未填時依相鄰開始時間計算" inputmode="numeric"' + dis + '></label>' +
 
           '<button type="button" class="rd-detail-preview" data-action="toggle-details" aria-expanded="' + state.expandedSegments.has(seg.segment_id) + '" aria-label="展開或收合獎項與任務">' + esc([core().segmentPrizes(seg, prizeIndex).map(p => '獎 ' + core().prizeLabel(p)).join('；'), d.tasks.some(t => t.segment_id === seg.segment_id) ? '任務 ' + d.tasks.filter(t => t.segment_id === seg.segment_id).length : ''].filter(Boolean).join(' · ') || '＋ 任務') + '</button>' +
           '<button type="button" class="rd-stage-toggle" data-stage="' + (seg.stage === '彩排' ? '正式' : '彩排') + '" aria-label="目前' + esc(seg.stage) + '，切換為' + (seg.stage === '彩排' ? '正式' : '彩排') + '"' + dis + '>' + esc(seg.stage) + '</button>' +
-          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><label>錨定時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"></label><button type="button" data-action="save-anchor">套用錨定</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
+          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
           '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary class="rd-sr-only">' + icon('chevron') + '獎項與任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
           '<div class="rd-segment-drawer"><div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' + taskContent(seg.segment_id) + '</div></details></article>';
       const segmentRows = ['彩排', '正式'].map(stage => {
         const segments = timed.filter(s => s.stage === stage).sort((a, b) => a.order - b.order);
-        return '<section class="rd-stage-group" data-stage-group="' + stage + '"><h3>' + stage + ' <span data-stage-count>' + segments.length + '</span> 段</h3><div class="rd-stage-rows">' + segments.map(segmentRow).join('') + '</div></section>';
+        return '<section class="rd-stage-group" data-stage-group="' + stage + '"><h3>' + stage + ' <span data-stage-count>' + segments.length + '</span> 段<span class="rd-stage-span" data-stage-span>' + esc(stageSpanText(segments)) + '</span></h3><div class="rd-stage-rows">' + segments.map(segmentRow).join('') + '</div></section>';
       }).join('');
 
       return '<div class="rd-edit">' +
@@ -794,10 +827,6 @@
         const el = event.currentTarget, id = el.closest('[data-seg]').dataset.seg;
         return uiWrite(segmentFields(id, { 階段: el.dataset.stage }), '階段已更新', {}, '[data-seg="' + id + '"] .rd-stage-toggle');
       });
-      on('[data-action="save-anchor"]', 'click', event => {
-        const row = event.currentTarget.closest('[data-seg]'), input = row.querySelector('[data-field="錨定時間"]');
-        return uiWrite(segmentFields(row.dataset.seg, { 錨定時間: input.value }), '錨定已更新', {}, '[data-seg="' + row.dataset.seg + '"] [data-field="錨定時間"]');
-      });
       on('[data-action="add-segment"]', 'click', async () => {
         if (state.busy || state.pendingDelete) return;
         const segments = state.data.segments, index = segments.findIndex(s => s.segment_id === state.focusedSegment);
@@ -929,13 +958,31 @@
         const el = event.target;
         const tr = el.closest('[data-seg]');
         const seg = state.data.segments.find(s => s.segment_id === tr.dataset.seg);
-        if (!seg || !['節目內容', 'duration_min'].includes(el.dataset.field)) return;
+        if (!seg || !['節目內容', 'duration_min', '錨定時間'].includes(el.dataset.field)) return;
         beginDraft();
         const selector = '[data-seg="' + tr.dataset.seg + '"] [data-field="' + el.dataset.field + '"]';
         const selectors = state.feedback && state.feedback.selectors || [];
         state.feedback = { selectors: [...new Set(selectors.concat(selector))] };
         if (el.dataset.field === '節目內容') seg.title = el.value;
-        else seg.duration_min = el.value === '' ? '' : Number(el.value);
+        else if (el.dataset.field === '錨定時間') {
+          const stageRows = state.data.segments.filter(row => row.stage === seg.stage).sort((a, b) => a.order - b.order);
+          const index = stageRows.findIndex(row => row.segment_id === seg.segment_id);
+          const previous = index > 0 ? stageRows[index - 1] : null;
+          const previousTimed = previous && core().calculateTimeline(state.data.segments, state.data.config).find(row => row.segment_id === previous.segment_id);
+          const desiredStart = minuteFromClock(el.value, previousTimed && previousTimed.start_min);
+          if (previous && previousTimed && desiredStart != null && desiredStart >= previousTimed.start_min) {
+            previous.duration_min = desiredStart - previousTimed.start_min;
+            seg.anchor_time = '';
+            const previousSelector = '[data-seg="' + previous.segment_id + '"] [data-field="duration_min"]';
+            state.feedback.selectors = [...new Set(state.feedback.selectors.concat(previousSelector))];
+            const previousInput = container.querySelector(previousSelector);
+            if (previousInput) previousInput.value = String(previous.duration_min);
+          } else {
+            seg.anchor_time = el.value;
+          }
+          el.dataset.derived = 'false';
+        }
+        else seg.duration_min = el.value === '' ? 0 : Number(el.value);
         setMessage('尚有未儲存變更', false);
         refreshTimeReadouts(); renderStatusOnly();
       };
@@ -956,11 +1003,15 @@
           const saved = before.get(seg.segment_id), row = rows.get(seg.segment_id);
           if (!saved) return;
           reordered = reordered || seg.order !== saved.order || seg.stage !== saved.stage;
-          [['title', '節目內容'], ['duration_min', 'duration_min'], ['order', '順序'], ['stage', '階段']].forEach(([key, field]) => {
+          [['title', '節目內容'], ['duration_min', 'duration_min'], ['order', '順序'], ['stage', '階段'], ['anchor_time', '錨定時間']].forEach(([key, field]) => {
             if (seg[key] === saved[key]) return;
             seg[key] = saved[key];
             const input = row && row.querySelector('[data-field="' + field + '"]');
-            if (input) { input.value = String(key === 'duration_min' ? seg[key] || '' : seg[key]); input.dataset.beforeEdit = input.value; }
+            if (input) {
+              input.value = String(key === 'duration_min' ? seg[key] || '' : seg[key]);
+              input.dataset.beforeEdit = input.value;
+              if (key === 'anchor_time') input.dataset.derived = 'true';
+            }
           });
           if (row) {
             row.classList.toggle('rd-stage-rehearsal', seg.stage === '彩排');
@@ -1120,7 +1171,7 @@
     }
 
     // 讀目前畫面上每一列的欄位值（不是 state.data，因為使用者可能還沒 blur、還沒存檔），
-    // 就地重算牆上時間，只更新唯讀的時間欄文字——不動任何 input，不會打斷打字。
+    // 就地重算牆上時間；正在編輯的開始時間不覆寫，其他推導時間同步更新。
     function refreshTimeReadouts() {
       const rows = Array.from(container.querySelectorAll('.rd-segments article[data-seg]'));
       if (!rows.length) return;
@@ -1133,15 +1184,27 @@
         return Object.assign({}, base, {
           segment_id: tr.dataset.seg,
           duration_min: duration ? (Number(duration.value) || 0) : base.duration_min,
-          anchor_time: anchor ? anchor.value : base.anchor_time,
+          anchor_time: base.anchor_time,
           stage: stage ? stage.value : base.stage
         });
       });
       const timed = core().calculateTimeline(draft, state.data.config);
-      const timeById = new Map(timed.map(s => [s.segment_id, s.time]));
+      const timeById = new Map(timed.map(s => [s.segment_id, s]));
       rows.forEach(tr => {
-        const cell = tr.querySelector('.rd-time-value') || tr.querySelector('.rd-time-readout');
-        if (cell) cell.textContent = timeText(timeById.get(tr.dataset.seg));
+        const segment = timeById.get(tr.dataset.seg);
+        const anchor = tr.querySelector('[data-field="錨定時間"]');
+        if (anchor && segment && anchor.dataset.derived === 'true' && (!root.document || root.document.activeElement !== anchor)) {
+          anchor.value = clockFromMinute(segment.start_min);
+        }
+        const end = tr.querySelector('.rd-time-end');
+        if (end) end.textContent = rangeEnd(segment && segment.time);
+        const duration = tr.querySelector('[data-field="duration_min"]');
+        if (duration && segment) duration.placeholder = String(segment.effective_duration_min || '—');
+      });
+      ['彩排', '正式'].forEach(stage => {
+        const group = container.querySelector('[data-stage-group="' + stage + '"]');
+        const spanEl = group && group.querySelector('[data-stage-span]');
+        if (spanEl) spanEl.textContent = stageSpanText(timed.filter(s => s && s.stage === stage));
       });
     }
 
@@ -1253,7 +1316,11 @@
         if (!old || !seg.title.trim() || /^[=+@-]/.test(seg.title.trim()) || !Number.isSafeInteger(seg.duration_min) || seg.duration_min < 0) {
           setMessage('請填寫有效節目名與非負整數長度。', true); renderStatusOnly(); return false;
         }
+        if (seg.anchor_time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(seg.anchor_time)) {
+          setMessage('開始時間需為 HH:MM 或空白。', true); renderStatusOnly(); return false;
+        }
         const edit = { segment_id: seg.segment_id };
+        if (seg.anchor_time !== old.anchor_time) edit['錨定時間'] = seg.anchor_time;
         if (seg.title.trim() !== old.title) edit['節目內容'] = seg.title.trim();
         if (seg.duration_min !== old.duration_min) edit.duration_min = seg.duration_min;
         if (Object.keys(edit).length > 1) edits.push(edit);

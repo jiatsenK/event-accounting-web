@@ -3,6 +3,81 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const core = require('../rundown-core.js');
 
+test('#107 未填長度才用相鄰開始時間推導；已填長度保留，不被舊錨點壓過', () => {
+  const data = core.normalize({config:{official_start:'17:30'},segments:[
+    {segment_id:'a',order:1,anchor_time:'17:30'},
+    {segment_id:'b',order:2,anchor_time:'17:45',duration_min:5},
+    {segment_id:'c',order:3,anchor_time:'18:00'},
+    {segment_id:'d',order:4}
+  ]});
+  const before = JSON.stringify(data);
+  const result = core.calculateTimeline(data.segments,data.config);
+  // a 沒填長度 → 由 a、b 開始時間差推 15 分；b 填了 5 分就是 5 分。
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[15,5,0,0]);
+  assert.equal(result[0].time,'17:30–17:45');
+  assert.equal(result[1].time,'17:45–17:50');
+  assert.equal(JSON.stringify(data),before);
+  assert.deepEqual(result.map(s=>s.duration_min),[0,5,0,0]);
+});
+
+test('#107 已填長度優先：擁有者情境「18:30 開放進場 10 分」顯示到 18:40', () => {
+  const data=core.normalize({config:{official_start:'18:20'},segments:[
+    {segment_id:'s1',order:1,anchor_time:'18:30',duration_min:10,節目內容:'開放進場'},
+    {segment_id:'s2',order:2,anchor_time:'18:35',duration_min:0,節目內容:'正式開場'},
+    {segment_id:'s3',order:3,節目內容:'活動結束'}
+  ]});
+  const result=core.calculateTimeline(data.segments,data.config);
+  assert.equal(result[0].time,'18:30–18:40','填了 10 分就顯示 10 分，不因下一段舊錨點 18:35 壓成 5 分');
+  assert.equal(result[0].effective_duration_min,10);
+});
+
+test('#107 後續列不再各自跳到舊錨點，皆承接上一列結束且長度以輸入為準', () => {
+  const data=core.normalize({config:{official_start:'18:00'},segments:[
+    {segment_id:'a',order:1,duration_min:30,anchor_time:'18:00'},
+    {segment_id:'b',order:2,duration_min:10,anchor_time:'19:00'},
+    {segment_id:'c',order:3,duration_min:20,anchor_time:'19:10'}
+  ]});
+  const result=core.calculateTimeline(data.segments,data.config);
+  assert.deepEqual(result.map(s=>s.time),['18:00–18:30','18:30–18:40','18:40–19:00']);
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[30,10,20]);
+});
+
+test('#107 缺階段基準時從第一個已知列時間開始連續', () => {
+  const data=core.normalize({segments:[
+    {segment_id:'a',order:1,duration_min:0},
+    {segment_id:'b',order:2,duration_min:10,anchor_time:'18:30'},
+    {segment_id:'c',order:3,duration_min:20,anchor_time:'18:40'}
+  ]});
+  const result=core.calculateTimeline(data.segments,data.config);
+  assert.deepEqual(result.map(s=>s.time),['','18:30–18:40','18:40–19:00']);
+});
+
+test('#107 跨日時間差與彩排向前回推都依已知時間，不平均分配', () => {
+  const data=core.normalize({config:{official_start:'00:30',rehearsal_mode:'接續正式'},segments:[
+    {segment_id:'r1',order:1,stage:'彩排',anchor_time:'23:30'},
+    {segment_id:'r2',order:2,stage:'彩排',anchor_time:'00:00'},
+    {segment_id:'a',order:3,anchor_time:'23:50'},
+    {segment_id:'b',order:4,anchor_time:'00:10'}
+  ]});
+  const result=core.calculateTimeline(data.segments,data.config);
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[30,30,20,0]);
+  const unknown=core.normalize({config:{official_start:'17:00'},segments:[
+    {segment_id:'a',order:1},{segment_id:'b',order:2},{segment_id:'c',order:3,anchor_time:'18:00'}
+  ]});
+  assert.deepEqual(core.calculateTimeline(unknown.segments,unknown.config).map(s=>s.effective_duration_min),[0,60,0]);
+});
+
+test('#107 固定彩排的末段接下一個正式開始時間；缺基準不生出時間', () => {
+  const data=core.normalize({config:{rehearsal_mode:'固定開始'},segments:[
+    {segment_id:'r',order:1,stage:'彩排',anchor_time:'17:30'},
+    {segment_id:'o',order:2,anchor_time:'18:30'}
+  ]});
+  assert.equal(core.calculateTimeline(data.segments,data.config)[0].effective_duration_min,60);
+  const unknown=core.calculateTimeline(core.normalize({segments:[{segment_id:'r',stage:'彩排'}]}).segments,{rehearsal_mode:'固定開始'});
+  assert.equal(unknown[0].start_min,null);
+  assert.equal(unknown[0].effective_duration_min,0);
+});
+
 test('prizeLabel 組出圖文字串', () => {
   assert.equal(
     core.prizeLabel({ tier: '四等獎', amount: 5000, count: 15, presenter: '彭玉明協理' }),
@@ -32,7 +107,7 @@ test('normalize 接受新時間欄位與 prize_ids 字串或陣列', () => {
   assert.equal(data.tasks[0].audience, '全部', '未知對象退回全部');
 });
 
-test('正式段依基準、duration 與中途錨點往後計算', () => {
+test('正式段依第一個開始時間與長度連續往後計算', () => {
   const segments = core.normalize({
     config: { 正式_基準開始: '18:00' },
     segments: [
@@ -42,8 +117,9 @@ test('正式段依基準、duration 與中途錨點往後計算', () => {
     ]
   });
   const result = core.calculateTimeline(segments.segments, segments.config);
-  assert.deepEqual(result.map(s => [s.start_min, s.end_min]), [[1080, 1110], [1140, 1150], [1150, 1170]]);
-  assert.equal(result[1].gap_min, 30);
+  // a/b/c 都填了長度（30/10/20），依序承接；b 的舊錨定時間 19:00 不再讓它跳位或改長度。
+  assert.deepEqual(result.map(s => [s.start_min, s.end_min]), [[1080, 1110], [1110, 1120], [1120, 1140]]);
+  assert.equal(result[1].gap_min, 0);
 });
 
 test('彩排接續正式：扣除緩衝後由後往前回推', () => {

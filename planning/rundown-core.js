@@ -136,18 +136,28 @@
     return minute;
   }
 
-  function forwardStage(rows, baseMinute) {
-    let cursor = baseMinute;
-    return rows.map(segment => {
-      const expected = cursor;
-      const anchored = clockNear(segment.anchor_time, expected);
-      const start = anchored == null ? expected : anchored;
-      const end = start == null ? null : start + segment.duration_min;
+  // 已填長度優先；長度未設定／為 0 時，才用「到下一個已知時間點」的間距推導顯示用長度。
+  // 這裡的 start 是該段實際開始（承接上一段），不是它自己的舊錨定時間——
+  // 舊錨定時間只作為「下一個已知時間點」參考，不會壓過使用者輸入的長度，也不會讓該段跳位。
+  function inferredDuration(segment, start, nextStart) {
+    if (segment.duration_min > 0) return segment.duration_min;
+    if (start != null && nextStart != null && nextStart >= start) return nextStart - start;
+    return 0;
+  }
+
+  function forwardStage(rows, baseMinute, boundary) {
+    let cursor = rows.length ? (clockNear(rows[0].anchor_time, baseMinute) ?? baseMinute) : baseMinute;
+    return rows.map((segment, index) => {
+      const start = cursor == null ? clockNear(segment.anchor_time, null) : cursor;
+      const nextStart = index + 1 < rows.length ? clockNear(rows[index + 1].anchor_time, start) : boundary;
+      const duration = inferredDuration(segment, start, nextStart);
+      const end = start == null ? null : start + duration;
       cursor = end;
       return Object.assign({}, segment, {
         start_min: start,
         end_min: end,
-        gap_min: anchored != null && expected != null ? anchored - expected : 0,
+        effective_duration_min: duration,
+        gap_min: 0,
         time: formatTimeRange(start, end)
       });
     });
@@ -158,15 +168,18 @@
     let cursor = boundary;
     for (let i = rows.length - 1; i >= 0; i--) {
       const segment = rows[i];
-      const expected = cursor == null ? null : cursor - segment.duration_min;
-      const anchored = clockNear(segment.anchor_time, expected);
-      const start = anchored == null ? expected : anchored;
-      const end = anchored == null ? cursor : (start == null ? null : start + segment.duration_min);
+      // 由後往前回推：已知的是這段結束（cursor）。長度優先取使用者輸入，
+      // 否則用「這段結束 − 這段自己的錨定時間」推導。
+      const anchorStart = clockNear(segment.anchor_time, cursor);
+      const duration = inferredDuration(segment, anchorStart, cursor);
+      const end = cursor;
+      const start = end == null ? null : end - duration;
       cursor = start;
       result[i] = Object.assign({}, segment, {
         start_min: start,
         end_min: end,
-        gap_min: anchored != null && expected != null ? anchored - expected : 0,
+        effective_duration_min: duration,
+        gap_min: 0,
         time: formatTimeRange(start, end)
       });
     }
@@ -178,9 +191,10 @@
     const officialBase = parseClock(config.official_start || config.activity_start_time);
     const official = forwardStage(segments.filter(segment => segment.stage === '正式'), officialBase);
     const rehearsalRows = segments.filter(segment => segment.stage === '彩排');
-    const rehearsal = config.rehearsal_mode === '固定開始'
-      ? forwardStage(rehearsalRows, parseClock(config.rehearsal_start))
-      : backwardRehearsal(rehearsalRows, officialBase == null ? null : officialBase - config.rehearsal_buffer_min);
+    const rehearsalBoundary = officialBase == null ? null : officialBase - config.rehearsal_buffer_min;
+    const rehearsal = config.rehearsal_mode === '固定開始' || rehearsalBoundary == null
+      ? forwardStage(rehearsalRows, parseClock(config.rehearsal_start), official.length && official[0].start_min != null ? official[0].start_min - config.rehearsal_buffer_min : officialBase)
+      : backwardRehearsal(rehearsalRows, rehearsalBoundary);
     const byId = new Map(rehearsal.concat(official).map(segment => [segment.segment_id, segment]));
     return segments.map(segment => byId.get(segment.segment_id));
   }

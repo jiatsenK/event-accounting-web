@@ -64,7 +64,7 @@ test('流程表畫面不再顯示方案控制或方案欄位', () => {
   assert.doesNotMatch(container.innerHTML, /data-plan-pick|data-import="plan"|<th>方案<\/th>/);
 });
 
-test('時段編輯只寫 duration 與錨定時間，牆上時間唯讀顯示', () => {
+test('時段開始時間直接顯示為可編輯欄位', () => {
   const ctrl = views.createController(container, { activityId: 'yearend2026' });
   ctrl.state.data = RundownCore.rundown2026();
   ctrl.state.source = 'backend';
@@ -72,9 +72,14 @@ test('時段編輯只寫 duration 與錨定時間，牆上時間唯讀顯示', (
   ctrl.render();
   assert.match(container.innerHTML, /data-field="duration_min"/);
   assert.match(container.innerHTML, /data-field="錨定時間"/);
-  assert.match(container.innerHTML, /18:20–18:30/);
+  assert.match(container.innerHTML, /type="text"[^>]*data-field="錨定時間" value="15:00"/);
+  assert.doesNotMatch(container.innerHTML, /data-derived="false"/);
+  assert.match(container.innerHTML, /maxlength="5" pattern="\(\?:\[01\]\\d\|2\[0-3\]\):\[0-5\]\\d"/);
+  assert.match(container.innerHTML, /value="18:20"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:30/);
   assert.doesNotMatch(container.innerHTML, /data-field="開始時間"|data-field="結束時間"/);
   assert.match(container.innerHTML, /data-config="正式_基準開始"/);
+  // #107：階段標題後帶整體時間跨距（最早開始–最晚結束＋長度總分），不必先儲存
+  assert.match(container.innerHTML, /class="rd-stage-span" data-stage-span> · \d\d:\d\d–\d\d:\d\d（\d+ 分）<\/span>/);
 });
 
 console.log('rundown-views tests PASS');
@@ -94,7 +99,7 @@ test('時段與角色共用任務，預設無新增表單且編輯區不重複�
   ctrl.render();
   assert.equal((host.innerHTML.match(/<article data-seg=/g) || []).length, 2);
   assert.equal((host.innerHTML.match(/data-task-details/g) || []).length, 2);
-  assert.match(host.innerHTML, /16:00–16:30/);
+  assert.match(host.innerHTML, /value="16:00"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">16:30/);
   assert.match(host.innerHTML, /rd-task-list rd-task-compact/);
   assert.doesNotMatch(host.innerHTML, /rd-task-block|<h4>音控/);
   assert.match(host.innerHTML, /rd-task-role">音控/);
@@ -126,7 +131,7 @@ test('顯示層拒絕異常時間，保留跨日鐘面格式', () => {
   const ctrl = views.createController(host, { activityId: 'test' });
   ctrl.state.data = RundownCore.normalize({ config: { official_start: '23:50' }, segments: [{ segment_id: 's', duration_min: 30 }] });
   ctrl.render();
-  assert.match(host.innerHTML, /23:50–翌 00:20/);
+  assert.match(host.innerHTML, /value="23:50"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">翌 00:20/);
   const invalid = 'Sat Dec 30 1899 16:00:00 GMT+0800';
   const badRow = { time: invalid, start: invalid, end: invalid, tasks: [], prizeLabels: [] };
   global.RundownCore = { ...RundownCore,
@@ -212,8 +217,8 @@ test('點選與拖曳排序只留本機，儲存一次送整串；失敗重讀',
   handles[2].handlers.click();
   const pending=handles[0].handlers.click();
   assert.deepEqual(ctrl.state.data.segments.map(s=>s.segment_id),['c','a','b']);
-  assert.match(host.innerHTML,/18:30–18:40/);
-  assert.match(host.innerHTML,/18:40–19:00/);
+  assert.match(host.innerHTML,/value="18:30"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:40/);
+  assert.match(host.innerHTML,/value="18:40"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">19:00/);
   assert.doesNotMatch(host.innerHTML,/GMT|Sat Dec|1899/);
   assert.equal(ctrl.state.busy,false);
   assert.equal(sent.length,0);
@@ -251,7 +256,7 @@ test('點選與拖曳排序只留本機，儲存一次送整串；失敗重讀',
 function perfHarness(raw) {
   const host=stubElement(), controls=new Map();
   const control=key=>{if(!controls.has(key)) controls.set(key,{...stubElement(),handlers:{},addEventListener(name,fn){this.handlers[name]=fn;}});return controls.get(key);};
-  const fields=['節目內容','duration_min'].map(field=>({...control(field),dataset:{field},value:field==='節目內容'?raw.segments[0].title:String(raw.segments[0].duration_min),closest:()=>({dataset:{seg:raw.segments[0].segment_id}})}));
+  const fields=['節目內容','duration_min','錨定時間'].map(field=>({...control(field),dataset:{field},value:field==='節目內容'?raw.segments[0].title:field==='錨定時間'?(raw.segments[0].anchor_time || ''):String(raw.segments[0].duration_min),closest:()=>({dataset:{seg:raw.segments[0].segment_id}})}));
   const handles=raw.segments.map(seg=>({...stubElement(),handlers:{},setAttribute(){},closest:()=>({dataset:{seg:seg.segment_id},classList:{add(){},remove(){}}}),addEventListener(name,fn){this.handlers[name]=fn;}}));
   const body={...stubElement(),querySelectorAll:()=>handles};
   host.querySelector=selector=>selector==='.rd-segments'?body:control(selector);
@@ -260,6 +265,28 @@ function perfHarness(raw) {
   return {host,ctrl,fields,handles,click:name=>control('[data-action="'+name+'"]').handlers.click()};
 }
 const eighteen={config:{official_start:'18:00'},segments:Array.from({length:18},(_,i)=>({segment_id:'s'+i,title:'節目'+i,duration_min:5,order:(i+1)*10}))};
+
+test('#107 時間直接編輯只留草稿；取消還原；儲存與清空各送單次批次',async()=>{
+  const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {saved:true};}};
+  try{
+    const h=perfHarness({config:{official_start:'17:30'},segments:[
+      {segment_id:'a',title:'一',order:10,duration_min:0,anchor_time:'17:30'},
+      {segment_id:'b',title:'二',order:20,duration_min:0,anchor_time:'17:45'}
+    ]});
+    assert.match(h.host.innerHTML,/data-field="duration_min" value="" placeholder="15"/);
+    assert.doesNotMatch(h.host.innerHTML,/data-action="save-anchor"/);
+    const anchor=h.fields[2];
+    const edit=value=>{anchor.value=value;anchor.handlers.input({target:anchor});};
+    edit('17:35');assert.equal(sent.length,0);assert.equal(h.ctrl.state.dirty,true);
+    h.click('cancel-draft');assert.equal(h.ctrl.state.data.segments[0].anchor_time,'17:30');
+    edit('17:35');await h.click('save-draft');
+    assert.deepEqual(JSON.parse(sent[0].data),{edits:[{segment_id:'a',錨定時間:'17:35'}]});
+    assert.equal(h.ctrl.state.data.segments[0].duration_min,0,'推導值不寫回');
+    edit('');await h.click('save-draft');
+    assert.equal(sent.length,2);assert.deepEqual(JSON.parse(sent[1].data),{edits:[{segment_id:'a',錨定時間:''}]});
+    edit('25:00');await h.click('save-draft');assert.equal(sent.length,2);
+  }finally{global.PlanningCore=PlanningCore;}
+});
 
 test('18 段拖曳與多欄草稿一次儲存、不夾帶其他欄位；快取立即更新',async()=>{
   const sent=[],cached=[];let reads=0;
@@ -283,7 +310,7 @@ test('無效草稿不送出；取消／失敗且重讀失敗保留已確認快�
   let writes=0,reads=0;global.PlanningCore={apiWrite:async()=>{writes++;throw Error('offline');},fetchRundown:async()=>{reads++;throw Error('offline');}};
   try {
     const h=perfHarness(eighteen);
-    h.fields[1].value='';h.fields[1].handlers.input({target:h.fields[1]});await h.click('save-draft');
+    h.fields[1].value='-1';h.fields[1].handlers.input({target:h.fields[1]});await h.click('save-draft');
     assert.equal(writes,0);assert.equal(h.ctrl.state.dirty,true);
     h.click('cancel-draft');assert.equal(h.ctrl.state.data.segments[0].duration_min,5);
     h.fields[0].value='未保存';h.fields[0].handlers.input({target:h.fields[0]});
@@ -363,15 +390,13 @@ test('#71 工具列層級、單一匯入、角色與獎項收進選單',()=>{
   assert.match(h.host.innerHTML,/頭獎 \$5,000 × 2名／頒獎人/);
 });
 
-test('#71 階段與錨定沿用完整時段契約，不遺失其餘欄位',async()=>{
+test('#71 階段沿用完整時段契約，不遺失其餘欄位',async()=>{
   const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {segment_id:'a'};}};
   try{
     const h=redesignHarness(),stage=h.element('stage');
     await stage.handlers.click({currentTarget:stage});
     assert.equal(sent[0].階段,'彩排');assert.equal(sent[0].節目內容,'迎賓');assert.equal(sent[0].duration_min,30);
     assert.equal(sent[0].錨定時間,'18:00');assert.equal(sent[0].prize_ids,'p');assert.equal(sent[0].備註,'保留備註');
-    await h.click('save-anchor');assert.equal(sent[1].錨定時間,'19:30');assert.equal(sent[1].階段,'彩排');
-    assert.equal(h.ctrl.state.data.segments[0].anchor_time,'19:30');
   }finally{global.PlanningCore=PlanningCore;}
 });
 
@@ -436,6 +461,9 @@ test('#71 CSS 保留 token、焦點 outline、44px 觸控與 reduced-motion',()=
   const fs=require('node:fs'),path=require('node:path');const css=fs.readFileSync(path.join(__dirname,'../rundown.css'),'utf8');
   assert.doesNotMatch(css,/oklch\(|#[0-9a-f]{3,8}\b/i);assert.match(css,/macrostructure: Workbench/);
   assert.match(css,/:focus-visible \{ outline: 2px solid var\(--color-accent\)/);
+  // Issue 107：未儲存訊息不得再壓縮開始時間欄
+  assert.match(css,/\.rd-time-editor > \.rd-field-message \{ position: absolute;/);
+  assert.match(css,/input\.rd-time-start \{ flex: 0 0 4\.4rem;/);
   assert.match(css,/min-height: 2\.75rem/);assert.match(css,/@media \(max-width: 52rem\)/);
   assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);assert.doesNotMatch(css,/min-width: 1340px/);
 });
@@ -476,7 +504,8 @@ test('#106 新增第二個同名時段只留編號草稿，儲存一次送兩段
 test('#106 密集列只顯示摘要，獎項與任務置於預設收合抽屜', () => {
   const h=redesignHarness();const html=h.host.innerHTML;
   assert.doesNotMatch(html,/rd-anchor|從這裡重新計算|<summary>連結獎項/);
-  assert.match(html,/rd-time-fixed/);assert.match(html,/class="rd-fix" title="固定開始時間，之後往下重算">固定/);
+  assert.match(html,/class="rd-in rd-in-time rd-time-start"/);
+  assert.doesNotMatch(html,/rd-time-fixed|class="rd-fix"|>固定</);
   assert.match(html,/<summary>這段頒的獎<\/summary><div class="rd-popover-panel"><p class="rd-hint">/);
   assert.match(html,/class="rd-detail-preview"[^>]*>獎 頭獎.* · 任務 1<\/button>/);
   assert.match(html,/<details data-task-details><summary/);
@@ -521,6 +550,13 @@ test('#106 定版 彩排在上、正式在下，兩區不收合，階段為列�
   assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));
 });
 
+test('#107 時間欄不套用長度欄的窄寬與分鐘單位', () => {
+  const css=require('fs').readFileSync(require('path').join(__dirname,'..','rundown.css'),'utf8');
+  assert.match(css,/label:not\(\.rd-segment-title\):not\(\.rd-time-editor\)/);
+  assert.doesNotMatch(css,/label:not\(\.rd-segment-title\) \{ flex: 0 0 3\.5rem/);
+  assert.doesNotMatch(css,/label:not\(\.rd-segment-title\)::after/);
+});
+
 test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料、不重讀或重畫', () => {
   let reads=0,writes=0;
   global.PlanningCore={apiWrite:async()=>{writes++;},fetchRundown:async()=>{reads++;}};
@@ -535,7 +571,7 @@ test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料
       return {...stubElement(),dataset:{seg:seg.segment_id},drawer:{open:true},fields,
         querySelector(selector){
           if(selector==='[data-stage]')return toggle;
-          if(selector==='.rd-time-value')return this.time||(this.time={textContent:''});
+          if(selector==='.rd-time-end')return this.timeEnd||(this.timeEnd={textContent:''});
           const match=selector.match(/data-field="([^"]+)"/);return match?fields.get(match[1])||null:null;
         }};
     });
@@ -554,7 +590,7 @@ test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料
     assert.equal(data.segments[0].title,'節目0');assert.equal(data.segments[0].duration_min,5);
     assert.equal(h.fields[0].value,'節目0');assert.equal(rows[0].fields.get('duration_min').value,'5');
     assert.deepEqual(children,rows);assert.deepEqual(rows.map(r=>r.drawer),drawers);
-    assert.match(rows[1].time.textContent,/18:05/);
+    assert.match(rows[1].timeEnd.textContent,/18:10/);
     assert.equal(h.ctrl.state.dirty,false);assert.equal(reads,0);assert.equal(writes,0);
     console.log('20-row cancel handler (DOM stub): '+elapsed.toFixed(2)+'ms');
   } finally {global.PlanningCore=PlanningCore;}
