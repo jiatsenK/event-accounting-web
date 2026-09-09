@@ -64,7 +64,7 @@ test('流程表畫面不再顯示方案控制或方案欄位', () => {
   assert.doesNotMatch(container.innerHTML, /data-plan-pick|data-import="plan"|<th>方案<\/th>/);
 });
 
-test('時段編輯只寫 duration 與錨定時間，牆上時間唯讀顯示', () => {
+test('時段開始時間直接顯示為可編輯欄位', () => {
   const ctrl = views.createController(container, { activityId: 'yearend2026' });
   ctrl.state.data = RundownCore.rundown2026();
   ctrl.state.source = 'backend';
@@ -72,7 +72,8 @@ test('時段編輯只寫 duration 與錨定時間，牆上時間唯讀顯示', (
   ctrl.render();
   assert.match(container.innerHTML, /data-field="duration_min"/);
   assert.match(container.innerHTML, /data-field="錨定時間"/);
-  assert.match(container.innerHTML, /18:20–18:30/);
+  assert.match(container.innerHTML, /type="time" data-field="錨定時間" value="15:00"/);
+  assert.match(container.innerHTML, /value="18:20"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:30/);
   assert.doesNotMatch(container.innerHTML, /data-field="開始時間"|data-field="結束時間"/);
   assert.match(container.innerHTML, /data-config="正式_基準開始"/);
 });
@@ -94,7 +95,7 @@ test('時段與角色共用任務，預設無新增表單且編輯區不重複�
   ctrl.render();
   assert.equal((host.innerHTML.match(/<article data-seg=/g) || []).length, 2);
   assert.equal((host.innerHTML.match(/data-task-details/g) || []).length, 2);
-  assert.match(host.innerHTML, /16:00–16:30/);
+  assert.match(host.innerHTML, /value="16:00"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">16:30/);
   assert.match(host.innerHTML, /rd-task-list rd-task-compact/);
   assert.doesNotMatch(host.innerHTML, /rd-task-block|<h4>音控/);
   assert.match(host.innerHTML, /rd-task-role">音控/);
@@ -126,7 +127,7 @@ test('顯示層拒絕異常時間，保留跨日鐘面格式', () => {
   const ctrl = views.createController(host, { activityId: 'test' });
   ctrl.state.data = RundownCore.normalize({ config: { official_start: '23:50' }, segments: [{ segment_id: 's', duration_min: 30 }] });
   ctrl.render();
-  assert.match(host.innerHTML, /23:50–翌 00:20/);
+  assert.match(host.innerHTML, /value="23:50"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">翌 00:20/);
   const invalid = 'Sat Dec 30 1899 16:00:00 GMT+0800';
   const badRow = { time: invalid, start: invalid, end: invalid, tasks: [], prizeLabels: [] };
   global.RundownCore = { ...RundownCore,
@@ -212,8 +213,8 @@ test('點選與拖曳排序只留本機，儲存一次送整串；失敗重讀',
   handles[2].handlers.click();
   const pending=handles[0].handlers.click();
   assert.deepEqual(ctrl.state.data.segments.map(s=>s.segment_id),['c','a','b']);
-  assert.match(host.innerHTML,/18:30–18:40/);
-  assert.match(host.innerHTML,/18:40–19:00/);
+  assert.match(host.innerHTML,/value="18:30"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:40/);
+  assert.match(host.innerHTML,/value="18:40"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">19:00/);
   assert.doesNotMatch(host.innerHTML,/GMT|Sat Dec|1899/);
   assert.equal(ctrl.state.busy,false);
   assert.equal(sent.length,0);
@@ -496,7 +497,8 @@ test('#106 新增第二個同名時段只留編號草稿，儲存一次送兩段
 test('#106 密集列只顯示摘要，獎項與任務置於預設收合抽屜', () => {
   const h=redesignHarness();const html=h.host.innerHTML;
   assert.doesNotMatch(html,/rd-anchor|從這裡重新計算|<summary>連結獎項/);
-  assert.match(html,/rd-time-fixed/);assert.match(html,/class="rd-fix">固定/);
+  assert.match(html,/class="rd-in rd-in-time rd-time-start"/);
+  assert.doesNotMatch(html,/rd-time-fixed|class="rd-fix"|>固定</);
   assert.match(html,/<summary>這段頒的獎<\/summary><div class="rd-popover-panel"><p class="rd-hint">/);
   assert.match(html,/class="rd-detail-preview"[^>]*>獎 頭獎.* · 任務 1<\/button>/);
   assert.match(html,/<details data-task-details><summary/);
@@ -555,7 +557,7 @@ test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料
       return {...stubElement(),dataset:{seg:seg.segment_id},drawer:{open:true},fields,
         querySelector(selector){
           if(selector==='[data-stage]')return toggle;
-          if(selector==='.rd-time-value')return this.time||(this.time={textContent:''});
+          if(selector==='.rd-time-end')return this.timeEnd||(this.timeEnd={textContent:''});
           const match=selector.match(/data-field="([^"]+)"/);return match?fields.get(match[1])||null:null;
         }};
     });
@@ -574,7 +576,7 @@ test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料
     assert.equal(data.segments[0].title,'節目0');assert.equal(data.segments[0].duration_min,5);
     assert.equal(h.fields[0].value,'節目0');assert.equal(rows[0].fields.get('duration_min').value,'5');
     assert.deepEqual(children,rows);assert.deepEqual(rows.map(r=>r.drawer),drawers);
-    assert.match(rows[1].time.textContent,/18:05/);
+    assert.match(rows[1].timeEnd.textContent,/18:10/);
     assert.equal(h.ctrl.state.dirty,false);assert.equal(reads,0);assert.equal(writes,0);
     console.log('20-row cancel handler (DOM stub): '+elapsed.toFixed(2)+'ms');
   } finally {global.PlanningCore=PlanningCore;}

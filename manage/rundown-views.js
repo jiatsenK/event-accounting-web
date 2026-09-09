@@ -31,6 +31,17 @@
     return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : '';
   }
 
+  function clockFromMinute(value) {
+    if (!Number.isFinite(value)) return '';
+    const minute = ((value % 1440) + 1440) % 1440;
+    return String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+  }
+
+  function rangeEnd(value) {
+    const range = timeText(value).split('–');
+    return range.length === 2 ? range[1] : '';
+  }
+
   function icon(name) {
     const paths = { chevron: '<path d="m6 9 6 6 6-6"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', more: '<path d="M4 12h1m6 0h1m6 0h1"/>', drag: '<path d="M8 5h1m6 0h1M8 12h1m6 0h1M8 19h1m6 0h1"/>', pin: '<path d="m8 3 8 0-1 6 3 4H6l3-4-1-6m4 10v8"/>' };
     return '<svg class="rd-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
@@ -483,7 +494,7 @@
 
       const readOnly = state.source === 'demo';
       const dis = readOnly ? ' disabled' : '';
-      // 段落只存 duration／錨定時間；牆上時間在這裡即時算出來唯讀顯示。
+      // 段落只存 duration／錨定時間；開始時間直接顯示計算結果，修改後才寫入錨定欄位。
       const visibleTimes = new Map(core().calculateTimeline(d.segments.filter(s => !state.pendingDelete || s.segment_id !== state.pendingDelete.id), d.config).map(s => [s.segment_id, s]));
       const timed = d.segments.map(s => visibleTimes.get(s.segment_id) || s);
 
@@ -517,8 +528,7 @@
           '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
-          '<details class="rd-time-editor"><summary aria-label="設定開始時間" class="rd-time-readout' + (seg.anchor_time ? ' rd-time-fixed' : '') + '"><span class="rd-time-value">' + esc(timeText(seg.time)) + '</span><span class="rd-fix"' + (seg.anchor_time ? '' : ' hidden') + '>固定</span></summary>' +
-          '<label>開始時間<input type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time)) + '"' + dis + '></label><small>清空即取消固定；按儲存後生效。</small></details>' +
+          '<label class="rd-time-editor"><span class="rd-sr-only">開始時間</span><input class="rd-in rd-in-time rd-time-start" type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time) || clockFromMinute(seg.start_min)) + '" data-derived="' + (!seg.anchor_time) + '" aria-label="開始時間"' + dis + '><span aria-hidden="true">–</span><span class="rd-time-end">' + esc(rangeEnd(seg.time)) + '</span></label>' +
           '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
           '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="' + esc(seg.effective_duration_min || '—') + '" title="未填時依相鄰開始時間計算" inputmode="numeric"' + dis + '></label>' +
 
@@ -932,7 +942,10 @@
         const selectors = state.feedback && state.feedback.selectors || [];
         state.feedback = { selectors: [...new Set(selectors.concat(selector))] };
         if (el.dataset.field === '節目內容') seg.title = el.value;
-        else if (el.dataset.field === '錨定時間') seg.anchor_time = el.value;
+        else if (el.dataset.field === '錨定時間') {
+          seg.anchor_time = el.value;
+          el.dataset.derived = 'false';
+        }
         else seg.duration_min = el.value === '' ? 0 : Number(el.value);
         setMessage('尚有未儲存變更', false);
         refreshTimeReadouts(); renderStatusOnly();
@@ -1118,7 +1131,7 @@
     }
 
     // 讀目前畫面上每一列的欄位值（不是 state.data，因為使用者可能還沒 blur、還沒存檔），
-    // 就地重算牆上時間，只更新唯讀的時間欄文字——不動任何 input，不會打斷打字。
+    // 就地重算牆上時間；正在編輯的開始時間不覆寫，其他推導時間同步更新。
     function refreshTimeReadouts() {
       const rows = Array.from(container.querySelectorAll('.rd-segments article[data-seg]'));
       if (!rows.length) return;
@@ -1131,22 +1144,22 @@
         return Object.assign({}, base, {
           segment_id: tr.dataset.seg,
           duration_min: duration ? (Number(duration.value) || 0) : base.duration_min,
-          anchor_time: anchor ? anchor.value : base.anchor_time,
+          anchor_time: base.anchor_time,
           stage: stage ? stage.value : base.stage
         });
       });
       const timed = core().calculateTimeline(draft, state.data.config);
       const timeById = new Map(timed.map(s => [s.segment_id, s]));
       rows.forEach(tr => {
-        const cell = tr.querySelector('.rd-time-value') || tr.querySelector('.rd-time-readout');
         const segment = timeById.get(tr.dataset.seg);
-        if (cell) cell.textContent = timeText(segment && segment.time);
+        const anchor = tr.querySelector('[data-field="錨定時間"]');
+        if (anchor && segment && anchor.dataset.derived === 'true' && (!root.document || root.document.activeElement !== anchor)) {
+          anchor.value = clockFromMinute(segment.start_min);
+        }
+        const end = tr.querySelector('.rd-time-end');
+        if (end) end.textContent = rangeEnd(segment && segment.time);
         const duration = tr.querySelector('[data-field="duration_min"]');
         if (duration && segment) duration.placeholder = String(segment.effective_duration_min || '—');
-        const readout = tr.querySelector('.rd-time-readout');
-        if (readout && readout.classList) readout.classList.toggle('rd-time-fixed', !!(segment && segment.anchor_time));
-        const fixed = tr.querySelector('.rd-fix');
-        if (fixed) fixed.hidden = !(segment && segment.anchor_time);
       });
     }
 
