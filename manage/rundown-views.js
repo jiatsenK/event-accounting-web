@@ -37,6 +37,17 @@
     return String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
   }
 
+  function minuteFromClock(value, reference) {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value || '')) return null;
+    const [hour, minute] = value.split(':').map(Number);
+    let result = hour * 60 + minute;
+    if (Number.isFinite(reference)) {
+      while (result < reference - 720) result += 1440;
+      while (result > reference + 720) result -= 1440;
+    }
+    return result;
+  }
+
   function rangeEnd(value) {
     const range = timeText(value).split('–');
     return range.length === 2 ? range[1] : '';
@@ -528,7 +539,7 @@
           '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
-          '<label class="rd-time-editor"><span class="rd-sr-only">開始時間</span><input class="rd-in rd-in-time rd-time-start" type="text" inputmode="numeric" maxlength="5" pattern="(?:[01]\\d|2[0-3]):[0-5]\\d" autocomplete="off" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time) || clockFromMinute(seg.start_min)) + '" data-derived="' + (!seg.anchor_time) + '" aria-label="開始時間（HH:MM）"' + dis + '><span aria-hidden="true">–</span><span class="rd-time-end">' + esc(rangeEnd(seg.time)) + '</span></label>' +
+          '<label class="rd-time-editor"><span class="rd-sr-only">開始時間</span><input class="rd-in rd-in-time rd-time-start" type="text" inputmode="numeric" maxlength="5" pattern="(?:[01]\\d|2[0-3]):[0-5]\\d" autocomplete="off" data-field="錨定時間" value="' + esc(clockFromMinute(seg.start_min)) + '" data-derived="true" aria-label="開始時間（HH:MM）"' + dis + '><span aria-hidden="true">–</span><span class="rd-time-end">' + esc(rangeEnd(seg.time)) + '</span></label>' +
           '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
           '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="' + esc(seg.effective_duration_min || '—') + '" title="未填時依相鄰開始時間計算" inputmode="numeric"' + dis + '></label>' +
 
@@ -943,7 +954,21 @@
         state.feedback = { selectors: [...new Set(selectors.concat(selector))] };
         if (el.dataset.field === '節目內容') seg.title = el.value;
         else if (el.dataset.field === '錨定時間') {
-          seg.anchor_time = el.value;
+          const stageRows = state.data.segments.filter(row => row.stage === seg.stage).sort((a, b) => a.order - b.order);
+          const index = stageRows.findIndex(row => row.segment_id === seg.segment_id);
+          const previous = index > 0 ? stageRows[index - 1] : null;
+          const previousTimed = previous && core().calculateTimeline(state.data.segments, state.data.config).find(row => row.segment_id === previous.segment_id);
+          const desiredStart = minuteFromClock(el.value, previousTimed && previousTimed.start_min);
+          if (previous && previousTimed && desiredStart != null && desiredStart >= previousTimed.start_min) {
+            previous.duration_min = desiredStart - previousTimed.start_min;
+            seg.anchor_time = '';
+            const previousSelector = '[data-seg="' + previous.segment_id + '"] [data-field="duration_min"]';
+            state.feedback.selectors = [...new Set(state.feedback.selectors.concat(previousSelector))];
+            const previousInput = container.querySelector(previousSelector);
+            if (previousInput) previousInput.value = String(previous.duration_min);
+          } else {
+            seg.anchor_time = el.value;
+          }
           el.dataset.derived = 'false';
         }
         else seg.duration_min = el.value === '' ? 0 : Number(el.value);
@@ -971,7 +996,11 @@
             if (seg[key] === saved[key]) return;
             seg[key] = saved[key];
             const input = row && row.querySelector('[data-field="' + field + '"]');
-            if (input) { input.value = String(key === 'duration_min' ? seg[key] || '' : seg[key]); input.dataset.beforeEdit = input.value; }
+            if (input) {
+              input.value = String(key === 'duration_min' ? seg[key] || '' : seg[key]);
+              input.dataset.beforeEdit = input.value;
+              if (key === 'anchor_time') input.dataset.derived = 'true';
+            }
           });
           if (row) {
             row.classList.toggle('rd-stage-rehearsal', seg.stage === '彩排');

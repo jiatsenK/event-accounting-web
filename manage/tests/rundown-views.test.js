@@ -73,6 +73,7 @@ test('時段開始時間直接顯示為可編輯欄位', () => {
   assert.match(container.innerHTML, /data-field="duration_min"/);
   assert.match(container.innerHTML, /data-field="錨定時間"/);
   assert.match(container.innerHTML, /type="text"[^>]*data-field="錨定時間" value="15:00"/);
+  assert.doesNotMatch(container.innerHTML, /data-derived="false"/);
   assert.match(container.innerHTML, /maxlength="5" pattern="\(\?:\[01\]\\d\|2\[0-3\]\):\[0-5\]\\d"/);
   assert.match(container.innerHTML, /value="18:20"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:30/);
   assert.doesNotMatch(container.innerHTML, /data-field="開始時間"|data-field="結束時間"/);
