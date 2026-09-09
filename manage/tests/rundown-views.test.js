@@ -72,7 +72,8 @@ test('時段開始時間直接顯示為可編輯欄位', () => {
   ctrl.render();
   assert.match(container.innerHTML, /data-field="duration_min"/);
   assert.match(container.innerHTML, /data-field="錨定時間"/);
-  assert.match(container.innerHTML, /type="time" data-field="錨定時間" value="15:00"/);
+  assert.match(container.innerHTML, /type="text"[^>]*data-field="錨定時間" value="15:00"/);
+  assert.match(container.innerHTML, /maxlength="5" pattern="\(\?:\[01\]\\d\|2\[0-3\]\):\[0-5\]\\d"/);
   assert.match(container.innerHTML, /value="18:20"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:30/);
   assert.doesNotMatch(container.innerHTML, /data-field="開始時間"|data-field="結束時間"/);
   assert.match(container.innerHTML, /data-config="正式_基準開始"/);
@@ -541,6 +542,13 @@ test('#106 定版 彩排在上、正式在下，兩區不收合，階段為列�
   assert.equal((html.match(/data-stage=/g)||[]).length,2);
   assert.ok(html.indexOf('class="rd-detail-preview"')<html.indexOf('class="rd-stage-toggle"'));
   assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));
+});
+
+test('#107 時間欄不套用長度欄的窄寬與分鐘單位', () => {
+  const css=require('fs').readFileSync(require('path').join(__dirname,'..','rundown.css'),'utf8');
+  assert.match(css,/label:not\(\.rd-segment-title\):not\(\.rd-time-editor\)/);
+  assert.doesNotMatch(css,/label:not\(\.rd-segment-title\) \{ flex: 0 0 3\.5rem/);
+  assert.doesNotMatch(css,/label:not\(\.rd-segment-title\)::after/);
 });
 
 test('#106 20 段取消就地還原欄位與順序，保留抽屜和其他資料、不重讀或重畫', () => {

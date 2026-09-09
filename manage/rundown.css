@@ -328,7 +328,7 @@
 .rundown button[aria-busy="true"]::after { width: .7rem; height: .7rem; margin-left: var(--space-2xs); border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; opacity: 1; transition: opacity 0s 150ms; }
 .rundown .rd-segment-main > label:not(.rd-segment-title) { position: relative; }
 .rd-in-duration { padding-right: 1.5rem; }
-.rd-segment-main > label:not(.rd-segment-title)::after { content: '分'; position: absolute; right: .6rem; top: .7rem; pointer-events: none; font-size: var(--text-xs); color: var(--color-muted); }
+.rd-segment-main > label:not(.rd-segment-title):not(.rd-time-editor)::after { content: '分'; position: absolute; right: .6rem; top: .7rem; pointer-events: none; font-size: var(--text-xs); color: var(--color-muted); }
 @media (max-width: 52rem) {
   .rd-toolbar { position: relative; }
   .rd-toolbar > .rd-config { position: static; }
@@ -349,13 +349,13 @@
 .rd-segment-main { display: flex; flex-wrap: nowrap; min-height: 2.2rem; gap: .35rem; }
 .rundown .rd-segment-main :is(button, summary, input:not([type="hidden"])) { min-height: 1.8rem; min-width: 0; padding: .1rem .3rem; font-size: .8rem; }
 .rd-segment-main > .rd-drag-handle, .rd-segment-main > .rd-segment-menu { flex: 0 0 1.5rem; }
-.rd-segment-main > .rd-time-editor { display: flex; align-items: center; flex: 0 0 10.5rem; gap: .15rem; white-space: nowrap; font-size: .78rem; font-variant-numeric: tabular-nums; }
-.rundown .rd-segment-main .rd-time-start { width: 5.1rem; cursor: text; }
+.rd-segment-main > .rd-time-editor { display: flex; align-items: center; flex: 0 0 10.5rem; gap: .2rem; white-space: nowrap; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.rundown .rd-segment-main .rd-time-start { box-sizing: border-box; width: 4.4rem; min-width: 4.4rem; text-align: center; cursor: text; }
 .rd-time-end { min-width: 3.2rem; color: var(--color-muted); }
 .rd-segment-main > .rd-segment-title { flex: 0 1 12rem; }
-.rd-segment-main > label:not(.rd-segment-title) { flex: 0 0 3.5rem; }
+.rd-segment-main > label:not(.rd-segment-title):not(.rd-time-editor) { flex: 0 0 3.5rem; }
 .rundown .rd-segment-main .rd-in-duration { padding-right: 1.1rem; }
-.rd-segment-main > label:not(.rd-segment-title)::after { top: .35rem; right: .3rem; }
+.rd-segment-main > label:not(.rd-segment-title):not(.rd-time-editor)::after { top: .35rem; right: .3rem; }
 .rd-in-duration::placeholder { color: var(--color-muted); opacity: .65; }
 .rd-segment-main > .rd-stage-toggle { flex: 0 0 auto; padding: 0; }
 .rundown .rd-segment-main .rd-stage-toggle button { font-size: .7rem; }
@@ -370,10 +370,10 @@
   .rd-segment-main > .rd-time-editor { flex: 1 1 10rem; }
   .rd-segment-main > .rd-segment-menu { order: 0; flex-basis: 2.75rem; }
   .rd-segment-main > .rd-segment-title { order: 1; flex: 1 1 calc(100% - 4rem); }
-  .rd-segment-main > label:not(.rd-segment-title) { order: 1; }
+  .rd-segment-main > label:not(.rd-segment-title):not(.rd-time-editor) { order: 1; }
   .rd-segment-main > .rd-stage-toggle { order: 2; }
   .rd-segment-main > .rd-detail-preview { order: 2; }
-  .rd-segment-main > label:not(.rd-segment-title)::after { top: .8rem; }
+  .rd-segment-main > label:not(.rd-segment-title):not(.rd-time-editor)::after { top: .8rem; }
   .rd-segment-drawer { padding: .5rem; }
 }
 

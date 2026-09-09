@@ -528,7 +528,7 @@
           '<input type="hidden" data-field="階段" value="' + esc(seg.stage) + '">' +
           '<input type="hidden" data-field="prize_ids" value="' + esc((seg.prize_ids || []).join(',')) + '">' +
           '<input type="hidden" data-field="備註" value="' + esc(seg.note) + '">' +
-          '<label class="rd-time-editor"><span class="rd-sr-only">開始時間</span><input class="rd-in rd-in-time rd-time-start" type="time" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time) || clockFromMinute(seg.start_min)) + '" data-derived="' + (!seg.anchor_time) + '" aria-label="開始時間"' + dis + '><span aria-hidden="true">–</span><span class="rd-time-end">' + esc(rangeEnd(seg.time)) + '</span></label>' +
+          '<label class="rd-time-editor"><span class="rd-sr-only">開始時間</span><input class="rd-in rd-in-time rd-time-start" type="text" inputmode="numeric" maxlength="5" pattern="(?:[01]\\d|2[0-3]):[0-5]\\d" autocomplete="off" data-field="錨定時間" value="' + esc(clockText(seg.anchor_time) || clockFromMinute(seg.start_min)) + '" data-derived="' + (!seg.anchor_time) + '" aria-label="開始時間（HH:MM）"' + dis + '><span aria-hidden="true">–</span><span class="rd-time-end">' + esc(rangeEnd(seg.time)) + '</span></label>' +
           '<label class="rd-segment-title"><span class="rd-sr-only">節目</span><input class="rd-in" data-inline readonly data-field="節目內容" value="' + esc(seg.title) + '"' + dis + '></label>' +
           '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="' + esc(seg.effective_duration_min || '—') + '" title="未填時依相鄰開始時間計算" inputmode="numeric"' + dis + '></label>' +
 
