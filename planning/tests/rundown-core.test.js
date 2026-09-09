@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const core = require('../rundown-core.js');
 
-test('#107 由相鄰開始時間決定長度並連續顯示，不猜最後一段', () => {
+test('#107 未填長度才用相鄰開始時間推導；已填長度保留，不被舊錨點壓過', () => {
   const data = core.normalize({config:{official_start:'17:30'},segments:[
     {segment_id:'a',order:1,anchor_time:'17:30'},
     {segment_id:'b',order:2,anchor_time:'17:45',duration_min:5},
@@ -12,22 +12,34 @@ test('#107 由相鄰開始時間決定長度並連續顯示，不猜最後一段
   ]});
   const before = JSON.stringify(data);
   const result = core.calculateTimeline(data.segments,data.config);
-  assert.deepEqual(result.map(s=>s.effective_duration_min),[15,15,0,0]);
+  // a 沒填長度 → 由 a、b 開始時間差推 15 分；b 填了 5 分就是 5 分。
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[15,5,0,0]);
   assert.equal(result[0].time,'17:30–17:45');
-  assert.equal(result[1].time,'17:45–18:00');
+  assert.equal(result[1].time,'17:45–17:50');
   assert.equal(JSON.stringify(data),before);
   assert.deepEqual(result.map(s=>s.duration_min),[0,5,0,0]);
 });
 
-test('#107 後續列不再各自跳到舊錨點，皆承接上一列結束', () => {
+test('#107 已填長度優先：擁有者情境「18:30 開放進場 10 分」顯示到 18:40', () => {
+  const data=core.normalize({config:{official_start:'18:20'},segments:[
+    {segment_id:'s1',order:1,anchor_time:'18:30',duration_min:10,節目內容:'開放進場'},
+    {segment_id:'s2',order:2,anchor_time:'18:35',duration_min:0,節目內容:'正式開場'},
+    {segment_id:'s3',order:3,節目內容:'活動結束'}
+  ]});
+  const result=core.calculateTimeline(data.segments,data.config);
+  assert.equal(result[0].time,'18:30–18:40','填了 10 分就顯示 10 分，不因下一段舊錨點 18:35 壓成 5 分');
+  assert.equal(result[0].effective_duration_min,10);
+});
+
+test('#107 後續列不再各自跳到舊錨點，皆承接上一列結束且長度以輸入為準', () => {
   const data=core.normalize({config:{official_start:'18:00'},segments:[
     {segment_id:'a',order:1,duration_min:30,anchor_time:'18:00'},
     {segment_id:'b',order:2,duration_min:10,anchor_time:'19:00'},
     {segment_id:'c',order:3,duration_min:20,anchor_time:'19:10'}
   ]});
   const result=core.calculateTimeline(data.segments,data.config);
-  assert.deepEqual(result.map(s=>s.time),['18:00–19:00','19:00–19:10','19:10–19:30']);
-  assert.deepEqual(result.map(s=>s.effective_duration_min),[60,10,20]);
+  assert.deepEqual(result.map(s=>s.time),['18:00–18:30','18:30–18:40','18:40–19:00']);
+  assert.deepEqual(result.map(s=>s.effective_duration_min),[30,10,20]);
 });
 
 test('#107 缺階段基準時從第一個已知列時間開始連續', () => {
@@ -105,7 +117,8 @@ test('正式段依第一個開始時間與長度連續往後計算', () => {
     ]
   });
   const result = core.calculateTimeline(segments.segments, segments.config);
-  assert.deepEqual(result.map(s => [s.start_min, s.end_min]), [[1080, 1140], [1140, 1150], [1150, 1170]]);
+  // a/b/c 都填了長度（30/10/20），依序承接；b 的舊錨定時間 19:00 不再讓它跳位或改長度。
+  assert.deepEqual(result.map(s => [s.start_min, s.end_min]), [[1080, 1110], [1110, 1120], [1120, 1140]]);
   assert.equal(result[1].gap_min, 0);
 });
 

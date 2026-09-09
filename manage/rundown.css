@@ -392,3 +392,15 @@
 @media screen and (max-width: 52rem) {
   .rd-segment-main > button.rd-stage-toggle { order: 2; }
 }
+
+/* Issue 107：編輯未儲存時「尚未儲存」訊息會注入到開始時間欄的 <label> 內。
+   它是 width:100% 的 flex 子元素，會把時間輸入框擠到看不見（顯示成 "19:(") 。
+   讓訊息改為浮在該列下方、不佔 flex 寬度，並鎖住開始時間輸入框寬度。 */
+.rd-time-editor > .rd-field-message { position: absolute; top: 100%; left: 0; width: max-content; max-width: 12rem; margin-top: -.1rem; padding: 0 .25rem; background: var(--color-surface); border-radius: var(--radius-input); z-index: 3; }
+.rundown .rd-segment-main input.rd-time-start { flex: 0 0 4.4rem; width: 4.4rem; min-width: 4.4rem; }
+.rundown .rd-segment-main .rd-time-editor > span[aria-hidden] { flex: 0 0 auto; }
+.rundown .rd-segment-main .rd-time-end { flex: 0 0 auto; }
+
+/* Issue 107：每個階段標題後顯示整體時間跨距（最早開始–最晚結束，含長度總分），草稿即時更新。 */
+.rd-stage-span { color: var(--color-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.rd-stage-span:empty { display: none; }

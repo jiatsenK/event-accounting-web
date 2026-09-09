@@ -78,6 +78,8 @@ test('時段開始時間直接顯示為可編輯欄位', () => {
   assert.match(container.innerHTML, /value="18:20"[^>]*><span aria-hidden="true">–<\/span><span class="rd-time-end">18:30/);
   assert.doesNotMatch(container.innerHTML, /data-field="開始時間"|data-field="結束時間"/);
   assert.match(container.innerHTML, /data-config="正式_基準開始"/);
+  // #107：階段標題後帶整體時間跨距（最早開始–最晚結束＋長度總分），不必先儲存
+  assert.match(container.innerHTML, /class="rd-stage-span" data-stage-span> · \d\d:\d\d–\d\d:\d\d（\d+ 分）<\/span>/);
 });
 
 console.log('rundown-views tests PASS');
@@ -459,6 +461,9 @@ test('#71 CSS 保留 token、焦點 outline、44px 觸控與 reduced-motion',()=
   const fs=require('node:fs'),path=require('node:path');const css=fs.readFileSync(path.join(__dirname,'../rundown.css'),'utf8');
   assert.doesNotMatch(css,/oklch\(|#[0-9a-f]{3,8}\b/i);assert.match(css,/macrostructure: Workbench/);
   assert.match(css,/:focus-visible \{ outline: 2px solid var\(--color-accent\)/);
+  // Issue 107：未儲存訊息不得再壓縮開始時間欄
+  assert.match(css,/\.rd-time-editor > \.rd-field-message \{ position: absolute;/);
+  assert.match(css,/input\.rd-time-start \{ flex: 0 0 4\.4rem;/);
   assert.match(css,/min-height: 2\.75rem/);assert.match(css,/@media \(max-width: 52rem\)/);
   assert.match(css,/@media \(prefers-reduced-motion: reduce\)/);assert.doesNotMatch(css,/min-width: 1340px/);
 });

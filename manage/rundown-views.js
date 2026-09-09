@@ -53,6 +53,17 @@
     return range.length === 2 ? range[1] : '';
   }
 
+  // 一個階段的整體時間跨距：最早開始 → 最晚結束（含長度總分），編輯草稿時即時更新，
+  // 讓使用者不必先儲存就看到整場活動時間。缺可用時間點時回空字串。
+  function stageSpanText(rows) {
+    const starts = (rows || []).map(s => s && s.start_min).filter(n => Number.isFinite(n));
+    const ends = (rows || []).map(s => s && s.end_min).filter(n => Number.isFinite(n));
+    if (!starts.length || !ends.length) return '';
+    const from = Math.min.apply(null, starts);
+    const to = Math.max.apply(null, ends);
+    return ' · ' + core().formatTimeRange(from, to) + '（' + (to - from) + ' 分）';
+  }
+
   function icon(name) {
     const paths = { chevron: '<path d="m6 9 6 6 6-6"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>', more: '<path d="M4 12h1m6 0h1m6 0h1"/>', drag: '<path d="M8 5h1m6 0h1M8 12h1m6 0h1M8 19h1m6 0h1"/>', pin: '<path d="m8 3 8 0-1 6 3 4H6l3-4-1-6m4 10v8"/>' };
     return '<svg class="rd-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths[name] + '</svg>';
@@ -550,7 +561,7 @@
           '<div class="rd-segment-drawer"><div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' + taskContent(seg.segment_id) + '</div></details></article>';
       const segmentRows = ['彩排', '正式'].map(stage => {
         const segments = timed.filter(s => s.stage === stage).sort((a, b) => a.order - b.order);
-        return '<section class="rd-stage-group" data-stage-group="' + stage + '"><h3>' + stage + ' <span data-stage-count>' + segments.length + '</span> 段</h3><div class="rd-stage-rows">' + segments.map(segmentRow).join('') + '</div></section>';
+        return '<section class="rd-stage-group" data-stage-group="' + stage + '"><h3>' + stage + ' <span data-stage-count>' + segments.length + '</span> 段<span class="rd-stage-span" data-stage-span>' + esc(stageSpanText(segments)) + '</span></h3><div class="rd-stage-rows">' + segments.map(segmentRow).join('') + '</div></section>';
       }).join('');
 
       return '<div class="rd-edit">' +
@@ -1189,6 +1200,11 @@
         if (end) end.textContent = rangeEnd(segment && segment.time);
         const duration = tr.querySelector('[data-field="duration_min"]');
         if (duration && segment) duration.placeholder = String(segment.effective_duration_min || '—');
+      });
+      ['彩排', '正式'].forEach(stage => {
+        const group = container.querySelector('[data-stage-group="' + stage + '"]');
+        const spanEl = group && group.querySelector('[data-stage-span]');
+        if (spanEl) spanEl.textContent = stageSpanText(timed.filter(s => s && s.stage === stage));
       });
     }
 

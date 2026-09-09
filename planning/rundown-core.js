@@ -136,19 +136,21 @@
     return minute;
   }
 
-  // 相鄰開始時間優先決定長度；沒有下一個已知時間才使用既有長度。
+  // 已填長度優先；長度未設定／為 0 時，才用「到下一個已知時間點」的間距推導顯示用長度。
+  // 這裡的 start 是該段實際開始（承接上一段），不是它自己的舊錨定時間——
+  // 舊錨定時間只作為「下一個已知時間點」參考，不會壓過使用者輸入的長度，也不會讓該段跳位。
   function inferredDuration(segment, start, nextStart) {
+    if (segment.duration_min > 0) return segment.duration_min;
     if (start != null && nextStart != null && nextStart >= start) return nextStart - start;
-    return segment.duration_min > 0 ? segment.duration_min : 0;
+    return 0;
   }
 
   function forwardStage(rows, baseMinute, boundary) {
     let cursor = rows.length ? (clockNear(rows[0].anchor_time, baseMinute) ?? baseMinute) : baseMinute;
     return rows.map((segment, index) => {
       const start = cursor == null ? clockNear(segment.anchor_time, null) : cursor;
-      const sourceStart = clockNear(segment.anchor_time, start) ?? start;
-      const nextStart = index + 1 < rows.length ? clockNear(rows[index + 1].anchor_time, sourceStart) : boundary;
-      const duration = inferredDuration(segment, sourceStart, nextStart);
+      const nextStart = index + 1 < rows.length ? clockNear(rows[index + 1].anchor_time, start) : boundary;
+      const duration = inferredDuration(segment, start, nextStart);
       const end = start == null ? null : start + duration;
       cursor = end;
       return Object.assign({}, segment, {
@@ -166,9 +168,10 @@
     let cursor = boundary;
     for (let i = rows.length - 1; i >= 0; i--) {
       const segment = rows[i];
-      const sourceStart = clockNear(segment.anchor_time, cursor);
-      const sourceNext = i + 1 < rows.length ? clockNear(rows[i + 1].anchor_time, sourceStart) : boundary;
-      const duration = inferredDuration(segment, sourceStart, sourceNext);
+      // 由後往前回推：已知的是這段結束（cursor）。長度優先取使用者輸入，
+      // 否則用「這段結束 − 這段自己的錨定時間」推導。
+      const anchorStart = clockNear(segment.anchor_time, cursor);
+      const duration = inferredDuration(segment, anchorStart, cursor);
       const end = cursor;
       const start = end == null ? null : end - duration;
       cursor = start;
