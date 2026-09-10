@@ -5,8 +5,10 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
 
-  const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
-  const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
+  const apiConfig = root && root.EventApiConfig || (typeof require === 'function' ? require('../assets/api-config.js') : null);
+  if (!apiConfig) throw new Error('API 環境設定尚未載入');
+  const DEFAULT_API_URL = apiConfig.resolveApiUrl(root);
+  const TOKEN_STORAGE_KEY = apiConfig.tokenStorageKey(root);
   const API_TIMEOUT_MS = 12000;
   const ACTIVITY_TYPES = ['尾牙', '年中聚餐'];
 

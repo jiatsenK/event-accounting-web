@@ -18,6 +18,7 @@ const context = {
   clearTimeout
 };
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(__dirname + '/../api-config.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync(__dirname + '/../app-core.js', 'utf8'), context);
 
 assert.equal(context.safeExternalUrl('javascript:alert(1)'), '');

@@ -5,8 +5,6 @@
 })(typeof window !== 'undefined' ? window : null, function (root) {
   'use strict';
 
-  const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
-  const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
   const API_TIMEOUT_MS = 12000;
 
   function canonicalActivityName(activity) {
@@ -36,7 +34,12 @@
     if (!doc || !win) return;
     const routerApi = dependencies && dependencies.router || win.EventAppRouter;
     const viewsApi = dependencies && dependencies.views || win.EventAppViews;
+    const apiConfig = dependencies && dependencies.apiConfig || win.EventApiConfig;
     if (!routerApi || !viewsApi) throw new Error('app modules 尚未載入');
+    if (!apiConfig) throw new Error('API 環境設定尚未載入');
+    const apiUrl = apiConfig.resolveApiUrl(win);
+    const tokenStorageKey = apiConfig.tokenStorageKey(win);
+    apiConfig.mountEnvironmentBanner(doc, win);
 
     const configPanel = doc.querySelector('#platformConfigPanel');
     const tokenInput = doc.querySelector('#platformTokenInput');
@@ -64,7 +67,7 @@
     });
 
     function token() {
-      return win.sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
+      return win.sessionStorage.getItem(tokenStorageKey) || '';
     }
 
     function setStatus(message, error) {
@@ -122,7 +125,7 @@
         };
         script.onerror = () => { cleanup(); reject(new Error('無法連線到活動資料')); };
         timer = win.setTimeout(() => { cleanup(); reject(new Error('活動資料連線逾時')); }, API_TIMEOUT_MS);
-        script.src = DEFAULT_API_URL + '?' + params.toString();
+        script.src = apiUrl + '?' + params.toString();
         doc.body.appendChild(script);
       });
     }
@@ -150,7 +153,7 @@
         setStatus('');
       } catch (error) {
         if (error && error.message === '無權限') {
-          win.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          win.sessionStorage.removeItem(tokenStorageKey);
           configPanel.hidden = false;
           useFallback('存取碼不正確；入口仍可使用，請重新輸入。');
         } else {
@@ -162,7 +165,7 @@
     saveConfig.addEventListener('click', () => {
       const value = tokenInput.value.trim();
       if (!value) return;
-      win.sessionStorage.setItem(TOKEN_STORAGE_KEY, value);
+      win.sessionStorage.setItem(tokenStorageKey, value);
       tokenInput.value = '';
       configPanel.hidden = true;
       loadActivities();
@@ -176,5 +179,5 @@
     else setStatus('尚未設定存取碼；可先進入區塊，資料 view 會各自顯示設定或錯誤狀態。');
   }
 
-  return { DEFAULT_API_URL, TOKEN_STORAGE_KEY, canonicalActivityName, fallbackActivity, init };
+  return { canonicalActivityName, fallbackActivity, init };
 });

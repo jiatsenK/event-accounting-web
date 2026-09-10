@@ -13,12 +13,15 @@ function browser() {
   });
   const root = { URLSearchParams, console,
     sessionStorage: {getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},
+    localStorage: {getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     setTimeout(fn,delay) {timers.set(++next,{fn,delay});return next;},clearTimeout:id=>timers.delete(id),
     addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),
-    location:{origin:'https://example.test'},
+    location:{origin:'https://example.test',search:''},
     document:{createElement:element,body:{append(){},appendChild(script){scripts.push(script);}}}
   };
-  root.window=root;vm.createContext(root);vm.runInContext(fs.readFileSync(__dirname+'/../core.js','utf8'),root);
+  root.window=root;vm.createContext(root);
+  vm.runInContext(fs.readFileSync(__dirname+'/../../assets/api-config.js','utf8'),root);
+  vm.runInContext(fs.readFileSync(__dirname+'/../core.js','utf8'),root);
   const api=root.PlanningCore; storage.set(api.TOKEN_STORAGE_KEY,'test-token');
   const runTimer=async()=>{const [id,timer]=timers.entries().next().value;timers.delete(id);timer.fn();await Promise.resolve();return timer.delay;};
   const reply=value=>{const script=scripts.at(-1);const params=new URL(script.src).searchParams;root[params.get('callback')](value);return params;};
