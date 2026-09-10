@@ -57,7 +57,7 @@
     Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js' }),
     Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260831-01' }),
     Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260904-49' }),
-    Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260906-52' }),
+    Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260910-109' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
     Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260904-49' }),
     Object.freeze({ key: 'payment-request', src: '../assets/payment-request.js?v=20260905-01' }),
