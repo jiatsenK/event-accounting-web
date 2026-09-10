@@ -1,5 +1,5 @@
-const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbyLKDauNZi4zQzztda_agrJF84ILNSL6mXBsTe6e7DUx7dIbNN3GKwSWkDURQjYxkf_aA/exec';
-const TOKEN_STORAGE_KEY = 'eventAccountingToken:' + DEFAULT_API_URL;
+const DEFAULT_API_URL = EventApiConfig.resolveApiUrl(window);
+const TOKEN_STORAGE_KEY = EventApiConfig.tokenStorageKey(window);
 const state = {
   apiUrl: DEFAULT_API_URL,
   token: '',
