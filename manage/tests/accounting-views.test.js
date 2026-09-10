@@ -26,6 +26,10 @@ test('帳務既有 scripts 由同一 mount 依序載入', () => {
     'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui',
     'payment-request', 'payment-request-ui', 'accounting-issue17', 'accounting-settlement'
   ]);
+  assert.equal(
+    views.scriptSources.find(item => item.key === 'accounting-core').src,
+    '../assets/app-core.js?v=20260910-109'
+  );
   assert.equal(views.cacheKey, 'accounting');
 });
 
