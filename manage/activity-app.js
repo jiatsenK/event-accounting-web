@@ -62,7 +62,8 @@
         'accounting:payment_requests': win.AccountingViews,
         'planning:history': win.PlanningViews && win.PlanningViews.history,
         'planning:forecast': win.PlanningViews && win.PlanningViews.forecast,
-        'planning:rundown': win.RundownViews && win.RundownViews.rundown
+        'planning:rundown': win.RundownViews && win.RundownViews.rundown,
+        'planning:dashboard': win.DashboardViews && win.DashboardViews.dashboard
       }
     });
 
