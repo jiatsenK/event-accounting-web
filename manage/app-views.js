@@ -23,7 +23,8 @@
       views: Object.freeze([
         Object.freeze({ id: 'history', label: '歷史紀錄' }),
         Object.freeze({ id: 'forecast', label: '規劃試算' }),
-        Object.freeze({ id: 'rundown', label: '流程表' })
+        Object.freeze({ id: 'rundown', label: '流程表' }),
+        Object.freeze({ id: 'dashboard', label: '歷史分析' })
       ])
     })
   });
@@ -64,7 +65,8 @@
     'accounting:reimbursement': stubView('核銷整理', '此 view 將沿用既有核銷預覽與 Excel 匯出邏輯。'),
     'planning:history': stubView('歷史紀錄', '此 view 將接上規劃資料層的歷史資料讀取。'),
     'planning:forecast': stubView('規劃試算', '此 view 將接上規劃資料層的試算與建議量計算。'),
-    'planning:rundown': stubView('流程表', '此 view 將接上流程表資料層（rundown 讀寫與四種列印版本）。')
+    'planning:rundown': stubView('流程表', '此 view 將接上流程表資料層（rundown 讀寫與四種列印版本）。'),
+    'planning:dashboard': stubView('歷史分析', '此 view 將接上跨活動歷史分析資料層。')
   });
 
   function mountFailure(container, error) {
