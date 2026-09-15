@@ -1,0 +1,32 @@
+.work-app{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#252525}
+.work-app *{box-sizing:border-box}
+.work-app h2{font-size:20px;margin:0}
+.work-app .muted{color:#73736d;font-size:14px;line-height:1.55}
+.work-app .card{background:#fff;border:1px solid #e1e4de;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(20,30,25,.02)}
+.work-app .section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.work-app .section-heading .muted{margin-top:4px}
+.work-app .checklist-toolbar{display:flex;gap:8px}
+.work-app form{display:grid;gap:10px}
+.work-app input,.work-app select,.work-app textarea,.work-app button{font:inherit;padding:10px;border:1px solid #d8d8d2;border-radius:8px;background:white}
+.work-app button{background:#2f4858;color:white;border:none;font-weight:650;cursor:pointer}
+.work-app button:disabled{opacity:.55;cursor:wait}
+.work-app .secondary{background:white;color:#2f4858;border:1px solid #bfc8ce}
+.work-app .form-actions{display:flex;gap:10px}
+.work-app .form-actions button{flex:1}
+.work-app .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.work-app .editor-panel{margin:12px 0 18px;padding:16px;border:1px solid #dfe3dc;border-radius:12px;background:#f9faf8}
+.work-app table{width:100%;border-collapse:collapse;font-size:14px}
+.work-app th,.work-app td{text-align:left;padding:9px 6px;border-bottom:1px solid #eee;white-space:nowrap}
+.work-app .empty{text-align:center;color:#888;padding:24px}
+.work-app .table-action{padding:6px 9px;background:white;color:#2f4858;border:1px solid #bfc8ce;font-size:13px}
+.work-app .table-action.danger-outline{color:#9b2c2c;border-color:#e3b8b8}
+.work-app .checklist-row-actions{display:flex;gap:6px}
+.work-app .checklist-table-wrap{overflow:auto}
+.work-app .status{min-height:24px;margin:10px 0;color:#3b6650}
+.work-app .status.error{color:#9b2c2c}
+.work-app .form-status{margin:8px 0 0}
+.work-app .checklist-status{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;background:#eef1ec;color:#565a55}
+.work-app .checklist-status-完成{background:#e6f3ea;color:#2f6b45}
+.work-app .checklist-status-進行中{background:#eef3fb;color:#2a5b96}
+.work-app .checklist-status-不做{background:#f1f1ee;color:#8a8a82}
+@media(max-width:620px){.work-app .row{grid-template-columns:1fr}.work-app .form-actions{flex-direction:column}.work-app .checklist-toolbar{flex-direction:column;align-items:stretch}.work-app table,.work-app thead,.work-app tbody,.work-app th,.work-app td,.work-app tr{display:block}.work-app thead{display:none}.work-app td{border-bottom:0;padding:4px 0}.work-app tr{padding:10px 0;border-bottom:1px solid #eee}}

@@ -11,13 +11,14 @@
 <link rel="stylesheet" href="payment-request.css?v=20260905-01">
 <link rel="stylesheet" href="planning.css?v=20260902-01">
 <link rel="stylesheet" href="rundown.css?v=20260909-107i">
+<link rel="stylesheet" href="work.css?v=20260915-73a">
 </head>
 <body>
 <main class="shell">
   <section id="platformConfigPanel" class="config" hidden>
     <div>
       <h2>設定存取碼</h2>
-      <p class="config-note">存取碼只保留在這次瀏覽器工作階段，不會寫進網址或 GitHub。</p>
+      <p class="config-note">存取碼會記在這個瀏覽器裡，下次不用重新輸入；不會寫進網址或 GitHub。</p>
     </div>
     <div class="config-actions">
       <input id="platformTokenInput" type="password" autocomplete="off" placeholder="活動平台存取碼" aria-label="活動平台存取碼">
@@ -29,7 +30,7 @@
   <section id="sectionView" aria-label="活動區塊" hidden></section>
 </main>
 <script src="../assets/api-config.js?v=20260910-109"></script>
-<script src="app-router.js?v=20260905-69"></script>
+<script src="app-router.js?v=20260915-73a"></script>
 <script src="accounting-views.js?v=20260906-52"></script>
 <script src="../planning/core.js?v=20260910-109"></script>
 <script src="../planning/rundown-core.js?v=20260909-107i"></script>
@@ -38,8 +39,9 @@
 <script src="rundown-views.js?v=20260909-107i"></script>
 <script src="dashboard-views.js?v=20260911-14a"></script>
 <script src="prize-views.js?v=20260905-69"></script>
-<script src="app-views.js?v=20260905-69"></script>
-<script src="activity-app.js?v=20260910-109"></script>
+<script src="work-views.js?v=20260915-73a"></script>
+<script src="app-views.js?v=20260915-73a"></script>
+<script src="activity-app.js?v=20260915-73a"></script>
 <script>EventActivityApp.init(document, window);</script>
 </body>
 </html>

@@ -14,6 +14,7 @@ assert.match(html, /planning-views\.js/);
 assert.match(html, /rundown-core\.js/);
 assert.match(html, /rundown-views\.js/);
 assert.match(html, /app-views\.js/);
+assert.match(html, /work-views\.js/);
 assert.match(html, /activity-app\.js/);
 assert.doesNotMatch(html, new RegExp('<' + 'i' + 'frame\\b', 'i'));
 assert.doesNotMatch(html, /class="(?:area-switch|tabs)"/);
