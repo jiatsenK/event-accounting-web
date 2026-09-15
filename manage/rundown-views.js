@@ -555,8 +555,10 @@
           '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="' + esc(seg.effective_duration_min || '—') + '" title="未填時依相鄰開始時間計算" inputmode="numeric"' + dis + '></label>' +
 
           '<button type="button" class="rd-detail-preview" data-action="toggle-details" aria-expanded="' + state.expandedSegments.has(seg.segment_id) + '" aria-label="展開或收合獎項與任務">' + esc([core().segmentPrizes(seg, prizeIndex).map(p => '獎 ' + core().prizeLabel(p)).join('；'), d.tasks.some(t => t.segment_id === seg.segment_id) ? '任務 ' + d.tasks.filter(t => t.segment_id === seg.segment_id).length : ''].filter(Boolean).join(' · ') || '＋ 任務') + '</button>' +
-          '<button type="button" class="rd-stage-toggle" data-stage="' + (seg.stage === '彩排' ? '正式' : '彩排') + '" aria-label="目前' + esc(seg.stage) + '，切換為' + (seg.stage === '彩排' ? '正式' : '彩排') + '"' + dis + '>' + esc(seg.stage) + '</button>' +
-          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
+          (core().segmentHeadcountTotal(d.tasks, seg.segment_id) > 0 ? '<button type="button" class="rd-headcount-badge" data-action="toggle-details" aria-label="需求人數 ' + core().segmentHeadcountTotal(d.tasks, seg.segment_id) + ' 人，點開任務">人 ' + core().segmentHeadcountTotal(d.tasks, seg.segment_id) + '</button>' : '') +
+          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel">' +
+            '<button type="button" class="rd-stage-toggle" data-stage="' + (seg.stage === '彩排' ? '正式' : '彩排') + '" aria-label="目前' + esc(seg.stage) + '，切換為' + (seg.stage === '彩排' ? '正式' : '彩排') + '"' + dis + '>切換為' + esc(seg.stage === '彩排' ? '正式' : '彩排') + '</button>' +
+            '<button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
           '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary class="rd-sr-only">' + icon('chevron') + '獎項與任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
           '<div class="rd-segment-drawer"><div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' + taskContent(seg.segment_id) + '</div></details></article>';
       const segmentRows = ['彩排', '正式'].map(stage => {
@@ -617,6 +619,7 @@
         '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) +
         '<span class="rd-muted">（' + esc((people.get(t.role) || []).join('、') || '未排人') + '）</span></span> · ' +
         '<span class="rd-task-content">' + esc(t.content) + '</span> · <span class="rd-task-aud">' + esc(t.audience) + '</span>' +
+        (Number.isFinite(t.headcount) ? ' · <span class="rd-task-headcount">' + t.headcount + ' 人</span>' : '') +
         (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul>' : '';
       const draft = state.taskDraft;
       const adding = draft && draft.segmentId === segmentId;
@@ -624,6 +627,7 @@
       return (rows || '<p class="rd-empty">尚無任務</p>') + (readOnly ? '' : adding ?
         '<form class="rd-task-add" data-task-form><label>角色<select data-new="角色">' + roles.map(r => '<option value="' + esc(r) + '"' + (r === draft.role ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>' +
         '<label>任務內容<input data-new="任務內容" required value="' + esc(draft.content) + '"></label>' +
+        '<label>需求人數<input type="number" min="0" step="1" data-new="需求人數" value="' + esc(draft.headcount) + '" placeholder="可留空"></label>' +
         '<div class="rd-audience" role="group" aria-label="列印對象"><span>列印對象</span><input type="hidden" data-new="對象" value="' + esc(draft.audience) + '">' + core().AUDIENCES.map(a => '<button type="button" data-audience="' + esc(a) + '" aria-pressed="' + (a === draft.audience) + '">' + esc(a) + '</button>').join('') + '</div>' +
         '<button type="submit">儲存任務</button><button type="button" data-action="cancel-task">取消</button></form>' :
         roles.length ? '<button type="button" data-action="open-task">＋ 加任務</button>' : '<p class="rd-hint">先從「⋯ → 管理角色」新增角色，才能新增任務。</p>');
@@ -884,7 +888,7 @@
       on('[data-action="open-task"]', 'click', event => {
         const segmentId = event.currentTarget.closest('[data-seg]').dataset.seg;
         if (!state.taskDraft || state.taskDraft.segmentId !== segmentId) {
-          state.taskDraft = { segmentId, role: state.taskView === 'role' ? state.selectedRole : taskRoles()[0], content: '', audience: core().AUDIENCES[0] };
+          state.taskDraft = { segmentId, role: state.taskView === 'role' ? state.selectedRole : taskRoles()[0], content: '', headcount: '', audience: core().AUDIENCES[0] };
         }
         state.expandedSegments.add(segmentId);
         render();
@@ -900,7 +904,7 @@
       });
       on('[data-action="cancel-task"]', 'click', () => { state.taskDraft = null; render(); });
       on('[data-task-form] [data-new]', 'input', event => {
-        const keys = { 角色: 'role', 任務內容: 'content', 對象: 'audience' };
+        const keys = { 角色: 'role', 任務內容: 'content', 需求人數: 'headcount', 對象: 'audience' };
         if (state.taskDraft) state.taskDraft[keys[event.currentTarget.dataset.new]] = event.currentTarget.value;
       });
 
@@ -1019,7 +1023,7 @@
             const toggle = row.querySelector('[data-stage]');
             if (toggle) {
               toggle.dataset.stage = seg.stage === '彩排' ? '正式' : '彩排';
-              toggle.textContent = seg.stage;
+              toggle.textContent = '切換為' + toggle.dataset.stage;
               toggle.setAttribute('aria-label', '目前' + seg.stage + '，切換為' + toggle.dataset.stage);
             }
           }

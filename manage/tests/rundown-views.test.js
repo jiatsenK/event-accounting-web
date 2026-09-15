@@ -546,8 +546,19 @@ test('#106 定版 彩排在上、正式在下，兩區不收合，階段為列�
   assert.doesNotMatch(html,/data-rehearsals/);
   assert.match(html, /彩排 <span data-stage-count>1<\/span> 段/);
   assert.equal((html.match(/data-stage=/g)||[]).length,2);
-  assert.ok(html.indexOf('class="rd-detail-preview"')<html.indexOf('class="rd-stage-toggle"'));
-  assert.ok(html.indexOf('class="rd-stage-toggle"')<html.indexOf('class="rd-menu rd-segment-menu"'));
+  // Issue #112：階段 toggle 收進「⋯」選單，不再是 row 上的獨立按鈕。
+  assert.ok(html.indexOf('class="rd-detail-preview"')<html.indexOf('class="rd-menu rd-segment-menu"'));
+  assert.ok(html.indexOf('class="rd-menu rd-segment-menu"')<html.indexOf('class="rd-stage-toggle"'));
+});
+
+test('Issue #112：時段需求人數 > 0 才顯示徽章，任務清單顯示已填的人數', () => {
+  const h=redesignHarness();
+  assert.doesNotMatch(h.host.innerHTML,/rd-headcount-badge/,'還沒填需求人數時不顯示徽章');
+
+  h.ctrl.state.data.tasks[0].headcount=3;
+  h.ctrl.render();
+  assert.match(h.host.innerHTML,/rd-headcount-badge"[^>]*>人 3</);
+  assert.match(h.host.innerHTML,/rd-task-headcount">3 人/);
 });
 
 test('#107 時間欄不套用長度欄的窄寬與分鐘單位', () => {
