@@ -1358,6 +1358,34 @@
       setMessage('順序已調整，尚未儲存', false); render();
     }
 
+    // Issue 112：新加入一輪重複環節時，把排在它前面那一段（同基底、順序最接近
+    // 且較小）的任務複製過來（新 task_id，個別可再改或刪）。單一任務複製失敗
+    // 不回滾已經存成功的時段本身，只是那一輪要手動補任務。
+    async function copyPreviousRoundTasks(joinedSegmentIds) {
+      for (const segId of joinedSegmentIds) {
+        const seg = state.data.segments.find(s => s.segment_id === segId);
+        if (!seg) continue;
+        const base = baseTitle(seg.title);
+        const group = state.data.segments.filter(s => s.segment_id !== segId && baseTitle(s.title) === base);
+        const previous = group.filter(s => s.order < seg.order).sort((a, b) => b.order - a.order)[0];
+        if (!previous) continue;
+        for (const t of state.data.tasks.filter(t => t.segment_id === previous.segment_id)) {
+          try {
+            const result = await planning().apiWrite({
+              action: 'save_rundown_task', activity_id: state.activityId, segment_id: segId,
+              '角色': t.role, '任務內容': t.content, '對象': t.audience,
+              '需求人數': Number.isFinite(t.headcount) ? String(t.headcount) : ''
+            }, { receipt: true });
+            if (result && result.task_id) {
+              state.data.tasks.push(core().normalize({ tasks: [{
+                task_id: result.task_id, segment_id: segId, '角色': t.role, '任務內容': t.content, '對象': t.audience, '需求人數': t.headcount
+              }] }).tasks[0]);
+            }
+          } catch (err) { /* 忽略：這一段少複製到的任務，使用者到編輯流程手動補 */ }
+        }
+      }
+    }
+
     async function saveDraft() {
       if (state.busy || !state.dirty || state.source !== 'backend') return false;
       const before = new Map(state.savedData.segments.map(s => [s.segment_id, s]));
@@ -1383,6 +1411,20 @@
         bases.add(baseTitle(e['節目內容']));
       });
       const titles = numberedTitles(state.data.segments, bases);
+      // Issue 112：偵測「這次存檔讓某個時段第一次掛進一個 >1 人的同基底編號
+      // 群組」（改名跨出原本的基底，落進新基底且新基底底下不只自己一段）——
+      // 這種情況視為新增一輪重複環節，存檔成功後要從同群組裡排序在它前面
+      // 那一段複製任務過來（角色／任務內容／對象／需求人數），使用者可再個
+      // 別覆寫。純排序、改長度、或改名但還在同一基底，都不算「新加入」。
+      const joinedSegmentIds = edits
+        .filter(e => e['節目內容'] != null)
+        .filter(e => {
+          const oldBase = baseTitle(before.get(e.segment_id).title);
+          const newBase = baseTitle(e['節目內容']);
+          if (oldBase === newBase) return false;
+          return state.data.segments.filter(s => baseTitle(titles.get(s.segment_id) || s.title) === newBase).length > 1;
+        })
+        .map(e => e.segment_id);
       titles.forEach((title, id) => {
         let edit = edits.find(e => e.segment_id === id);
         if (title !== before.get(id).title) {
@@ -1403,6 +1445,7 @@
       try {
         await planning().apiWrite({ action: 'save_rundown_order', activity_id: state.activityId, data: JSON.stringify(data) }, { receipt: true });
         state.data.segments.forEach(s => { s.title = titles.get(s.segment_id) || s.title.trim(); });
+        if (joinedSegmentIds.length) await copyPreviousRoundTasks(joinedSegmentIds);
         state.dirty = false; rememberSaved();
         setMessage('已儲存', false); return true;
       } catch (err) {

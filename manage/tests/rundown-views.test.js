@@ -481,6 +481,54 @@ test('#106 改名合併整組依順序編號，一次送出並更新快取', asy
   } finally {global.PlanningCore=PlanningCore;}
 });
 
+test('Issue #112：新加入一輪重複環節時，自動帶入上一輪同任務的需求人數', async () => {
+  const sent=[];
+  global.PlanningCore={apiWrite:async f=>{
+    sent.push(f);
+    return f.action==='save_rundown_task' ? {task_id:'new-'+sent.filter(s=>s.action==='save_rundown_task').length} : {};
+  }};
+  try {
+    const h=perfHarness({
+      segments:[{segment_id:'a',title:'開場',duration_min:5,order:30},{segment_id:'b',title:'抽獎',duration_min:5,order:10}],
+      tasks:[
+        {segment_id:'b',角色:'抽獎組',任務內容:'籤筒管理',對象:'工作人員',需求人數:2},
+        {segment_id:'b',角色:'主持',任務內容:'控場',對象:'總控'}
+      ]
+    });
+    h.fields[0].value='抽獎';h.fields[0].handlers.input({target:h.fields[0]});
+    await h.click('save-draft');
+    assert.equal(sent[0].action,'save_rundown_order');
+    const taskWrites=sent.filter(s=>s.action==='save_rundown_task');
+    assert.equal(taskWrites.length,2,'從「抽獎」（前一輪）複製了兩筆任務到新加入的一段');
+    assert.ok(taskWrites.every(w=>w.segment_id==='a'));
+    const byRole=Object.fromEntries(taskWrites.map(w=>[w['角色'],w]));
+    assert.equal(byRole['抽獎組']['任務內容'],'籤筒管理');
+    assert.equal(byRole['抽獎組']['對象'],'工作人員');
+    assert.equal(byRole['抽獎組']['需求人數'],'2');
+    assert.equal(byRole['主持']['需求人數'],'','沒填需求人數的任務複製過去也維持沒填，不是 0');
+    const copied=h.ctrl.state.data.tasks.filter(t=>t.segment_id==='a');
+    assert.equal(copied.length,2);
+    assert.equal(copied.find(t=>t.role==='抽獎組').headcount,2);
+    assert.equal(copied.find(t=>t.role==='主持').headcount,null);
+    // 原本那一輪的任務原封不動，複製是新增不是搬移。
+    assert.equal(h.ctrl.state.data.tasks.filter(t=>t.segment_id==='b').length,2);
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
+test('Issue #112：純排序、改長度、或改名還在同一基底，都不觸發複製任務', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(f);return {};}};
+  try {
+    const h=perfHarness({
+      segments:[{segment_id:'a',title:'抽獎(二)',duration_min:5,order:20},{segment_id:'b',title:'抽獎（一）',duration_min:6,order:10}],
+      tasks:[{segment_id:'b',角色:'x',任務內容:'y',需求人數:1}]
+    });
+    h.fields[1].value='7';h.fields[1].handlers.input({target:h.fields[1]}); // 只改長度，不改名
+    await h.click('save-draft');
+    assert.equal(sent.some(s=>s.action==='save_rundown_order'),true,'確認存檔真的有送出，不是根本沒觸發寫入');
+    assert.equal(sent.filter(s=>s.action==='save_rundown_task').length,0,'純改長度不算加入新一輪');
+  } finally {global.PlanningCore=PlanningCore;}
+});
+
 test('#106 改名離開同名組後移除單段編號；單改長度不重編', async () => {
   const sent=[];global.PlanningCore={apiWrite:async f=>{sent.push(JSON.parse(f.data));return {};}};
   try {
