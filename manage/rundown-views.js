@@ -72,6 +72,7 @@
   const MODES = [
     { id: 'edit', label: '編輯流程' },
     { id: 'assign', label: '排人' },
+    { id: 'staffing', label: '人力配置' },
     { id: 'print', label: '列印版本' }
   ];
 
@@ -505,6 +506,7 @@
     function body() {
       if (state.mode === 'edit') return editView();
       if (state.mode === 'assign') return assignView();
+      if (state.mode === 'staffing') return staffingView();
       return printView();
     }
 
@@ -715,6 +717,40 @@
         '<div class="rd-assign-grid">' + crewCol + '<div class="rd-roles">' + (roleCards || '<p class="rd-empty">先到「編輯流程」新增角色。</p>') + '</div></div>' +
         preview +
       '</div>';
+    }
+
+    // -- 人力配置（Issue 112）----------------------------------------------
+    // 首頁 row card 徽章是這裡的投影，兩邊都讀寫同一份 rundown_task。編輯需求
+    // 人數是就地送單一 save_rundown_task；因為那個 action 是整列覆寫（沒有
+    // task_id 就新增、有的話整列取代，不是欄位級 patch），所以送出時要帶上該
+    // 任務原本的角色／任務內容／對象，只換需求人數，不能只送變動欄位。
+    function staffingView() {
+      const d = state.data;
+      const readOnly = state.source !== 'backend';
+      const peak = core().peakHeadcount(d);
+      const segments = [...d.segments].sort((a, b) => a.order - b.order);
+
+      const summary = '<div class="rd-staffing-summary">' + (peak.peak > 0
+        ? '<strong>全場尖峰 <span class="rd-headcount-badge">' + peak.peak + ' 人</span></strong>' +
+          '<span class="rd-muted">最吃人時段：' + peak.segments.map(s => esc(s.title)).join('、') + '</span>'
+        : '<span class="rd-muted">還沒有任何時段填過需求人數。</span>') + '</div>';
+
+      const rows = segments.map(seg => {
+        const tasks = d.tasks.filter(t => t.segment_id === seg.segment_id);
+        const total = core().segmentHeadcountTotal(d.tasks, seg.segment_id);
+        return '<section class="rd-staffing-segment" data-seg="' + esc(seg.segment_id) + '">' +
+          '<h4>' + esc(seg.stage) + ' · ' + esc(seg.title) + (total > 0 ? ' <span class="rd-headcount-badge">' + total + ' 人</span>' : '') + '</h4>' +
+          (tasks.length ? '<ul class="rd-staffing-tasks">' + tasks.map(t =>
+            '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) + '</span>' +
+            '<span class="rd-task-content">' + esc(t.content) + '</span>' +
+            '<label class="rd-sr-only" for="hc-' + esc(t.task_id) + '">需求人數</label>' +
+            '<input id="hc-' + esc(t.task_id) + '" class="rd-in rd-in-num" type="number" min="0" step="1" placeholder="—" ' +
+              'data-staff-headcount="' + esc(t.task_id) + '" value="' + (Number.isFinite(t.headcount) ? t.headcount : '') + '"' + (readOnly ? ' disabled' : '') + '>' +
+            '</li>').join('') + '</ul>' : '<p class="rd-empty">這個時段還沒有任務，先到「編輯流程」加任務。</p>') +
+        '</section>';
+      }).join('');
+
+      return '<div class="rd-staffing">' + summary + (rows || '<p class="rd-empty">還沒有時段。</p>') + '</div>';
     }
 
     // -- 列印版本 ---------------------------------------------------------
@@ -1101,6 +1137,17 @@
       on('[data-action="del-task"]', 'click', event => {
         const li = event.target.closest('[data-task]');
         uiWrite({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務', {}, '[data-seg="' + li.closest('[data-seg]').dataset.seg + '"] [data-task-details]');
+      });
+      // 人力配置分頁：就地改需求人數。save_rundown_task 是整列覆寫，所以要把
+      // 這個任務原本的角色／任務內容／對象一起送出，只換需求人數。
+      on('[data-staff-headcount]', 'change', event => {
+        const el = event.currentTarget, taskId = el.dataset.staffHeadcount;
+        const task = state.data.tasks.find(t => t.task_id === taskId);
+        if (!task) return;
+        uiWrite({
+          action: 'save_rundown_task', task_id: taskId, segment_id: task.segment_id,
+          '角色': task.role, '任務內容': task.content, '對象': task.audience, '需求人數': el.value.trim()
+        }, '需求人數已更新', {}, '[data-task="' + taskId + '"]');
       });
 
       // 獎項：點標籤直接連結／取消連結，不用打 prize_id

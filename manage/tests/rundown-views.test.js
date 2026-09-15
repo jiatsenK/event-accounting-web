@@ -367,6 +367,7 @@ function redesignHarness() {
   host.querySelector=selector=>selector==='.rd-segments'?element('segments'):element(selector);
   host.querySelectorAll=selector=>{
     if(selector==='[data-stage]')return [element('stage',{stage:'彩排'})];
+    if(selector==='[data-staff-headcount]')return [element('staffHeadcount',{staffHeadcount:'t'})];
     if(selector.startsWith('[data-action='))return [element(selector)];
     return [];
   };
@@ -559,6 +560,42 @@ test('Issue #112：時段需求人數 > 0 才顯示徽章，任務清單顯示�
   h.ctrl.render();
   assert.match(h.host.innerHTML,/rd-headcount-badge"[^>]*>人 3</);
   assert.match(h.host.innerHTML,/rd-task-headcount">3 人/);
+});
+
+test('Issue #112：人力配置分頁列出時段＋任務，顯示全場尖峰', () => {
+  const h=redesignHarness();
+  h.ctrl.state.data.tasks[0].headcount=4;
+  h.ctrl.state.mode='staffing';h.ctrl.render();
+  const html=h.host.innerHTML;
+  assert.match(html,/rd-staffing-summary/);
+  assert.match(html,/全場尖峰 <span class="rd-headcount-badge">4 人<\/span>/);
+  assert.match(html,/最吃人時段：迎賓/);
+  assert.match(html,/data-staff-headcount="t" value="4"/);
+  assert.match(html,/data-seg="b"[\s\S]*這個時段還沒有任務/);
+});
+
+test('Issue #112：人力配置分頁沒有任何時段填過人數時，尖峰顯示提示而非數字', () => {
+  const h=redesignHarness();
+  h.ctrl.state.mode='staffing';h.ctrl.render();
+  assert.match(h.host.innerHTML,/還沒有任何時段填過需求人數/);
+  assert.doesNotMatch(h.host.innerHTML,/全場尖峰/);
+});
+
+test('Issue #112：人力配置分頁改需求人數，整列（含角色/任務內容/對象）一起送出，不是只送變動欄位', async () => {
+  const sent=[];global.PlanningCore={apiWrite:async fields=>{sent.push(fields);return {task_id:'t'};}};
+  try {
+    const h=redesignHarness();
+    h.ctrl.state.mode='staffing';h.ctrl.render();
+    const input=h.element('staffHeadcount');input.value='5';
+    await input.handlers.change({currentTarget:input});
+    assert.equal(sent.length,1);
+    assert.equal(sent[0].action,'save_rundown_task');
+    assert.equal(sent[0].task_id,'t');
+    assert.equal(sent[0].segment_id,'a');
+    assert.equal(sent[0]['角色'],'主持');
+    assert.equal(sent[0]['任務內容'],'引導來賓');
+    assert.equal(sent[0]['需求人數'],'5');
+  } finally {global.PlanningCore=PlanningCore;}
 });
 
 test('#107 時間欄不套用長度欄的窄寬與分鐘單位', () => {
