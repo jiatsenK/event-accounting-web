@@ -103,6 +103,14 @@
 .rd-task-add select, .rd-task-add input { min-height: 2.5rem; padding: 0 var(--space-sm); border: 1px solid var(--rd-line); border-radius: var(--radius-input); background: var(--color-surface); }
 .rd-task-add input { flex: 1; min-width: 8rem; }
 
+/* ---- staffing（Issue 112：人力配置）---- */
+.rd-staffing-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); margin: 0 0 var(--space-md); padding: var(--space-md); background: var(--color-surface); border-radius: var(--radius-card); box-shadow: var(--rd-shadow); }
+.rd-staffing-segment { margin: 0 0 var(--space-sm); padding: var(--space-sm) var(--space-md); background: var(--color-surface); border-radius: var(--radius-card); box-shadow: var(--rd-shadow); }
+.rd-staffing-segment h4 { margin: 0 0 var(--space-xs); display: flex; align-items: center; gap: var(--space-2xs); font-size: var(--text-sm); font-weight: 640; }
+.rd-staffing-tasks { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2xs); }
+.rd-staffing-tasks li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--text-sm); }
+.rd-staffing-tasks input[data-staff-headcount] { width: 4.5rem; min-height: 2.25rem; padding: 0 var(--space-xs); border: 1px solid var(--rd-line); border-radius: var(--radius-input); background: var(--color-surface); text-align: right; }
+
 /* ---- assign / drag ---- */
 .rd-assign-grid { display: grid; grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr); gap: var(--space-md); }
 .rd-crew { align-self: start; padding: var(--space-lg); background: var(--color-surface); border-radius: var(--radius-card); box-shadow: var(--rd-shadow); }
@@ -360,6 +368,9 @@
 .rd-segment-main > .rd-stage-toggle { flex: 0 0 auto; padding: 0; }
 .rundown .rd-segment-main .rd-stage-toggle button { font-size: .7rem; }
 .rundown .rd-segment-main > .rd-detail-preview { flex: 1 1 8rem; overflow: hidden; text-overflow: ellipsis; text-align: left; color: var(--color-muted); background: transparent; border-color: transparent; }
+/* Issue 112：時段需求人數徽章，取代原本 row 上的階段 toggle（已收進 ⋯ 選單）。 */
+.rd-headcount-badge { flex: 0 0 auto; padding: var(--space-3xs) var(--space-2xs); font-size: var(--text-xs); font-weight: 700; border-radius: 999px; background: var(--rd-soft); color: var(--color-accent); border-color: transparent; }
+.rd-task-headcount { font-weight: 700; }
 .rd-segment-card .rd-segment-menu, .rd-segment-card > [data-task-details] { margin: 0; }
 .rundown [data-task-details] > summary.rd-sr-only { min-height: 0; min-width: 0; padding: 0; }
 .rd-segment-drawer { padding: .5rem 1.8rem; border-top: 1px solid var(--rd-line); }

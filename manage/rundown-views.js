@@ -72,6 +72,7 @@
   const MODES = [
     { id: 'edit', label: '編輯流程' },
     { id: 'assign', label: '排人' },
+    { id: 'staffing', label: '人力配置' },
     { id: 'print', label: '列印版本' }
   ];
 
@@ -505,6 +506,7 @@
     function body() {
       if (state.mode === 'edit') return editView();
       if (state.mode === 'assign') return assignView();
+      if (state.mode === 'staffing') return staffingView();
       return printView();
     }
 
@@ -555,8 +557,10 @@
           '<label><span class="rd-sr-only">長度（分）</span><input class="rd-in rd-in-num rd-in-duration" data-inline readonly data-field="duration_min" value="' + esc(seg.duration_min || '') + '" placeholder="' + esc(seg.effective_duration_min || '—') + '" title="未填時依相鄰開始時間計算" inputmode="numeric"' + dis + '></label>' +
 
           '<button type="button" class="rd-detail-preview" data-action="toggle-details" aria-expanded="' + state.expandedSegments.has(seg.segment_id) + '" aria-label="展開或收合獎項與任務">' + esc([core().segmentPrizes(seg, prizeIndex).map(p => '獎 ' + core().prizeLabel(p)).join('；'), d.tasks.some(t => t.segment_id === seg.segment_id) ? '任務 ' + d.tasks.filter(t => t.segment_id === seg.segment_id).length : ''].filter(Boolean).join(' · ') || '＋ 任務') + '</button>' +
-          '<button type="button" class="rd-stage-toggle" data-stage="' + (seg.stage === '彩排' ? '正式' : '彩排') + '" aria-label="目前' + esc(seg.stage) + '，切換為' + (seg.stage === '彩排' ? '正式' : '彩排') + '"' + dis + '>' + esc(seg.stage) + '</button>' +
-          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel"><button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
+          (core().segmentHeadcountTotal(d.tasks, seg.segment_id) > 0 ? '<button type="button" class="rd-headcount-badge" data-action="toggle-details" aria-label="需求人數 ' + core().segmentHeadcountTotal(d.tasks, seg.segment_id) + ' 人，點開任務">人 ' + core().segmentHeadcountTotal(d.tasks, seg.segment_id) + '</button>' : '') +
+          (readOnly ? '' : '<details class="rd-menu rd-segment-menu"><summary aria-label="時段更多操作">' + icon('more') + '</summary><div class="rd-menu-panel">' +
+            '<button type="button" class="rd-stage-toggle" data-stage="' + (seg.stage === '彩排' ? '正式' : '彩排') + '" aria-label="目前' + esc(seg.stage) + '，切換為' + (seg.stage === '彩排' ? '正式' : '彩排') + '"' + dis + '>切換為' + esc(seg.stage === '彩排' ? '正式' : '彩排') + '</button>' +
+            '<button type="button" data-action="new-prize">＋ 這段有頒獎</button><button type="button" data-action="toggle-details">獎項與任務明細</button><button type="button" class="rd-danger" data-action="del-seg">刪除時段</button></div></details>') + '</div>' +
           '<details data-task-details' + (state.expandedSegments.has(seg.segment_id) ? ' open' : '') + '><summary class="rd-sr-only">' + icon('chevron') + '獎項與任務（' + d.tasks.filter(t => t.segment_id === seg.segment_id).length + '）</summary>' +
           '<div class="rd-segment-drawer"><div class="rd-prize-cell">' + prizeCellHtml(seg, readOnly) + '</div>' + taskContent(seg.segment_id) + '</div></details></article>';
       const segmentRows = ['彩排', '正式'].map(stage => {
@@ -617,6 +621,7 @@
         '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) +
         '<span class="rd-muted">（' + esc((people.get(t.role) || []).join('、') || '未排人') + '）</span></span> · ' +
         '<span class="rd-task-content">' + esc(t.content) + '</span> · <span class="rd-task-aud">' + esc(t.audience) + '</span>' +
+        (Number.isFinite(t.headcount) ? ' · <span class="rd-task-headcount">' + t.headcount + ' 人</span>' : '') +
         (readOnly ? '' : '<button type="button" class="rd-icon rd-danger" data-action="del-task" aria-label="刪除任務">' + icon('close') + '</button>') + '</li>').join('') + '</ul>' : '';
       const draft = state.taskDraft;
       const adding = draft && draft.segmentId === segmentId;
@@ -624,6 +629,7 @@
       return (rows || '<p class="rd-empty">尚無任務</p>') + (readOnly ? '' : adding ?
         '<form class="rd-task-add" data-task-form><label>角色<select data-new="角色">' + roles.map(r => '<option value="' + esc(r) + '"' + (r === draft.role ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>' +
         '<label>任務內容<input data-new="任務內容" required value="' + esc(draft.content) + '"></label>' +
+        '<label>需求人數<input type="number" min="0" step="1" data-new="需求人數" value="' + esc(draft.headcount) + '" placeholder="可留空"></label>' +
         '<div class="rd-audience" role="group" aria-label="列印對象"><span>列印對象</span><input type="hidden" data-new="對象" value="' + esc(draft.audience) + '">' + core().AUDIENCES.map(a => '<button type="button" data-audience="' + esc(a) + '" aria-pressed="' + (a === draft.audience) + '">' + esc(a) + '</button>').join('') + '</div>' +
         '<button type="submit">儲存任務</button><button type="button" data-action="cancel-task">取消</button></form>' :
         roles.length ? '<button type="button" data-action="open-task">＋ 加任務</button>' : '<p class="rd-hint">先從「⋯ → 管理角色」新增角色，才能新增任務。</p>');
@@ -711,6 +717,40 @@
         '<div class="rd-assign-grid">' + crewCol + '<div class="rd-roles">' + (roleCards || '<p class="rd-empty">先到「編輯流程」新增角色。</p>') + '</div></div>' +
         preview +
       '</div>';
+    }
+
+    // -- 人力配置（Issue 112）----------------------------------------------
+    // 首頁 row card 徽章是這裡的投影，兩邊都讀寫同一份 rundown_task。編輯需求
+    // 人數是就地送單一 save_rundown_task；因為那個 action 是整列覆寫（沒有
+    // task_id 就新增、有的話整列取代，不是欄位級 patch），所以送出時要帶上該
+    // 任務原本的角色／任務內容／對象，只換需求人數，不能只送變動欄位。
+    function staffingView() {
+      const d = state.data;
+      const readOnly = state.source !== 'backend';
+      const peak = core().peakHeadcount(d);
+      const segments = [...d.segments].sort((a, b) => a.order - b.order);
+
+      const summary = '<div class="rd-staffing-summary">' + (peak.peak > 0
+        ? '<strong>全場尖峰 <span class="rd-headcount-badge">' + peak.peak + ' 人</span></strong>' +
+          '<span class="rd-muted">最吃人時段：' + peak.segments.map(s => esc(s.title)).join('、') + '</span>'
+        : '<span class="rd-muted">還沒有任何時段填過需求人數。</span>') + '</div>';
+
+      const rows = segments.map(seg => {
+        const tasks = d.tasks.filter(t => t.segment_id === seg.segment_id);
+        const total = core().segmentHeadcountTotal(d.tasks, seg.segment_id);
+        return '<section class="rd-staffing-segment" data-seg="' + esc(seg.segment_id) + '">' +
+          '<h4>' + esc(seg.stage) + ' · ' + esc(seg.title) + (total > 0 ? ' <span class="rd-headcount-badge">' + total + ' 人</span>' : '') + '</h4>' +
+          (tasks.length ? '<ul class="rd-staffing-tasks">' + tasks.map(t =>
+            '<li data-task="' + esc(t.task_id) + '"><span class="rd-task-role">' + esc(t.role) + '</span>' +
+            '<span class="rd-task-content">' + esc(t.content) + '</span>' +
+            '<label class="rd-sr-only" for="hc-' + esc(t.task_id) + '">需求人數</label>' +
+            '<input id="hc-' + esc(t.task_id) + '" class="rd-in rd-in-num" type="number" min="0" step="1" placeholder="—" ' +
+              'data-staff-headcount="' + esc(t.task_id) + '" value="' + (Number.isFinite(t.headcount) ? t.headcount : '') + '"' + (readOnly ? ' disabled' : '') + '>' +
+            '</li>').join('') + '</ul>' : '<p class="rd-empty">這個時段還沒有任務，先到「編輯流程」加任務。</p>') +
+        '</section>';
+      }).join('');
+
+      return '<div class="rd-staffing">' + summary + (rows || '<p class="rd-empty">還沒有時段。</p>') + '</div>';
     }
 
     // -- 列印版本 ---------------------------------------------------------
@@ -884,7 +924,7 @@
       on('[data-action="open-task"]', 'click', event => {
         const segmentId = event.currentTarget.closest('[data-seg]').dataset.seg;
         if (!state.taskDraft || state.taskDraft.segmentId !== segmentId) {
-          state.taskDraft = { segmentId, role: state.taskView === 'role' ? state.selectedRole : taskRoles()[0], content: '', audience: core().AUDIENCES[0] };
+          state.taskDraft = { segmentId, role: state.taskView === 'role' ? state.selectedRole : taskRoles()[0], content: '', headcount: '', audience: core().AUDIENCES[0] };
         }
         state.expandedSegments.add(segmentId);
         render();
@@ -900,7 +940,7 @@
       });
       on('[data-action="cancel-task"]', 'click', () => { state.taskDraft = null; render(); });
       on('[data-task-form] [data-new]', 'input', event => {
-        const keys = { 角色: 'role', 任務內容: 'content', 對象: 'audience' };
+        const keys = { 角色: 'role', 任務內容: 'content', 需求人數: 'headcount', 對象: 'audience' };
         if (state.taskDraft) state.taskDraft[keys[event.currentTarget.dataset.new]] = event.currentTarget.value;
       });
 
@@ -1019,7 +1059,7 @@
             const toggle = row.querySelector('[data-stage]');
             if (toggle) {
               toggle.dataset.stage = seg.stage === '彩排' ? '正式' : '彩排';
-              toggle.textContent = seg.stage;
+              toggle.textContent = '切換為' + toggle.dataset.stage;
               toggle.setAttribute('aria-label', '目前' + seg.stage + '，切換為' + toggle.dataset.stage);
             }
           }
@@ -1097,6 +1137,17 @@
       on('[data-action="del-task"]', 'click', event => {
         const li = event.target.closest('[data-task]');
         uiWrite({ action: 'save_rundown_task', task_id: li.dataset.task, _delete: '1' }, '已刪除任務', {}, '[data-seg="' + li.closest('[data-seg]').dataset.seg + '"] [data-task-details]');
+      });
+      // 人力配置分頁：就地改需求人數。save_rundown_task 是整列覆寫，所以要把
+      // 這個任務原本的角色／任務內容／對象一起送出，只換需求人數。
+      on('[data-staff-headcount]', 'change', event => {
+        const el = event.currentTarget, taskId = el.dataset.staffHeadcount;
+        const task = state.data.tasks.find(t => t.task_id === taskId);
+        if (!task) return;
+        uiWrite({
+          action: 'save_rundown_task', task_id: taskId, segment_id: task.segment_id,
+          '角色': task.role, '任務內容': task.content, '對象': task.audience, '需求人數': el.value.trim()
+        }, '需求人數已更新', {}, '[data-task="' + taskId + '"]');
       });
 
       // 獎項：點標籤直接連結／取消連結，不用打 prize_id
@@ -1307,6 +1358,34 @@
       setMessage('順序已調整，尚未儲存', false); render();
     }
 
+    // Issue 112：新加入一輪重複環節時，把排在它前面那一段（同基底、順序最接近
+    // 且較小）的任務複製過來（新 task_id，個別可再改或刪）。單一任務複製失敗
+    // 不回滾已經存成功的時段本身，只是那一輪要手動補任務。
+    async function copyPreviousRoundTasks(joinedSegmentIds) {
+      for (const segId of joinedSegmentIds) {
+        const seg = state.data.segments.find(s => s.segment_id === segId);
+        if (!seg) continue;
+        const base = baseTitle(seg.title);
+        const group = state.data.segments.filter(s => s.segment_id !== segId && baseTitle(s.title) === base);
+        const previous = group.filter(s => s.order < seg.order).sort((a, b) => b.order - a.order)[0];
+        if (!previous) continue;
+        for (const t of state.data.tasks.filter(t => t.segment_id === previous.segment_id)) {
+          try {
+            const result = await planning().apiWrite({
+              action: 'save_rundown_task', activity_id: state.activityId, segment_id: segId,
+              '角色': t.role, '任務內容': t.content, '對象': t.audience,
+              '需求人數': Number.isFinite(t.headcount) ? String(t.headcount) : ''
+            }, { receipt: true });
+            if (result && result.task_id) {
+              state.data.tasks.push(core().normalize({ tasks: [{
+                task_id: result.task_id, segment_id: segId, '角色': t.role, '任務內容': t.content, '對象': t.audience, '需求人數': t.headcount
+              }] }).tasks[0]);
+            }
+          } catch (err) { /* 忽略：這一段少複製到的任務，使用者到編輯流程手動補 */ }
+        }
+      }
+    }
+
     async function saveDraft() {
       if (state.busy || !state.dirty || state.source !== 'backend') return false;
       const before = new Map(state.savedData.segments.map(s => [s.segment_id, s]));
@@ -1332,6 +1411,20 @@
         bases.add(baseTitle(e['節目內容']));
       });
       const titles = numberedTitles(state.data.segments, bases);
+      // Issue 112：偵測「這次存檔讓某個時段第一次掛進一個 >1 人的同基底編號
+      // 群組」（改名跨出原本的基底，落進新基底且新基底底下不只自己一段）——
+      // 這種情況視為新增一輪重複環節，存檔成功後要從同群組裡排序在它前面
+      // 那一段複製任務過來（角色／任務內容／對象／需求人數），使用者可再個
+      // 別覆寫。純排序、改長度、或改名但還在同一基底，都不算「新加入」。
+      const joinedSegmentIds = edits
+        .filter(e => e['節目內容'] != null)
+        .filter(e => {
+          const oldBase = baseTitle(before.get(e.segment_id).title);
+          const newBase = baseTitle(e['節目內容']);
+          if (oldBase === newBase) return false;
+          return state.data.segments.filter(s => baseTitle(titles.get(s.segment_id) || s.title) === newBase).length > 1;
+        })
+        .map(e => e.segment_id);
       titles.forEach((title, id) => {
         let edit = edits.find(e => e.segment_id === id);
         if (title !== before.get(id).title) {
@@ -1352,6 +1445,7 @@
       try {
         await planning().apiWrite({ action: 'save_rundown_order', activity_id: state.activityId, data: JSON.stringify(data) }, { receipt: true });
         state.data.segments.forEach(s => { s.title = titles.get(s.segment_id) || s.title.trim(); });
+        if (joinedSegmentIds.length) await copyPreviousRoundTasks(joinedSegmentIds);
         state.dirty = false; rememberSaved();
         setMessage('已儲存', false); return true;
       } catch (err) {
