@@ -68,7 +68,7 @@
     });
 
     function token() {
-      return win.sessionStorage.getItem(tokenStorageKey) || '';
+      return win.localStorage.getItem(tokenStorageKey) || '';
     }
 
     function setStatus(message, error) {
@@ -154,7 +154,7 @@
         setStatus('');
       } catch (error) {
         if (error && error.message === '無權限') {
-          win.sessionStorage.removeItem(tokenStorageKey);
+          win.localStorage.removeItem(tokenStorageKey);
           configPanel.hidden = false;
           useFallback('存取碼不正確；入口仍可使用，請重新輸入。');
         } else {
@@ -166,7 +166,7 @@
     saveConfig.addEventListener('click', () => {
       const value = tokenInput.value.trim();
       if (!value) return;
-      win.sessionStorage.setItem(tokenStorageKey, value);
+      win.localStorage.setItem(tokenStorageKey, value);
       tokenInput.value = '';
       configPanel.hidden = true;
       loadActivities();

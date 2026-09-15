@@ -18,7 +18,7 @@ const $ = (sel) => document.querySelector(sel);
 function loadConfig() {
   const params = new URLSearchParams(location.search);
   state.activityId = params.get('activity_id') || 'midyear2026';
-  state.token = sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
+  state.token = localStorage.getItem(TOKEN_STORAGE_KEY) || '';
   const configured = Boolean(state.token);
   $('#configPanel').hidden = configured;
   $('#appContent').hidden = !configured;
@@ -29,7 +29,7 @@ function saveConfig() {
   const token = $('#tokenInput').value.trim();
   if (!token) return;
   state.token = token;
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
   $('#tokenInput').value = '';
   $('#configPanel').hidden = true;
   $('#appContent').hidden = false;
@@ -38,7 +38,7 @@ function saveConfig() {
 
 function requestToken(message) {
   state.token = '';
-  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
   $('#configPanel').hidden = false;
   $('#appContent').hidden = true;
   const note = $('#configPanel .config-note');

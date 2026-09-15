@@ -70,7 +70,7 @@
       const win = root && root.window === root ? root : null;
       const doc = win && win.document;
       if (!win || !doc) return reject(new Error('JSONP 只能在瀏覽器中使用'));
-      const accessToken = win.sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
+      const accessToken = win.localStorage.getItem(TOKEN_STORAGE_KEY) || '';
       if (!accessToken) return reject(new Error('尚未輸入存取碼'));
       const callback = '__planning_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       const script = doc.createElement('script');
@@ -124,7 +124,7 @@
 
   function getCachedRundown(activityId) {
     try {
-      if (!root.sessionStorage.getItem(TOKEN_STORAGE_KEY)) return null;
+      if (!root.localStorage.getItem(TOKEN_STORAGE_KEY)) return null;
       const cached = JSON.parse(root.sessionStorage.getItem(rundownCacheKey(activityId)) || 'null');
       if (!cached || cached.activity_id !== String(activityId) || !Array.isArray(cached.segments)) return null;
       if (['segments', 'roles', 'tasks', 'crew', 'assignments', 'prizes'].some(key => cached[key] != null &&
@@ -153,7 +153,7 @@
       const win = root && root.window === root ? root : null;
       const doc = win && win.document;
       if (!win || !doc) return reject(new Error('寫入只能在瀏覽器中使用'));
-      const accessToken = win.sessionStorage.getItem(TOKEN_STORAGE_KEY) || '';
+      const accessToken = win.localStorage.getItem(TOKEN_STORAGE_KEY) || '';
       if (!accessToken) return reject(new Error('尚未輸入存取碼'));
       const nonce = 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const iframeName = 'gas-write-' + nonce;
