@@ -79,7 +79,10 @@
       segment_id: str(row.segment_id),
       role: str(row['角色'] || row.role),
       content: str(row['任務內容'] || row.content),
-      audience: normalizeAudience(row['對象'] || row.audience)
+      audience: normalizeAudience(row['對象'] || row.audience),
+      // Issue #112：null＝未填，跟填 0 是兩回事——未填的任務不計入時段加總／
+      // 全場尖峰，見 headcountTotal()／peakHeadcount()。
+      headcount: num(row['需求人數'] != null ? row['需求人數'] : row.headcount)
     })).filter(row => row.segment_id && row.role);
 
     const assignments = (data.assignments || []).map(row => ({
@@ -276,6 +279,38 @@
       map.get(task.segment_id).push(task);
     });
     return map;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Issue #112：人力配置——需求人數的時段加總與全場尖峰。
+  // 未填需求人數（headcount === null）的任務整個排除在加總外，不當 0；
+  // 這是規劃期工具，缺資料不特別標記（跟 #14 歷史分析儀表板的資料完整度
+  // 標記是不同性質的兩件事，這裡刻意不比照）。
+  // ---------------------------------------------------------------------------
+
+  function segmentHeadcountTotal(tasks, segmentId) {
+    return (tasks || [])
+      .filter(t => t.segment_id === segmentId && Number.isFinite(t.headcount))
+      .reduce((sum, t) => sum + t.headcount, 0);
+  }
+
+  // 每個時段的需求人數加總，依 segments 原順序回傳。
+  function segmentHeadcounts(data) {
+    return (data.segments || []).map(seg => ({
+      segment_id: seg.segment_id,
+      title: seg.title,
+      stage: seg.stage,
+      total: segmentHeadcountTotal(data.tasks, seg.segment_id)
+    }));
+  }
+
+  // 全場尖峰＝彩排＋正式合併，不分階段各算各的——擁有者確認同一天、同一批
+  // 人力，兩階段會互相競用。取所有時段加總的最大值；0（沒有任何時段填過
+  // 需求人數）時不指出「最吃人時段」。同分時全部列出，不是只挑第一個。
+  function peakHeadcount(data) {
+    const totals = segmentHeadcounts(data);
+    const peak = totals.reduce((max, row) => Math.max(max, row.total), 0);
+    return { peak, segments: peak > 0 ? totals.filter(row => row.total === peak) : [] };
   }
 
   // 總控版：完整 rundown，彩排段／正式段分區
@@ -614,6 +649,9 @@
     assigneesByRole,
     unassignedRoles,
     rolesForPerson,
+    segmentHeadcountTotal,
+    segmentHeadcounts,
+    peakHeadcount,
     projectControl,
     projectCrew,
     projectVenue,

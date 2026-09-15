@@ -141,6 +141,68 @@ test('時間格式化只在顯示層標示跨日', () => {
   assert.equal(core.formatTimeRange(null, null), '');
 });
 
+test('normalize：需求人數留空是 null，跟填 0 不同', () => {
+  const data = core.normalize({
+    tasks: [
+      { segment_id: 'a', 角色: '音控', 任務內容: '控台', 需求人數: 2 },
+      { segment_id: 'a', 角色: '報到', 任務內容: '沒填人數' },
+      { segment_id: 'a', 角色: '攝影', 任務內容: '填 0', 需求人數: 0 }
+    ]
+  });
+  assert.equal(data.tasks[0].headcount, 2);
+  assert.equal(data.tasks[1].headcount, null);
+  assert.equal(data.tasks[2].headcount, 0);
+});
+
+test('segmentHeadcountTotal／segmentHeadcounts：只加已填的任務，未填整個排除不當 0', () => {
+  const data = core.normalize({
+    segments: [{ segment_id: 's1', 順序: 1, 節目內容: '時段一' }, { segment_id: 's2', 順序: 2, 節目內容: '時段二' }],
+    tasks: [
+      { segment_id: 's1', 角色: 'a', 任務內容: 'x', 需求人數: 2 },
+      { segment_id: 's1', 角色: 'b', 任務內容: 'y', 需求人數: 3 },
+      { segment_id: 's1', 角色: 'c', 任務內容: 'z' }, // 沒填，不計入
+      { segment_id: 's2', 角色: 'a', 任務內容: 'w' }  // 整段都沒填
+    ]
+  });
+  assert.equal(core.segmentHeadcountTotal(data.tasks, 's1'), 5);
+  assert.equal(core.segmentHeadcountTotal(data.tasks, 's2'), 0);
+  assert.deepEqual(core.segmentHeadcounts(data).map(row => [row.segment_id, row.total]), [['s1', 5], ['s2', 0]]);
+});
+
+test('peakHeadcount：彩排＋正式合併取最大值，不分階段各算各的', () => {
+  const data = core.normalize({
+    segments: [
+      { segment_id: 'r1', 順序: 1, 節目內容: '彩排段', 階段: '彩排' },
+      { segment_id: 'o1', 順序: 2, 節目內容: '正式段一', 階段: '正式' },
+      { segment_id: 'o2', 順序: 3, 節目內容: '正式段二', 階段: '正式' }
+    ],
+    tasks: [
+      { segment_id: 'r1', 角色: 'a', 任務內容: 'x', 需求人數: 10 }, // 彩排比正式任何一段都多人
+      { segment_id: 'o1', 角色: 'a', 任務內容: 'y', 需求人數: 4 },
+      { segment_id: 'o2', 角色: 'a', 任務內容: 'z', 需求人數: 6 }
+    ]
+  });
+  const result = core.peakHeadcount(data);
+  assert.equal(result.peak, 10);
+  assert.deepEqual(result.segments.map(s => s.segment_id), ['r1']);
+});
+
+test('peakHeadcount：同分時段全部列出；完全沒填時尖峰是 0、不指出時段', () => {
+  const tied = core.normalize({
+    segments: [{ segment_id: 'a', 順序: 1, 節目內容: 'A' }, { segment_id: 'b', 順序: 2, 節目內容: 'B' }],
+    tasks: [
+      { segment_id: 'a', 角色: 'x', 任務內容: '1', 需求人數: 5 },
+      { segment_id: 'b', 角色: 'x', 任務內容: '2', 需求人數: 5 }
+    ]
+  });
+  assert.deepEqual(core.peakHeadcount(tied).segments.map(s => s.segment_id), ['a', 'b']);
+
+  const empty = core.normalize({ segments: [{ segment_id: 'a', 順序: 1, 節目內容: 'A' }], tasks: [] });
+  const emptyResult = core.peakHeadcount(empty);
+  assert.equal(emptyResult.peak, 0);
+  assert.deepEqual(emptyResult.segments, []);
+});
+
 test('晚綁定：未指派角色列在 unassignedRoles，不從投影消失', () => {
   const data = core.normalize({
     roles: [{ 角色: '音控' }, { 角色: '攝影' }],
