@@ -119,6 +119,24 @@
     }
   }
 
+  // Issue #15：品項拆分（結算明細）由 ChatGPT 的 payment-registration skill 直接讀寫
+  // Google 試算表，平台只負責顯示，不提供輸入/比對介面。
+  function settlementSummary(row) {
+    const rows = row.structured_settlement && Array.isArray(row.structured_settlement.rows)
+      ? row.structured_settlement.rows : [];
+    return rows.length ? rows : null;
+  }
+
+  function settlementDetailRow(id, rows) {
+    const items = rows.map(item =>
+      `<tr><td>${escapeHtml(item.item)}</td><td class="num">${money(item.unitPrice)}</td>` +
+      `<td class="num">${escapeHtml(String(item.quantity))}</td><td class="num">${money(item.amount)}</td></tr>`
+    ).join('');
+    return `<tr class="settlement-detail-row" data-settlement-detail="${id}" hidden><td colspan="10">` +
+      `<table class="settlement-detail-table"><thead><tr><th>品項</th><th class="num">單價</th><th class="num">數量</th><th class="num">金額</th></tr></thead>` +
+      `<tbody>${items}</tbody></table></td></tr>`;
+  }
+
   if (typeof window.renderInlineExpenseRows === 'function') {
     window.renderInlineExpenseRows = function issue17RenderInlineExpenseRows(expenses) {
       const rows = sortedExpenses(expenses);
@@ -135,11 +153,27 @@
         const statusCell = canStatusEdit
           ? `<td><button type="button" class="inline-value" data-inline-edit-expense="${id}" data-inline-edit-field="reimbursement_status">${escapeHtml(row.reimbursement_status || '—')}</button></td>`
           : `<td class="readonly-cell">${escapeHtml(row.reimbursement_status || '—')}</td>`;
-        return `<tr data-expense-id="${id}" data-payment-method="${escapeHtml(row.payment_method)}">${editableCell('date')}${editableCell('item')}${editableCell('category')}${editableCell('budget_item')}${editableCell('payment_method')}${editableCell('payer')}${statusCell}${editableCell('amount','num')}${editableCell('note')}<td></td></tr>`;
+        const settlementRows = settlementSummary(row);
+        const settlementCell = settlementRows
+          ? `<td><button type="button" class="settlement-toggle" data-settlement-toggle="${id}" aria-expanded="false">拆分×${settlementRows.length}</button></td>`
+          : '<td></td>';
+        const mainRow = `<tr data-expense-id="${id}" data-payment-method="${escapeHtml(row.payment_method)}">${editableCell('date')}${editableCell('item')}${editableCell('category')}${editableCell('budget_item')}${editableCell('payment_method')}${editableCell('payer')}${statusCell}${editableCell('amount','num')}${editableCell('note')}${settlementCell}</tr>`;
+        return settlementRows ? mainRow + settlementDetailRow(id, settlementRows) : mainRow;
       }).join('') : '<tr><td colspan="10" class="empty">目前沒有支出</td></tr>';
       if (typeof window.applyExpenseFilters === 'function') window.applyExpenseFilters();
     };
   }
+
+  document.querySelector('#expenseRows') && document.querySelector('#expenseRows').addEventListener('click', event => {
+    const toggle = event.target.closest('[data-settlement-toggle]');
+    if (!toggle) return;
+    const id = toggle.dataset.settlementToggle;
+    const detail = document.querySelector('[data-settlement-detail="' + CSS.escape(id) + '"]');
+    if (!detail) return;
+    const expanded = !detail.hidden;
+    detail.hidden = expanded;
+    toggle.setAttribute('aria-expanded', String(!expanded));
+  });
 
   if (typeof window.inlineExpenseEditor === 'function') {
     const originalInlineExpenseEditor = window.inlineExpenseEditor;
