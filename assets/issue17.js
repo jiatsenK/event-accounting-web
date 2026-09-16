@@ -1,6 +1,11 @@
 // Issue #17 frontend compatibility layer. Loaded after accounting-ui.js by the accounting mount.
 (function applyIssue17Compatibility() {
-  const reimbursementStatuses = ['待核銷', '已核銷', '已請款', '已支付'];
+  // 目前值域（待核銷／已核銷）來自後端 activity payload 的 reimbursement_statuses
+  // （Issue #124，不自己刻一份）；已請款／已支付是收窄前的舊資料，後端不再接受
+  // 新寫入，但既有列還可能是這兩個值，下拉選單要保留才能顯示/改回其他值。
+  function reimbursementStatusOptions() {
+    return (state.reimbursementStatuses || []).concat(['已請款', '已支付']);
+  }
 
   const oldFilters = document.querySelector('#activityStatusFilters');
   if (oldFilters) oldFilters.remove();
@@ -124,7 +129,7 @@
     window.inlineExpenseEditor = function issue17InlineExpenseEditor(field, expense) {
       if (field === 'reimbursement_status') {
         const current = String(expense.reimbursement_status || '');
-        return `<select class="inline-editor" data-inline-field="reimbursement_status">${reimbursementStatuses.map(value => `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select>`;
+        return `<select class="inline-editor" data-inline-field="reimbursement_status">${reimbursementStatusOptions().map(value => `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select>`;
       }
       return originalInlineExpenseEditor(field, expense);
     };

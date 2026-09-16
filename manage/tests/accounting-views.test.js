@@ -3,20 +3,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const views = require('../accounting-views.js');
 
-test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
+test('帳務掛載模板保留既有 panel，不再有廠商主檔／款項申請', () => {
   assert.match(views.template, /data-tab-panel="overview"/);
   assert.match(views.template, /data-tab-panel="expenses"/);
   assert.match(views.template, /data-tab-panel="budget"/);
   assert.match(views.template, /id="activityBudgetForm"/);
   assert.match(views.template, /id="advanceBudgetStatus"/);
   assert.match(views.template, /id="downloadBudgetProposal"/);
-  assert.match(views.template, /data-tab-panel="vendors"/);
-  assert.match(views.template, /id="vendorSearch"/);
-  assert.match(views.template, /id="vendorRows"/);
-  assert.match(views.template, /data-tab-panel="payment_requests"/);
-  assert.match(views.template, /id="paymentRequestForm"/);
-  assert.match(views.template, /id="paymentRequestRows"/);
+  assert.doesNotMatch(views.template, /data-tab-panel="vendors"/);
+  assert.doesNotMatch(views.template, /data-tab-panel="payment_requests"/);
   assert.match(views.template, /data-tab-panel="reimbursement"/);
+  assert.match(views.template, /id="expenseSection"/);
+  assert.match(views.template, /id="personalAdvanceSection" hidden/);
+  assert.match(views.template, /data-expense-view="expenses"/);
+  assert.match(views.template, /data-expense-view="advances"/);
   assert.doesNotMatch(views.template, /class="tabs"/);
   assert.doesNotMatch(views.template, /class="page-header"/);
 });
@@ -24,11 +24,11 @@ test('帳務掛載模板保留既有 panel 並加入廠商主檔', () => {
 test('帳務既有 scripts 由同一 mount 依序載入', () => {
   assert.deepEqual(views.scriptSources.map(item => item.key), [
     'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui',
-    'payment-request', 'payment-request-ui', 'accounting-issue17', 'accounting-settlement'
+    'accounting-issue17', 'accounting-settlement'
   ]);
   assert.equal(
     views.scriptSources.find(item => item.key === 'accounting-core').src,
-    '../assets/app-core.js?v=20260910-109'
+    '../assets/app-core.js?v=20260916-01'
   );
   assert.equal(views.cacheKey, 'accounting');
 });
