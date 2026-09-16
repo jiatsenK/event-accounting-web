@@ -10,4 +10,7 @@ assert.deepEqual(
   app.fallbackActivity('yearend2025'),
   { activity_id: 'yearend2025', name: '2025年度 忘年會' }
 );
+assert.equal(app.isHistoricalActivity({ status: '已結案' }), true);
+assert.equal(app.isHistoricalActivity({ status: '籌備中' }), false);
+assert.equal(app.isHistoricalActivity({}), false);
 console.log('activity-app tests PASS');

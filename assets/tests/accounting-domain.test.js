@@ -18,16 +18,21 @@ test('總覽摘要維持預算、支出、零用金與待核銷行為', () => {
   const summary = domain.summarizeDashboard(activity, expenses);
   assert.equal(summary.actualExpense, 5500);
   assert.equal(summary.budgetRemaining, 4500);
-  assert.equal(summary.pettyCashUsed, 1500);
-  assert.equal(summary.pettyCashRemaining, 1500);
+  // 只算支付方式=活動零用金（e2 的 600）；個人代墊待核銷（e3）不算零用金已使用，
+  // 避免核銷狀態一變，零用金已使用金額就跟著縮水（Issue：零用金已使用不要歸零）。
+  assert.equal(summary.pettyCashUsed, 600);
+  assert.equal(summary.pettyCashRemaining, 2400);
   assert.deepEqual(summary.pendingAdvances, [{ payer: '承辦人', amount: 900 }]);
 });
 
+const paymentMethods = ['公司轉帳', '活動零用金', '個人代墊'];
+
 test('支出明細維持欄位驗證與重複檢查', () => {
-  const candidate = domain.validateExpense({ activity_id: 'midyear2026', date: '2026-08-01', item: '餐費', budget_item: '餐飲', amount: '4,000', payment_method: '公司轉帳' });
+  const candidate = domain.validateExpense({ activity_id: 'midyear2026', date: '2026-08-01', item: '餐費', budget_item: '餐飲', amount: '4,000', payment_method: '公司轉帳' }, paymentMethods);
   assert.equal(candidate.amount, 4000);
   assert.equal(domain.findDuplicateExpense(expenses, candidate).expense_id, 'e1');
-  assert.throws(() => domain.validateExpense({ ...candidate, payment_method: '個人代墊', payer: '' }), /支付人/);
+  assert.throws(() => domain.validateExpense({ ...candidate, payment_method: '個人代墊', payer: '' }, paymentMethods), /支付人/);
+  assert.throws(() => domain.validateExpense({ ...candidate, payment_method: '不存在的方式' }, paymentMethods), /支付方式不正確/);
 });
 
 test('核銷整理維持主要廠商與零用金彙總', () => {

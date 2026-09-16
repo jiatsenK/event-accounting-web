@@ -93,13 +93,15 @@
       }).join('') + '<div><button type="submit">儲存獎項</button> <button type="button" data-cancel>取消</button></div></form>';
     }
     function render() {
-      container.innerHTML = '<section class="card prize-view"><div class="section-heading"><h2>獎項</h2><div><button type="button" data-add>新增獎項</button> <button type="button" data-reload>重新讀取</button></div></div>' +
+      // .accounting-app 讓獎項頁的按鈕/表格套用跟其他帳務分頁一致的樣式（manage/accounting.css）；
+      // 這個 view 是獨立掛載點，不會自動繼承 AccountingViews 那份模板的 wrapper。
+      container.innerHTML = '<div class="accounting-app"><section class="card prize-view"><div class="section-heading"><h2>獎項</h2><div><button type="button" data-add>新增獎項</button> <button type="button" data-reload>重新讀取</button></div></div>' +
         '<p class="muted">獎項與流程表共用同一份資料。實際支出仍由支出明細登記。</p>' +
         '<p role="status">' + esc(state.busy ? '處理中…' : state.error || state.message) + '</p>' +
         '<datalist id="prize-staff">' + state.staff.map(p => '<option value="' + esc(p.name) + '">' + esc(p.department + '／' + p.title) + '</option>').join('') + '</datalist>' + editor() +
         '<div class="prize-scroll"><table><thead><tr>' + FIELDS.filter(k => k !== '備註').map(k => '<th>' + k + '</th>').join('') + '<th>實際發放金額</th><th></th></tr></thead><tbody>' +
         (state.prizes.map(p => '<tr>' + FIELDS.filter(k => k !== '備註').map(k => '<td>' + esc(p[k] === '' || p[k] == null ? '—' : p[k]) + '</td>').join('') +
-          '<td>' + esc(p['實際發放金額'] === '' ? '—' : p['實際發放金額']) + '</td><td><button type="button" data-edit="' + esc(p.prize_id) + '">編輯</button> <button type="button" data-delete="' + esc(p.prize_id) + '">刪除</button></td></tr>').join('') || '<tr><td colspan="11">尚無獎項</td></tr>') + '</tbody></table></div></section>';
+          '<td>' + esc(p['實際發放金額'] === '' ? '—' : p['實際發放金額']) + '</td><td><button type="button" data-edit="' + esc(p.prize_id) + '">編輯</button> <button type="button" data-delete="' + esc(p.prize_id) + '">刪除</button></td></tr>').join('') || '<tr><td colspan="11">尚無獎項</td></tr>') + '</tbody></table></div></section></div>';
       container.querySelectorAll('button, input, select').forEach(el => { el.disabled = state.busy; });
       container.querySelector('[data-add]').addEventListener('click', () => { state.editing = {}; render(); });
       container.querySelector('[data-reload]').addEventListener('click', load);

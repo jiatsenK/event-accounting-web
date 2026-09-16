@@ -44,8 +44,19 @@
       ).join('') + '</optgroup>' +
       '<optgroup label="特殊廠商">' + special.map(name =>
         `<option value="special:${escapeHtml(name)}">${escapeHtml(name)}</option>`
-      ).join('') + '</optgroup>';
+      ).join('') + '</optgroup>' +
+      '<option value="__custom__">第一次合作／輸入新廠商名稱…</option>';
     if (Array.from(vendorSelect.options).some(option => option.value === currentVendor)) vendorSelect.value = currentVendor;
+  }
+
+  function toggleCustomVendorInput() {
+    const form = $('#activityBudgetForm');
+    if (!form) return;
+    const select = form.querySelector('[name="vendor_value"]');
+    const custom = form.querySelector('[name="vendor_custom_name"]');
+    if (!select || !custom) return;
+    custom.hidden = select.value !== '__custom__';
+    if (!custom.hidden) custom.focus();
   }
 
   function renderActivityBudget(payload) {
@@ -107,6 +118,8 @@
     editingBudgetLineId = '';
     const form = $('#activityBudgetForm');
     form.reset();
+    const customVendorInput = form.querySelector('[name="vendor_custom_name"]');
+    if (customVendorInput) customVendorInput.hidden = true;
     $('#budgetFormTitle').textContent = '新增預算品項';
     $('#submitBudgetLine').textContent = '儲存品項';
     $('#cancelBudgetEdit').hidden = true;
@@ -119,9 +132,12 @@
     if (row) {
       editingBudgetLineId = String(row.budget_line_id || '');
       const form = $('#activityBudgetForm');
+      const specialVendors = Array.isArray(state.activityBudget && state.activityBudget.special_vendors) ? state.activityBudget.special_vendors : [];
+      const isKnownSpecial = row.vendor && specialVendors.includes(row.vendor);
       const values = {
         budget_item: row.budget_item,
-        vendor_value: row.vendor_key ? 'key:' + row.vendor_key : row.vendor ? 'special:' + row.vendor : '',
+        vendor_value: row.vendor_key ? 'key:' + row.vendor_key : isKnownSpecial ? 'special:' + row.vendor : row.vendor ? '__custom__' : '',
+        vendor_custom_name: !row.vendor_key && !isKnownSpecial ? row.vendor : '',
         item: row.item,
         unit_price: row.unit_price,
         quantity: row.quantity,
@@ -135,6 +151,7 @@
         const field = form.querySelector(`[name="${name}"]`);
         if (field) field.value = value == null ? '' : value;
       });
+      toggleCustomVendorInput();
       $('#budgetFormTitle').textContent = '修改預算品項';
       $('#submitBudgetLine').textContent = '儲存修改';
       $('#cancelBudgetEdit').hidden = false;
@@ -148,10 +165,16 @@
     button.disabled = true;
     try {
       const form = new FormData($('#activityBudgetForm'));
+      let vendorValue = form.get('vendor_value');
+      if (vendorValue === '__custom__') {
+        const customName = String(form.get('vendor_custom_name') || '').trim();
+        if (!customName) throw new Error('請輸入新廠商名稱');
+        vendorValue = 'special:' + customName;
+      }
       const line = root.ActivityBudget.normalizeLine({
         budget_line_id: editingBudgetLineId,
         budget_item: form.get('budget_item'),
-        vendor_value: form.get('vendor_value'),
+        vendor_value: vendorValue,
         item: form.get('item'),
         unit_price: form.get('unit_price'),
         quantity: form.get('quantity'),
@@ -235,6 +258,7 @@
   $('#closeBudgetEditor').addEventListener('click', () => { resetBudgetForm(); $('#budgetEditor').hidden = true; });
   $('#cancelBudgetEdit').addEventListener('click', () => { resetBudgetForm(); $('#budgetEditor').hidden = true; });
   $('#activityBudgetForm').addEventListener('submit', submitBudgetLine);
+  $('#activityBudgetForm').querySelector('[name="vendor_value"]').addEventListener('change', toggleCustomVendorInput);
   $('#advanceBudgetStatus').addEventListener('click', advanceBudgetStatus);
   $('#downloadBudgetAttachment').addEventListener('click', downloadBudgetAttachment);
   $('#downloadBudgetProposal').addEventListener('click', downloadBudgetProposal);

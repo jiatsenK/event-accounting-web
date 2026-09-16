@@ -19,6 +19,10 @@
     return year && title ? year + '年度 ' + title : (raw || id || '未命名活動');
   }
 
+  function isHistoricalActivity(activity) {
+    return String(activity && activity.status || '').trim() === '已結案';
+  }
+
   function fallbackActivity(activityId) {
     const id = String(activityId || '').trim() || 'midyear2026';
     return { activity_id: id, name: canonicalActivityName({ activity_id: id }) };
@@ -49,7 +53,7 @@
     const status = doc.querySelector('#platformStatus');
     let activities = [];
     const STATUS_FILTERS = ['籌備中', '已結案'];
-    let statusFilter = '';
+    let statusFilter = '籌備中';
 
     const router = routerApi.createRouter(win, renderRoute);
     const viewHost = viewsApi.createViewHost(sectionView, {
@@ -59,9 +63,7 @@
         'accounting:budget': win.AccountingViews,
         'accounting:expenses': win.AccountingViews,
         'accounting:prizes': win.PrizeViews,
-        'accounting:vendors': win.AccountingViews,
         'accounting:reimbursement': win.AccountingViews,
-        'accounting:payment_requests': win.AccountingViews,
         'planning:history': win.PlanningViews && win.PlanningViews.history,
         'planning:forecast': win.PlanningViews && win.PlanningViews.forecast,
         'planning:rundown': win.RundownViews && win.RundownViews.rundown,
@@ -100,7 +102,9 @@
         visibleActivities.map(item => '<option value="' + escapeHtml(item.activity_id) + '"' +
           (String(item.activity_id) === route.activityId ? ' selected' : '') + '>' + escapeHtml(canonicalActivityName(item)) + '</option>').join('') +
         '</select></label></div></header><div class="area-grid" aria-label="活動區塊">' +
-        '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、活動預算、支出明細、廠商主檔、核銷整理</small><b aria-hidden="true">→</b></button>' +
+        (isHistoricalActivity(activity)
+          ? '<button type="button" class="area-card" data-area="planning" data-view="dashboard"><span>歷史帳務</span><small>已結案，帳務已鎖定；用圖表看歷史金額</small><b aria-hidden="true">→</b></button>'
+          : '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、活動預算、支出明細、核銷整理</small><b aria-hidden="true">→</b></button>') +
         '<button type="button" class="area-card" data-area="planning"><span>活動規劃</span><small>歷史紀錄、規劃試算、流程表</small><b aria-hidden="true">→</b></button></div>';
       const selector = entryView.querySelector('#platformActivitySelector');
       selector.disabled = visibleActivities.length <= 1;
@@ -112,7 +116,7 @@
         });
       });
       Array.from(entryView.querySelectorAll('[data-area]')).forEach(button => {
-        button.addEventListener('click', () => router.navigate({ area: button.dataset.area, view: '' }));
+        button.addEventListener('click', () => router.navigate({ area: button.dataset.area, view: button.dataset.view || '' }));
       });
     }
 
@@ -198,5 +202,5 @@
     else setStatus('尚未設定存取碼；可先進入區塊，資料 view 會各自顯示設定或錯誤狀態。');
   }
 
-  return { canonicalActivityName, fallbackActivity, init };
+  return { canonicalActivityName, fallbackActivity, isHistoricalActivity, init };
 });

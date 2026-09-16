@@ -261,6 +261,10 @@ function render(data) {
   state.expenses = expenses;
   state.backendVersion = String(data.backend_version || '');
   state.capabilities = Array.isArray(data.capabilities) ? data.capabilities : [];
+  // Issue #124：支付方式／核銷狀態的值域由後端 activity payload 帶出，前端不再自己刻一份。
+  state.paymentMethods = Array.isArray(data.payment_methods) ? data.payment_methods : [];
+  state.reimbursementStatuses = Array.isArray(data.reimbursement_statuses) ? data.reimbursement_statuses : [];
+  renderPaymentMethodOptions();
   const summary = EventAccountingDomain.summarizeDashboard(activity, expenses);
 
   $('#activityName').textContent = activity.name || '活動名稱未設定';
@@ -356,6 +360,23 @@ function renderBudgetBreakdown(breakdown) {
   }).join('') : '<tr><td colspan="4" class="empty">尚未設定預算項目</td></tr>';
 }
 
+function renderPaymentMethodOptions() {
+  const methods = state.paymentMethods || [];
+  const formSelect = document.querySelector('#expenseForm [name="payment_method"]');
+  if (formSelect) {
+    const current = formSelect.value;
+    formSelect.innerHTML = methods.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+    if (methods.includes(current)) formSelect.value = current;
+  }
+  const filterSelect = $('#expensePaymentFilter');
+  if (filterSelect) {
+    const current = filterSelect.value;
+    filterSelect.innerHTML = '<option value="">全部支付方式</option>' +
+      methods.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+    if (methods.includes(current) || current === '') filterSelect.value = current;
+  }
+}
+
 function formExpense() {
   const form = new FormData($('#expenseForm'));
   return EventAccountingDomain.validateExpense({
@@ -368,7 +389,7 @@ function formExpense() {
     payment_method: form.get('payment_method'),
     payer: form.get('payer'),
     note: form.get('note')
-  });
+  }, state.paymentMethods);
 }
 
 async function submitExpense(event) {
@@ -687,7 +708,7 @@ function paymentExplanation(row) {
 
 function buildOverviewSheet(workbook, activity, expenses) {
   const sheet = workbook.addWorksheet('核銷總覽', { views: [{ showGridLines: false }] });
-  const payment = EventAccountingDomain.summarizePaymentMethods(expenses);
+  const payment = EventAccountingDomain.summarizePaymentMethods(expenses, state.paymentMethods);
   const claim = EventAccountingDomain.summarizeCurrentClaim(expenses);
   addSheetTitle(sheet, `${activity.name || state.activityId}｜核銷總覽`, 8);
   const summary = [
@@ -910,6 +931,20 @@ function initializeAccountingCore() {
   $('#expenseRows').addEventListener('click', (event) => {
     const button = event.target.closest('[data-edit-expense]');
     if (button) startEditExpense(button.dataset.editExpense);
+  });
+  document.querySelectorAll('[data-expense-view]').forEach(button => {
+    button.addEventListener('click', () => {
+      const view = button.dataset.expenseView;
+      document.querySelectorAll('[data-expense-view]').forEach(other => {
+        const active = other === button;
+        other.classList.toggle('active', active);
+        other.setAttribute('aria-pressed', String(active));
+      });
+      const expenseSection = $('#expenseSection');
+      const advanceSection = $('#personalAdvanceSection');
+      if (expenseSection) expenseSection.hidden = view !== 'expenses';
+      if (advanceSection) advanceSection.hidden = view !== 'advances';
+    });
   });
   loadConfig();
 }
