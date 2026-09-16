@@ -6,6 +6,10 @@
   function reimbursementStatusOptions() {
     return (state.reimbursementStatuses || []).concat(['已請款', '已支付']);
   }
+  // Local copy of app-core.js's sleep(): this module used to rely on that global
+  // existing by load time (Issue #43), which only held because of SCRIPT_SOURCES
+  // ordering in accounting-views.js — any reorder would silently break it.
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   const oldFilters = document.querySelector('#activityStatusFilters');
   if (oldFilters) oldFilters.remove();
