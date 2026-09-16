@@ -63,8 +63,7 @@
         'planning:history': win.PlanningViews && win.PlanningViews.history,
         'planning:forecast': win.PlanningViews && win.PlanningViews.forecast,
         'planning:rundown': win.RundownViews && win.RundownViews.rundown,
-        'planning:dashboard': win.DashboardViews && win.DashboardViews.dashboard,
-        'work:checklist': win.WorkViews && win.WorkViews.checklist
+        'planning:dashboard': win.DashboardViews && win.DashboardViews.dashboard
       }
     });
 
@@ -90,8 +89,7 @@
           (String(item.activity_id) === route.activityId ? ' selected' : '') + '>' + escapeHtml(canonicalActivityName(item)) + '</option>').join('') +
         '</select></label></header><div class="area-grid" aria-label="活動區塊">' +
         '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、活動預算、支出明細、廠商主檔、核銷整理</small><b aria-hidden="true">→</b></button>' +
-        '<button type="button" class="area-card" data-area="planning"><span>活動規劃</span><small>歷史紀錄、規劃試算、流程表</small><b aria-hidden="true">→</b></button>' +
-        '<button type="button" class="area-card" data-area="work"><span>工作管理</span><small>籌備清單</small><b aria-hidden="true">→</b></button></div>';
+        '<button type="button" class="area-card" data-area="planning"><span>活動規劃</span><small>歷史紀錄、規劃試算、流程表</small><b aria-hidden="true">→</b></button></div>';
       const selector = entryView.querySelector('#platformActivitySelector');
       selector.disabled = activities.length <= 1;
       selector.addEventListener('change', event => router.replace({ activityId: event.target.value }));

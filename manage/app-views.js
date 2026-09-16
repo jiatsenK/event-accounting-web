@@ -26,12 +26,6 @@
         Object.freeze({ id: 'rundown', label: '流程表' }),
         Object.freeze({ id: 'dashboard', label: '歷史分析' })
       ])
-    }),
-    work: Object.freeze({
-      label: '工作管理',
-      views: Object.freeze([
-        Object.freeze({ id: 'checklist', label: '籌備清單' })
-      ])
     })
   });
 

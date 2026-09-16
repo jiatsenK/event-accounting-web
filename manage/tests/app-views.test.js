@@ -10,10 +10,6 @@ assert.deepEqual(
   views.AREAS.planning.views.map(item => item.label),
   ['歷史紀錄', '規劃試算', '流程表', '歷史分析']
 );
-assert.deepEqual(
-  views.AREAS.work.views.map(item => item.label),
-  ['籌備清單']
-);
 
 (async () => {
   const okContainer = { innerHTML: '' };

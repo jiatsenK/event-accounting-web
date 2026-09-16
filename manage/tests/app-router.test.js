@@ -20,10 +20,6 @@ assert.deepEqual(
   { activityId: 'midyear2026', area: 'planning', view: 'history' }
 );
 assert.deepEqual(
-  router.parseRoute('?activity_id=midyear2026&area=work&view=checklist'),
-  { activityId: 'midyear2026', area: 'work', view: 'checklist' }
-);
-assert.deepEqual(
   router.parseRoute('?activity_id=midyear2026&area=unknown&view=overview'),
   { activityId: 'midyear2026', area: '', view: '' }
 );
