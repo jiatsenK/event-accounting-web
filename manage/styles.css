@@ -30,6 +30,10 @@ button[data-state="success"] { border-color: var(--color-accent); }
 h1 { margin: 0; font-family: var(--font-display); font-size: var(--text-xl); font-style: normal; overflow-wrap: anywhere; min-width: 0; }
 .entry-header .muted { margin-bottom: 0; }
 .activity-picker { display: grid; gap: var(--space-3xs); color: var(--color-muted); font-size: var(--text-sm); }
+.activity-picker label { display: grid; gap: var(--space-3xs); }
+.status-filters { display: flex; gap: var(--space-3xs); }
+.status-filter { padding: 0 var(--space-2xs); min-height: 1.75rem; font-size: var(--text-sm); color: var(--color-muted); background: var(--color-surface); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-card); }
+.status-filter[aria-pressed="true"] { color: var(--color-ink); background: var(--color-surface-muted); border-color: var(--color-accent); }
 .area-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); padding: var(--space-lg) 0; }
 .area-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2xs); min-height: 10rem; padding: var(--space-md); text-align: left; color: var(--color-ink); background: var(--color-surface); transition: transform var(--dur-short) var(--ease-out), border-color var(--dur-short) var(--ease-out); }
 .area-card:hover { transform: translateY(-2px); border-color: var(--color-accent); }

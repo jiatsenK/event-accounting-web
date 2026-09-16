@@ -48,6 +48,8 @@
     const sectionView = doc.querySelector('#sectionView');
     const status = doc.querySelector('#platformStatus');
     let activities = [];
+    const STATUS_FILTERS = ['籌備中', '已結案'];
+    let statusFilter = '';
 
     const router = routerApi.createRouter(win, renderRoute);
     const viewHost = viewsApi.createViewHost(sectionView, {
@@ -82,17 +84,33 @@
 
     function renderEntry(route) {
       const activity = selectedActivity(route.activityId);
+      // 篩選只影響下拉選單列出哪些活動；目前活動一律留著，不然切換中的活動會從清單消失。
+      const visibleActivities = activities.filter(item =>
+        !statusFilter || item.status === statusFilter || String(item.activity_id) === route.activityId);
+      const filterButtons = ['', ...STATUS_FILTERS].map(value => {
+        const label = value || '全部';
+        const active = statusFilter === value;
+        return '<button type="button" class="status-filter" data-status-filter="' + escapeHtml(value) + '"' +
+          (active ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' + escapeHtml(label) + '</button>';
+      }).join('');
       entryView.innerHTML = '<header class="entry-header"><div><p class="eyebrow">活動管理</p>' +
         '<h1>' + escapeHtml(canonicalActivityName(activity)) + '</h1><p class="muted">先確認活動，再選擇要處理的區塊。</p></div>' +
-        '<label class="activity-picker"><span>切換活動</span><select id="platformActivitySelector" aria-label="切換活動">' +
-        activities.map(item => '<option value="' + escapeHtml(item.activity_id) + '"' +
+        '<div class="activity-picker"><div class="status-filters" role="group" aria-label="依狀態篩選活動">' + filterButtons + '</div>' +
+        '<label><span>切換活動</span><select id="platformActivitySelector" aria-label="切換活動">' +
+        visibleActivities.map(item => '<option value="' + escapeHtml(item.activity_id) + '"' +
           (String(item.activity_id) === route.activityId ? ' selected' : '') + '>' + escapeHtml(canonicalActivityName(item)) + '</option>').join('') +
-        '</select></label></header><div class="area-grid" aria-label="活動區塊">' +
+        '</select></label></div></header><div class="area-grid" aria-label="活動區塊">' +
         '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、活動預算、支出明細、廠商主檔、核銷整理</small><b aria-hidden="true">→</b></button>' +
         '<button type="button" class="area-card" data-area="planning"><span>活動規劃</span><small>歷史紀錄、規劃試算、流程表</small><b aria-hidden="true">→</b></button></div>';
       const selector = entryView.querySelector('#platformActivitySelector');
-      selector.disabled = activities.length <= 1;
+      selector.disabled = visibleActivities.length <= 1;
       selector.addEventListener('change', event => router.replace({ activityId: event.target.value }));
+      Array.from(entryView.querySelectorAll('[data-status-filter]')).forEach(button => {
+        button.addEventListener('click', () => {
+          statusFilter = button.dataset.statusFilter;
+          renderEntry(route);
+        });
+      });
       Array.from(entryView.querySelectorAll('[data-area]')).forEach(button => {
         button.addEventListener('click', () => router.navigate({ area: button.dataset.area, view: '' }));
       });
