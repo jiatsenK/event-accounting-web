@@ -47,7 +47,7 @@
     Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260916-01' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
     Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260916-01' }),
-    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260916-01' }),
+    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260918-01' }),
     Object.freeze({ key: 'accounting-settlement', src: '../assets/settlement-ui.js?v=20260906-52' })
   ]);
   let dependenciesPromise = null;
