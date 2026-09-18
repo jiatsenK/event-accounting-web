@@ -103,6 +103,9 @@
     }
     if (!root || typeof root.activateAccountingTab !== 'function') throw new Error('帳務 view 尚未完成初始化');
     root.activateAccountingTab(context.view);
+    if (context.headerActions && root.EventAccountingCore && typeof root.EventAccountingCore.mountHeaderActions === 'function') {
+      root.EventAccountingCore.mountHeaderActions(context.headerActions);
+    }
   }
 
   return {

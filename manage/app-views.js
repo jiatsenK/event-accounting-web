@@ -94,7 +94,9 @@
     rootElement.innerHTML = '<header class="section-header">' +
       '<button class="back-button" type="button" data-back>← 回活動管理</button>' +
       '<div><p class="eyebrow" data-area-label></p><h1 data-activity-name></h1></div>' +
+      '<div class="section-header-actions" data-header-actions></div>' +
       '</header><nav class="section-tabs" data-section-tabs></nav><div data-view-stack></div>';
+    const headerActions = rootElement.querySelector('[data-header-actions]');
     rootElement.addEventListener('click', event => {
       if (event.target.closest('[data-back]')) {
         if (typeof navigate === 'function') navigate({ area: '', view: '' });
@@ -129,9 +131,11 @@
       mounts.forEach((element, key) => { element.hidden = key !== cacheKey; });
       const mount = mounts.get(cacheKey);
       if (!mount.childNodes.length) mount.innerHTML = '<div class="view-loading">正在載入…</div>';
+      headerActions.innerHTML = '';
       const result = await mountView(module, mount, {
         activityId: route.activityId,
         activity,
+        headerActions,
         area: route.area,
         view: currentView.id,
         navigate
