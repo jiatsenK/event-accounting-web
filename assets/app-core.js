@@ -14,6 +14,7 @@ const state = {
   capabilities: []
 };
 const $ = (sel) => document.querySelector(sel);
+let refreshToken = 0;
 
 function loadConfig() {
   const params = new URLSearchParams(location.search);
@@ -44,6 +45,24 @@ function requestToken(message) {
   const note = $('#configPanel .config-note');
   if (message && note) note.textContent = message;
   $('#tokenInput').focus();
+}
+
+function accountingCacheKey(activityId) {
+  return 'eventAccounting:v1:' + DEFAULT_API_URL + ':' + String(activityId || '');
+}
+
+function getCachedAccounting(activityId) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(accountingCacheKey(activityId)) || 'null');
+    if (!cached || cached.activity_id !== String(activityId) || !cached.activity || !Array.isArray(cached.expenses)) return null;
+    return cached;
+  } catch (err) { return null; }
+}
+
+function cacheAccounting(activityId, data) {
+  try {
+    localStorage.setItem(accountingCacheKey(activityId), JSON.stringify(Object.assign({}, data, { activity_id: String(activityId) })));
+  } catch (err) { /* 儲存空間不足或被停用，不影響讀寫 */ }
 }
 
 function handleError(err) {
@@ -183,9 +202,19 @@ async function apiWrite(fields) {
 }
 
 async function refresh() {
-  setStatus('正在讀取活動帳務…');
+  const activityId = state.activityId;
+  const requestId = ++refreshToken;
+  const cached = getCachedAccounting(activityId);
+  if (cached) {
+    render(cached);
+    setStatus('已顯示上次資料，背景更新中…');
+  } else {
+    setStatus('正在讀取活動帳務…');
+  }
   try {
-    const data = await apiRead('activity', { activity_id: state.activityId });
+    const data = await apiRead('activity', { activity_id: activityId });
+    // 若切換活動等操作已觸發更新的 refresh()，這次結果已經過時，不覆蓋畫面或快取。
+    if (requestId !== refreshToken) return data;
     render(data);
     await loadVendors();
     if (typeof window.loadActivityBudget === 'function') await window.loadActivityBudget();
@@ -193,6 +222,11 @@ async function refresh() {
     setStatus('');
     return data;
   } catch (err) {
+    if (requestId !== refreshToken) throw err;
+    if (cached && !(err && err.message === '無權限')) {
+      setStatus((err && err.message ? err.message : '更新失敗') + '；目前顯示上次資料。', true);
+      return cached;
+    }
     handleError(err);
     throw err;
   }
@@ -254,6 +288,7 @@ async function loadVendors() {
 }
 
 function render(data) {
+  cacheAccounting(state.activityId, data);
   const activity = data.activity || {};
   const expenses = data.expenses || [];
   state.activity = activity;

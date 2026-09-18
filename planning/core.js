@@ -125,7 +125,7 @@
   function getCachedRundown(activityId) {
     try {
       if (!root.localStorage.getItem(TOKEN_STORAGE_KEY)) return null;
-      const cached = JSON.parse(root.sessionStorage.getItem(rundownCacheKey(activityId)) || 'null');
+      const cached = JSON.parse(root.localStorage.getItem(rundownCacheKey(activityId)) || 'null');
       if (!cached || cached.activity_id !== String(activityId) || !Array.isArray(cached.segments)) return null;
       if (['segments', 'roles', 'tasks', 'crew', 'assignments', 'prizes'].some(key => cached[key] != null &&
           (!Array.isArray(cached[key]) || cached[key].some(row => !row || typeof row !== 'object' || Array.isArray(row))))) return null;
@@ -135,7 +135,7 @@
 
   function cacheRundown(activityId, data) {
     try {
-      root.sessionStorage.setItem(rundownCacheKey(activityId), JSON.stringify(Object.assign({}, data, { activity_id: String(activityId) })));
+      root.localStorage.setItem(rundownCacheKey(activityId), JSON.stringify(Object.assign({}, data, { activity_id: String(activityId) })));
     } catch (err) { /* 儲存空間不足或被停用，不影響讀寫 */ }
   }
 

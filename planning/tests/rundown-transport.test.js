@@ -28,13 +28,13 @@ function browser() {
   return {root,api,storage,timers,listeners,scripts,posts,runTimer,reply};
 }
 
-test('session 快取按活動隔離；損毀／停用安全降級，讀取成功可更新',async()=>{
+test('localStorage 快取按活動隔離（跨分頁／重開瀏覽器共用）；損毀／停用安全降級，讀取成功可更新',async()=>{
   const b=browser();b.api.cacheRundown('a',{segments:[{segment_id:'s'}]});
   assert.equal(b.api.getCachedRundown('a').segments[0].segment_id,'s');assert.equal(b.api.getCachedRundown('b'),null);
   const pending=b.api.fetchRundown('b');b.reply({ok:true,data:{activity_id:'b',segments:[]}});await pending;
   assert.equal(b.api.getCachedRundown('b').activity_id,'b');
   const k=[...b.storage.keys()].find(k=>k.endsWith(':a'));b.storage.set(k,'{bad');assert.equal(b.api.getCachedRundown('a'),null);
-  b.root.sessionStorage.getItem=()=>{throw Error('blocked');};b.root.sessionStorage.setItem=()=>{throw Error('quota');};
+  b.root.localStorage.getItem=()=>{throw Error('blocked');};b.root.localStorage.setItem=()=>{throw Error('quota');};
   assert.equal(b.api.getCachedRundown('a'),null);assert.doesNotThrow(()=>b.api.cacheRundown('a',{}));
 });
 
