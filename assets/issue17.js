@@ -25,10 +25,23 @@
     const bar = document.createElement('div');
     bar.id = 'reimbursementStateBar';
     bar.className = 'card';
-    bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:14px 18px';
-    bar.innerHTML = '<div><div class="section-label">核銷狀態</div><div id="reimbursementStateText" style="font-size:18px;font-weight:760;margin-top:3px">尚未完成核銷</div><div id="reimbursementStateNote" class="muted" style="margin-top:2px"></div></div><button id="finalizeReimbursements" type="button">完成核銷並鎖定</button>';
+    bar.style.cssText = 'margin:0 0 14px;padding:14px 18px';
+    bar.innerHTML = '<div class="section-label">核銷狀態</div><div id="reimbursementStateText" style="font-size:18px;font-weight:760;margin-top:3px">尚未完成核銷</div><div id="reimbursementStateNote" class="muted" style="margin-top:2px"></div>';
     overviewPanel.insertBefore(bar, overviewPanel.firstChild);
   }
+
+  // #128 後續回報：核銷鎖定是整個活動的操作，不是總覽分頁專屬內容，改放進頁面
+  // 標題列的 header-actions 掛載點（manage/app-views.js），總覽卡片只留狀態文字，
+  // 不再留按鈕位置空出的版面。掛載點由 manage/accounting-views.js 的 mount() 每次
+  // 呼叫 EventAccountingCore.mountHeaderActions 提供，不管目前在帳務哪個分頁。
+  const finalizeButton = document.createElement('button');
+  finalizeButton.id = 'finalizeReimbursements';
+  finalizeButton.type = 'button';
+  finalizeButton.textContent = '完成核銷並鎖定';
+  window.EventAccountingCore = window.EventAccountingCore || {};
+  window.EventAccountingCore.mountHeaderActions = function (container) {
+    if (container && finalizeButton.parentElement !== container) container.appendChild(finalizeButton);
+  };
 
   function sortedExpenses(expenses) {
     return (Array.isArray(expenses) ? expenses : []).map((row, index) => ({ row, index })).sort((a, b) => {
@@ -207,7 +220,7 @@
     }
   }
 
-  document.querySelector('#finalizeReimbursements')?.addEventListener('click', finalizeAllReimbursements);
+  finalizeButton.addEventListener('click', finalizeAllReimbursements);
 
   function renderAdvanceCardForState() {
     const container = document.querySelector('#pendingAdvances');
