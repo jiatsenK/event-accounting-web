@@ -42,3 +42,40 @@ test('核銷整理維持主要廠商與零用金彙總', () => {
   assert.equal(overview.mainVendors[0].total, 4000);
   assert.equal(overview.pettyCash.total, 1500);
 });
+
+test('公司轉帳掛款項申請單後計入已另行提報', () => {
+  const expense = { amount: 4000, payment_method: '公司轉帳', reimbursement_status: '待核銷', payment_request_id: 'req-1' };
+  assert.equal(domain.isAlreadySubmittedExpense(expense), true);
+  assert.deepEqual(domain.summarizeCurrentClaim([expense]), {
+    actualTotal: 4000,
+    alreadySubmittedTotal: 4000,
+    currentClaimTotal: 0
+  });
+});
+
+test('公司已有付款日但未掛請款單時仍計入已另行提報', () => {
+  const expense = { amount: 2500, payment_method: '公司轉帳', reimbursement_status: '待核銷', payment_request_id: '', company_payment_date: '2026-09-23' };
+  assert.equal(domain.isAlreadySubmittedExpense(expense), true);
+});
+
+test('個人代墊未掛款項申請單時計入本次請款', () => {
+  const expense = { amount: 900, payment_method: '個人代墊', reimbursement_status: '待核銷', payment_request_id: '', company_payment_date: '' };
+  assert.equal(domain.isAlreadySubmittedExpense(expense), false);
+  assert.deepEqual(domain.summarizeCurrentClaim([expense]), {
+    actualTotal: 900,
+    alreadySubmittedTotal: 0,
+    currentClaimTotal: 900
+  });
+});
+
+test('未遷移舊資料的已請款與已支付仍計入已另行提報', () => {
+  for (const reimbursementStatus of ['已請款', '已支付']) {
+    const expense = { amount: 1000, reimbursement_status: reimbursementStatus, payment_request_id: '', company_payment_date: '' };
+    assert.equal(domain.isAlreadySubmittedExpense(expense), true, reimbursementStatus);
+  }
+});
+
+test('只有已核銷但沒有請款事實時不算已另行提報', () => {
+  const expense = { amount: 1200, reimbursement_status: '已核銷', payment_request_id: '', company_payment_date: '' };
+  assert.equal(domain.isAlreadySubmittedExpense(expense), false);
+});

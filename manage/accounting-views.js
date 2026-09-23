@@ -25,7 +25,12 @@
     const settlement = '<section class="card section"><h2>零用金結算</h2><div id="pettySettlement"></div></section>';
     const advances = '<div class="card" id="personalAdvanceSection" hidden><div class="section-heading"><div><h2>個人代墊明細</h2></div></div><form id="advanceQuery" class="table-tools"><label>代墊人（完整姓名；留空看本活動全部）<input id="advancePayer" type="search"></label><label><input id="advanceHistory" type="checkbox">跨活動查詢</label><button type="submit">查詢</button></form><p class="muted">已請款依請款單編號計算，與核銷狀態分開。歷史舊狀態保留原值。</p><div id="personalAdvanceGroups" aria-live="polite"></div></div>';
     const expenseViewToggle = '<div class="view-toggle" role="group" aria-label="切換支出檢視"><button type="button" class="view-toggle-button active" data-expense-view="expenses" aria-pressed="true">支出明細</button><button type="button" class="view-toggle-button" data-expense-view="advances" aria-pressed="false">個人代墊</button></div>';
-    return ACCOUNTING_TEMPLATE.replace(marker, BUDGET_PANEL + marker)
+    return ACCOUNTING_TEMPLATE
+      .replace(
+        '核銷狀態由支付方式自動帶入，不在此手動改。',
+        '支出登記時一律為待核銷，活動後才整批改為已核銷，不在此手動修改核銷狀態。'
+      )
+      .replace(marker, BUDGET_PANEL + marker)
       .replace('<div class="overview-split section">', settlement + '<div class="overview-split section">')
       .replace(
         '<section class="tab-panel" data-tab-panel="expenses" role="tabpanel" hidden>\n    <div class="card">',

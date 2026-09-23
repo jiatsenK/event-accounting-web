@@ -196,8 +196,10 @@
   }
 
   function isAlreadySubmittedExpense(row) {
+    const paymentRequestId = String(row && row.payment_request_id || '').trim();
+    const companyPaymentDate = String(row && row.company_payment_date || '').trim();
     const status = String(row && row.reimbursement_status || '').trim();
-    return status === '已請款' || status === '已核銷';
+    return Boolean(paymentRequestId || companyPaymentDate || status === '已請款' || status === '已支付');
   }
 
   function summarizeCurrentClaim(expenses) {
