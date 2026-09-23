@@ -17,6 +17,8 @@ test('帳務掛載模板保留既有 panel，不再有廠商主檔／款項申�
   assert.match(views.template, /id="personalAdvanceSection" hidden/);
   assert.match(views.template, /data-expense-view="expenses"/);
   assert.match(views.template, /data-expense-view="advances"/);
+  assert.match(views.template, /支出登記時一律為待核銷，活動後才整批改為已核銷/);
+  assert.doesNotMatch(views.template, /核銷狀態由支付方式自動帶入/);
   assert.doesNotMatch(views.template, /class="tabs"/);
   assert.doesNotMatch(views.template, /class="page-header"/);
 });
