@@ -35,6 +35,28 @@ test('支出明細維持欄位驗證與重複檢查', () => {
   assert.throws(() => domain.validateExpense({ ...candidate, payment_method: '不存在的方式' }, paymentMethods), /支付方式不正確/);
 });
 
+test('可能重複只依同一活動的日期與金額標記全部相關支出', () => {
+  const rows = [
+    { expense_id: 'a1', activity_id: 'midyear2026', date: '2026-08-01', item: '餐費', amount: 1200 },
+    { expense_id: 'a2', activity_id: 'midyear2026', date: '2026-08-01', item: '車資', amount: '1,200' },
+    { expense_id: 'a3', activity_id: 'midyear2026', date: '2026-08-02', item: '餐費', amount: 1200 },
+    { expense_id: 'b1', activity_id: 'yearend2026', date: '2026-08-01', item: '餐費', amount: 1200 },
+    { expense_id: 'a4', activity_id: 'midyear2026', date: '2026-08-01', item: '用品', amount: 800 }
+  ];
+  assert.deepEqual(domain.findPossibleDuplicates(rows), new Set(['a1', 'a2']));
+  assert.deepEqual(domain.findPossibleDuplicates([]), new Set());
+});
+
+test('零用金預估扣除全部個人代墊與活動零用金支出', () => {
+  assert.equal(domain.estimatePettyCashReturn(activity, expenses), 1500);
+  assert.equal(domain.estimatePettyCashReturn({ petty_cash_advance: 1000 }, [
+    { amount: 1200, payment_method: '個人代墊' },
+    { amount: 300, payment_method: '活動零用金' },
+    { amount: 5000, payment_method: '公司轉帳' }
+  ]), -500);
+  assert.equal(domain.estimatePettyCashReturn({}, expenses), null);
+});
+
 test('核銷整理維持主要廠商與零用金彙總', () => {
   const overview = domain.buildReimbursementOverview(expenses, {});
   assert.equal(overview.total, 5500);

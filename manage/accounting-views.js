@@ -62,6 +62,14 @@
     const expenseViewToggle = '<div class="view-toggle" role="group" aria-label="切換支出檢視"><button type="button" class="view-toggle-button active" data-expense-view="expenses" aria-pressed="true">支出明細</button><button type="button" class="view-toggle-button" data-expense-view="advances" aria-pressed="false">個人代墊</button></div>';
     return ACCOUNTING_TEMPLATE
       .replace(
+        '<div class="card metric-card"><div class="label">零用金</div><div class="petty-grid"><div class="petty-stat"><div class="label">暫支</div><div id="pettyCashAdvance" class="value">…</div></div><div class="petty-stat"><div class="label">已使用</div><div id="pettyCashUsed" class="value">…</div></div><div class="petty-stat"><div class="label">剩餘待沖銷</div><div id="pettyCashRemaining" class="value">…</div></div></div></div>',
+        '<div class="card metric-card"><div class="label">零用金</div><div class="petty-grid"><div class="petty-stat"><div class="label">暫支</div><div id="pettyCashAdvance" class="value">…</div></div><div class="petty-stat"><div class="label">已使用</div><div id="pettyCashUsed" class="value">…</div></div><div class="petty-stat"><div class="label">剩餘待沖銷</div><div id="pettyCashRemaining" class="value">…</div></div></div><div class="petty-estimate"><span class="label">預估應匯回／補請</span><strong id="pettyCashEstimate">…</strong></div><div class="petty-estimate-note">正式金額以核銷分頁第 2 步勾選為準</div></div>'
+      )
+      .replace(
+        '<div class="table-tools"><input id="expenseSearch" type="search" placeholder="搜尋日期、項目、分類、備註或支付人"><select id="expensePaymentFilter"><option value="">全部支付方式</option></select></div>',
+        '<div class="table-tools"><input id="expenseSearch" type="search" placeholder="搜尋日期、項目、分類、備註或支付人"><select id="expensePaymentFilter"><option value="">全部支付方式</option></select><label class="duplicate-filter"><input id="expenseDuplicateFilter" type="checkbox">只看可能重複</label></div>'
+      )
+      .replace(
         '核銷狀態由支付方式自動帶入，不在此手動改。',
         '支出登記時一律為待核銷，活動後才整批改為已核銷，不在此手動修改核銷狀態。'
       )
@@ -84,12 +92,12 @@
     // index.iife.js 是同一個套件專門給瀏覽器 <script> 用的建置，掛同一個
     // window.docx 全域變數，MIME type 正確。
     Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js' }),
-    Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260916-01' }),
+    Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260929-155b' }),
     Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260929-02' }),
     Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260916-01' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
     Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260929-02' }),
-    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260918-01' }),
+    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260929-155b' }),
     Object.freeze({ key: 'accounting-settlement', src: '../assets/settlement-ui.js?v=20260906-52' }),
     Object.freeze({ key: 'payment-request', src: '../assets/payment-request.js?v=20260929-01' }),
     Object.freeze({ key: 'payment-request-ui', src: '../assets/payment-request-ui.js?v=20260929-01' }),
