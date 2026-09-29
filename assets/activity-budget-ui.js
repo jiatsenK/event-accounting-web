@@ -23,6 +23,40 @@
     return (amount > 0 ? '+' : amount < 0 ? '−' : '') + money(Math.abs(amount));
   }
 
+  function plainNumber(value) {
+    return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 2 }).format(Number(value || 0));
+  }
+
+  function renderBudgetOutputs(payload) {
+    const proposalPanel = $('#budgetProposalTextPanel');
+    const proposalText = $('#budgetProposalText');
+    if (proposalPanel) proposalPanel.hidden = true;
+    if (proposalText) proposalText.value = '';
+
+    const rows = root.ActivityBudget.budgetSheetRows(payload);
+    const body = $('#budgetSheetPreviewRows');
+    if (body) {
+      body.innerHTML = rows.length ? rows.map(row => {
+        const vendor = row.vendor_row_span
+          ? `<td rowspan="${row.vendor_row_span}">${escapeHtml(row.vendor)}</td>`
+          : '';
+        const total = row.vendor_row_span
+          ? `<td rowspan="${row.vendor_row_span}" class="num vendor-total">${money(row.total)}</td>`
+          : '';
+        return `<tr>${vendor}
+          <td>${escapeHtml(row.item || '')}</td>
+          <td class="num">${plainNumber(row.unit_price)}</td>
+          <td class="num">${plainNumber(row.quantity)}</td>
+          <td class="num">${money(row.amount)}</td>
+          ${total}
+          <td class="budget-note">${escapeHtml(row.note || '—')}</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="7" class="empty">尚未建立活動預算品項</td></tr>';
+    }
+    const total = $('#budgetSheetPreviewTotal');
+    if (total) total.textContent = money(payload.total);
+  }
+
   function renderBudgetFormOptions(payload) {
     const form = $('#activityBudgetForm');
     if (!form) return;
@@ -77,6 +111,7 @@
     advance.dataset.nextBudgetStatus = next;
     $('#yearEndFundingFields').hidden = !root.ActivityBudget.isYearEnd(activity);
     renderBudgetFormOptions(payload);
+    renderBudgetOutputs(payload);
     $('#activityBudgetRows').innerHTML = rows.length ? rows.map(row => {
       const paymentNote = [row.payment_terms, row.note].filter(Boolean).join('｜') || '—';
       const vendorTotal = row.vendor_total === null || row.vendor_total === undefined ? '' : money(row.vendor_total);
@@ -240,17 +275,36 @@
     }
   }
 
-  async function downloadBudgetProposal() {
+  function showBudgetProposalText() {
     try {
       const payload = state.activityBudget;
       if (!payload || !payload.rows || !payload.rows.length) throw new Error('活動預算尚無品項');
       if (!payload.activity || !payload.activity.date) throw new Error('活動主檔缺少活動日期');
       if (!payload.activity.location) throw new Error('活動主檔缺少活動地點');
-      setBudgetStatusMessage('正在產生預算簽呈…');
-      await root.ActivityBudget.downloadProposal(root.docx, payload);
-      setBudgetStatusMessage('預算簽呈已下載');
+      $('#budgetProposalText').value = root.ActivityBudget.proposalText(payload);
+      $('#budgetProposalTextPanel').hidden = false;
+      $('#budgetProposalTextPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setBudgetStatusMessage('簽呈文字已產生');
     } catch (error) {
-      setBudgetStatusMessage(error && error.message || '簽呈產生失敗', true);
+      setBudgetStatusMessage(error && error.message || '簽呈文字產生失敗', true);
+    }
+  }
+
+  async function copyBudgetProposalText() {
+    try {
+      const textarea = $('#budgetProposalText');
+      if (!textarea.value) throw new Error('請先產生簽呈文字');
+      if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
+        await root.navigator.clipboard.writeText(textarea.value);
+      } else {
+        textarea.focus();
+        textarea.select();
+        if (!root.document.execCommand('copy')) throw new Error('瀏覽器無法自動複製，請手動選取文字');
+        textarea.setSelectionRange(0, 0);
+      }
+      setBudgetStatusMessage('簽呈文字已複製');
+    } catch (error) {
+      setBudgetStatusMessage(error && error.message || '複製失敗', true);
     }
   }
 
@@ -264,7 +318,8 @@
   $('#activityBudgetForm').querySelector('[name="vendor_value"]').addEventListener('change', toggleCustomVendorInput);
   $('#advanceBudgetStatus').addEventListener('click', advanceBudgetStatus);
   $('#downloadBudgetAttachment').addEventListener('click', downloadBudgetAttachment);
-  $('#downloadBudgetProposal').addEventListener('click', downloadBudgetProposal);
+  $('#downloadBudgetProposal').addEventListener('click', showBudgetProposalText);
+  $('#copyBudgetProposalText').addEventListener('click', copyBudgetProposalText);
   $('#activityBudgetRows').addEventListener('click', event => {
     const edit = event.target.closest('[data-edit-budget-line]');
     if (edit) {

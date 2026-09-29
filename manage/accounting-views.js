@@ -10,7 +10,8 @@
     '<div class="card"><div class="section-heading"><div><h2>活動預算</h2><div class="muted">同一份預算由草稿逐步提報、核准；核准後同步成為支出預算項目的正式來源</div></div>' +
     '<div class="budget-status-actions"><span id="activityBudgetStatus" class="budget-status">讀取中</span><button id="advanceBudgetStatus" type="button" hidden></button></div></div>' +
     '<div class="budget-summary"><div><span>預估總額</span><strong id="activityBudgetTotal">…</strong></div><div><span>上一屆同類型</span><strong id="activityBudgetPreviousTotal">…</strong></div><div><span>差異</span><strong id="activityBudgetDifference">…</strong></div></div>' +
-    '<div class="budget-toolbar"><button id="showBudgetEditor" type="button">新增預算品項</button><button id="downloadBudgetProposal" class="secondary" type="button">下載預算簽呈</button><button id="downloadBudgetAttachment" class="secondary" type="button">下載明細附件</button></div>' +
+    '<div class="budget-toolbar"><button id="showBudgetEditor" type="button">新增預算品項</button><button id="downloadBudgetProposal" class="secondary" type="button">簽呈文字</button></div>' +
+    '<div id="budgetProposalTextPanel" class="budget-output-panel" hidden><div class="section-heading"><div><h3>簽呈文字</h3><div class="muted">複製後貼入公司簽呈範本</div></div><button id="copyBudgetProposalText" class="secondary" type="button">複製</button></div><textarea id="budgetProposalText" rows="8" readonly aria-label="簽呈文字"></textarea></div>' +
     '<div id="budgetEditor" class="editor-panel" hidden><div class="section-heading"><h2 id="budgetFormTitle">新增預算品項</h2><button id="closeBudgetEditor" class="secondary" type="button">關閉</button></div>' +
     '<form id="activityBudgetForm"><div class="row"><select name="budget_item" required><option value="">選擇預算項目</option></select><select name="vendor_value"><option value="">未指定廠商</option><option value="__custom__">第一次合作／輸入新廠商名稱…</option></select></div>' +
     '<input name="vendor_custom_name" placeholder="新廠商名稱" hidden>' +
@@ -19,7 +20,8 @@
     '<div id="yearEndFundingFields" class="row"><input name="sponsor_amount" type="number" min="0" step="0.01" placeholder="廠商贊助款"><input name="jdc_amount" type="number" min="0" step="0.01" placeholder="JDC負擔（空白自動計算）"></div>' +
     '<textarea name="note" placeholder="備註／價差原因"></textarea><div class="form-actions"><button id="submitBudgetLine" type="submit">儲存品項</button><button id="cancelBudgetEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="activityBudgetFormStatus" class="status form-status" aria-live="polite"></div></form></div>' +
     '<div id="activityBudgetStatusMessage" class="status form-status" aria-live="polite"></div><div class="budget-table-wrap"><table class="budget-table"><thead><tr><th>預算項目</th><th>廠商</th><th>品項</th><th class="num">單價</th><th class="num">數量</th><th class="num">含稅金額</th><th class="num">廠商總額</th><th class="num">去年同項</th><th>付款／備註</th><th></th></tr></thead>' +
-    '<tbody id="activityBudgetRows"><tr><td colspan="10" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
+    '<tbody id="activityBudgetRows"><tr><td colspan="10" class="empty">讀取中…</td></tr></tbody></table></div>' +
+    '<div class="budget-output-panel budget-sheet-preview"><div class="section-heading"><div><h3>預估費用明細預覽</h3><div class="muted">與下載附件的「預估費用」工作表使用同一份列資料</div></div></div><div class="budget-sheet-preview-wrap"><table><thead><tr><th>廠商</th><th>品項</th><th class="num">單價(加服務費)</th><th class="num">數量</th><th class="num">金額(含稅)</th><th class="num">總額</th><th>備註</th></tr></thead><tbody id="budgetSheetPreviewRows"><tr><td colspan="7" class="empty">讀取中…</td></tr></tbody><tfoot><tr><th colspan="5">總計</th><th id="budgetSheetPreviewTotal" class="num">…</th><th></th></tr></tfoot></table></div><div class="budget-download-actions"><button id="downloadBudgetAttachment" class="secondary" type="button">下載明細附件</button></div></div></div></section>';
   // #155：款項申請分頁（一張＝一個收款對象的一次付款），下方依收款對象加總已申請／已匯款。
   const PAYMENT_REQUEST_PANEL = '<section class="tab-panel" data-tab-panel="payment_requests" role="tabpanel" hidden>' +
     '<div class="card"><div class="section-heading"><div><h2>款項申請單</h2><div class="muted">一張＝一個收款對象的一次付款；訂金、尾款、追加、回沖、零用金請款各開一張</div></div>' +
@@ -60,6 +62,14 @@
     const expenseViewToggle = '<div class="view-toggle" role="group" aria-label="切換支出檢視"><button type="button" class="view-toggle-button active" data-expense-view="expenses" aria-pressed="true">支出明細</button><button type="button" class="view-toggle-button" data-expense-view="advances" aria-pressed="false">個人代墊</button></div>';
     return ACCOUNTING_TEMPLATE
       .replace(
+        '<div class="card metric-card"><div class="label">零用金</div><div class="petty-grid"><div class="petty-stat"><div class="label">暫支</div><div id="pettyCashAdvance" class="value">…</div></div><div class="petty-stat"><div class="label">已使用</div><div id="pettyCashUsed" class="value">…</div></div><div class="petty-stat"><div class="label">剩餘待沖銷</div><div id="pettyCashRemaining" class="value">…</div></div></div></div>',
+        '<div class="card metric-card"><div class="label">零用金</div><div class="petty-grid"><div class="petty-stat"><div class="label">暫支</div><div id="pettyCashAdvance" class="value">…</div></div><div class="petty-stat"><div class="label">已使用</div><div id="pettyCashUsed" class="value">…</div></div><div class="petty-stat"><div class="label">剩餘待沖銷</div><div id="pettyCashRemaining" class="value">…</div></div></div><div class="petty-estimate"><span class="label">預估應匯回／補請</span><strong id="pettyCashEstimate">…</strong></div><div class="petty-estimate-note">正式金額以核銷分頁第 2 步勾選為準</div></div>'
+      )
+      .replace(
+        '<div class="table-tools"><input id="expenseSearch" type="search" placeholder="搜尋日期、項目、分類、備註或支付人"><select id="expensePaymentFilter"><option value="">全部支付方式</option></select></div>',
+        '<div class="table-tools"><input id="expenseSearch" type="search" placeholder="搜尋日期、項目、分類、備註或支付人"><select id="expensePaymentFilter"><option value="">全部支付方式</option></select><label class="duplicate-filter"><input id="expenseDuplicateFilter" type="checkbox">只看可能重複</label></div>'
+      )
+      .replace(
         '核銷狀態由支付方式自動帶入，不在此手動改。',
         '支出登記時一律為待核銷，活動後才整批改為已核銷，不在此手動修改核銷狀態。'
       )
@@ -82,12 +92,12 @@
     // index.iife.js 是同一個套件專門給瀏覽器 <script> 用的建置，掛同一個
     // window.docx 全域變數，MIME type 正確。
     Object.freeze({ key: 'docx', src: 'https://cdn.jsdelivr.net/npm/docx@9.6.1/dist/index.iife.js' }),
-    Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260916-01' }),
-    Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260904-49' }),
+    Object.freeze({ key: 'accounting-domain', src: '../assets/domain.js?v=20260929-155b' }),
+    Object.freeze({ key: 'activity-budget', src: '../assets/activity-budget.js?v=20260929-02' }),
     Object.freeze({ key: 'accounting-core', src: '../assets/app-core.js?v=20260929-155c' }),
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260929-155c' }),
-    Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260929-155c' }),
-    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260918-01' }),
+    Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260929-155d' }),
+    Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260929-155b' }),
     Object.freeze({ key: 'accounting-settlement', src: '../assets/settlement-ui.js?v=20260906-52' }),
     Object.freeze({ key: 'payment-request', src: '../assets/payment-request.js?v=20260929-01' }),
     Object.freeze({ key: 'payment-request-ui', src: '../assets/payment-request-ui.js?v=20260929-155c' }),
