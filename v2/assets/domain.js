@@ -251,66 +251,62 @@
     return '主　旨：' + title + '\n\n說　明：\n' + intro.join('\n');
   }
 
-  /* 歷史分析：已結案的活動看實際支出；進行中的活動看最新報價，加上非公司轉帳的支出。 */
-  function historySummary(db) {
-    const activities = (db.activities || []).filter(alive);
-    const catOrder = new Map((db.budget_categories || []).map((c, i) => [c.name, num(c.order) != null ? num(c.order) : i]));
+  /* 歷史分析表：把後端 history 回傳（各活動依預算項目的實際支出、人數、飲品實績）整理成畫面用的欄與列。
+   * 只列有支出的活動，依舉辦日排序；預算項目依 budget_categories 的順序。 */
+  function historyTable(history) {
+    const data = history || {};
+    const catOrder = new Map((data.budget_categories || []).map((c, i) => [c.name, num(c.order) != null ? num(c.order) : i]));
+    const columns = (data.activities || []).map(a => {
+      const totals = a.categories || {};
+      const total = Object.keys(totals).reduce((t, k) => t + (num(totals[k]) || 0), 0);
+      const headcount = num(a.actual_headcount) || num(a.est_headcount);
+      return { id: a.id, name: a.name, date: a.date, closed: !!a.closed_at, totals, total, headcount, perHead: headcount ? Math.round(total / headcount) : null };
+    }).filter(c => c.total > 0).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     const seen = new Set();
-    const rows = activities.map(activity => {
-      const totals = {};
-      const add = (cat, amount) => { const k = cat || '未分類'; seen.add(k); totals[k] = (totals[k] || 0) + (num(amount) || 0); };
-      const expenses = byActivity(db.expenses, activity.id).filter(e => e.status !== '待確認');
-      const lines = byActivity(db.budget_lines, activity.id);
-      const closed = !!activity.closed_at;
-      if (closed) expenses.forEach(e => add(e.category, e.amount));
-      else {
-        lines.forEach(l => { const q = latestQuote(l.id, db.quotes); add(l.category, q != null ? q : l.approved_amount); });
-        expenses.filter(e => e.method !== '公司轉帳').forEach(e => add(e.category, e.amount));
-      }
-      if (!lines.length && !expenses.length) return null;
-      const total = Object.keys(totals).reduce((t, k) => t + totals[k], 0);
-      return {
-        id: activity.id, name: activity.name, date: activity.date, state: activityState(activity),
-        headcount: num(activity.actual_headcount) || num(activity.est_headcount), totals, total
-      };
-    }).filter(Boolean).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    columns.forEach(c => Object.keys(c.totals).forEach(k => { if (num(c.totals[k])) seen.add(k); }));
     const categories = Array.from(seen).sort((a, b) => (catOrder.has(a) ? catOrder.get(a) : 999) - (catOrder.has(b) ? catOrder.get(b) : 999));
     const drinkMap = new Map();
-    (db.drink_records || []).filter(alive).forEach(d => {
-      const key = d.activity_id + '|' + (d.category || '其他');
-      const ml = (num(d.consumed_units) || 0) * (num(d.unit_capacity_ml) || 0);
-      const cur = drinkMap.get(key) || { activity_id: d.activity_id, category: d.category || '其他', liters: 0 };
-      cur.liters += ml / 1000;
-      drinkMap.set(key, cur);
+    (data.drink_records || []).filter(alive).forEach(d => {
+      const category = d.category || '其他';
+      if (!drinkMap.has(category)) drinkMap.set(category, {});
+      const row = drinkMap.get(category);
+      row[d.activity_id] = (row[d.activity_id] || 0) + (num(d.consumed_units) || 0) * (num(d.unit_capacity_ml) || 0) / 1000;
     });
-    const drinks = Array.from(drinkMap.values()).map(d => Object.assign(d, { liters: Math.round(d.liters * 10) / 10 }));
-    return { activities: rows, categories, drinks };
+    const drinks = Array.from(drinkMap.entries()).map(([category, byActivity]) => {
+      Object.keys(byActivity).forEach(k => { byActivity[k] = Math.round(byActivity[k] * 10) / 10; });
+      return { category, liters: byActivity };
+    });
+    return { columns, categories, drinks };
   }
 
-  /* 跨活動搜尋：活動、品項、申請單、支出、廠商，各最多 limit 筆。 */
-  function searchAll(db, q, limit) {
-    const needle = String(q || '').trim().toLowerCase();
-    const max = limit || 50;
-    const empty = { activities: [], budget_lines: [], payment_requests: [], expenses: [], vendors: [] };
-    if (!needle) return empty;
-    const has = value => String(value == null ? '' : value).toLowerCase().indexOf(needle) !== -1;
-    const vendors = (db.vendors || []).filter(alive);
-    const vendorName = id => { const v = vendors.find(x => x.id === id); return v ? (v.short_name || v.name) : ''; };
-    const pick = (rows, test) => (rows || []).filter(r => alive(r) && test(r)).slice(0, max);
-    return {
-      activities: pick(db.activities, a => has(a.name) || has(a.venue) || has(a.id)),
-      budget_lines: pick(db.budget_lines, l => has(l.item) || has(l.category) || has(vendorName(l.vendor_id))),
-      payment_requests: pick(db.payment_requests, r => has(r.payee_name) || has(vendorName(r.payee_vendor_id)) || has(r.request_no) || has(r.stage) || has(r.purpose)),
-      expenses: pick(db.expenses, e => has(e.item) || has(e.category) || has(e.vendor_name) || has(e.invoice_no)),
-      vendors: pick(vendors, v => has(v.name) || has(v.short_name) || has(v.tax_id))
-    };
+  /* 流程表時間：依 order 排序；有 anchor_time 的段落從那個時間開始，其餘接在上一段結束後。start 是正式開始時間（HH:MM）。 */
+  function rundownTimes(segments, start) {
+    const toMin = t => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const toText = m => m == null ? '' : String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    let cursor = toMin(start);
+    return (segments || []).filter(alive).slice().sort((a, b) => (num(a.order) || 0) - (num(b.order) || 0)).map(seg => {
+      const anchor = toMin(seg.anchor_time);
+      const begin = anchor != null ? anchor : cursor;
+      const end = begin != null ? begin + (num(seg.duration_min) || 0) : null;
+      cursor = end;
+      return { segment: seg, start: toText(begin), end: toText(end) };
+    });
   }
 
   /* ---------- 寫入規則 ----------
-   * 把 SPEC 第 5 節的寫入 op 套到記憶體中的資料表（db = { 表名: [列] }）。
-   * 網頁用它做樂觀更新、本機模擬後端用它回應；後端也可以用同一份。
+   * 把 SPEC 第 5 節的寫入 op 套到記憶體中的資料表（db = { 表名: [列] }），行為對齊後端 v2/gas/Ops.gs。
+   * 網頁用它做樂觀更新（先顯示、後端說不行再回復），本機模擬後端也用它回應。
    * ctx = { now: ISO 時間, today: YYYY-MM-DD, idFor(table): 指定新列編號（可省略） }。
-   * 回傳 { row, table }；資料不合規時丟出 Error，message 是給人看的原因。 */
+   * 回傳 { table, row }；資料不合規時丟出 Error，message 是給人看的原因。 */
+  const PROTECTED_FIELDS = {
+    activities: ['budget_status', 'budget_approved_at', 'approved_total', 'close_stage', 'locked_at', 'replied_at', 'settled_at', 'closed_at',
+      'settle_direction', 'settle_amount_expected', 'settle_amount_actual'],
+    budget_lines: ['approved_amount'],
+    payment_requests: ['status', 'requested_at', 'paid_at'],
+    expenses: ['status']
+  };
+  const MASTER_TABLES = ['activities', 'vendors', 'budget_categories', 'staff'];
+
   function applyWrite(db, op, args, ctx) {
     args = args || {};
     ctx = ctx || {};
@@ -318,15 +314,19 @@
     const today = ctx.today || now.slice(0, 10);
     const fail = message => { throw new Error(message); };
     const rowsOf = name => {
-      if (!Object.prototype.hasOwnProperty.call(TABLE_PREFIX, name)) fail('沒有這張表：' + name);
+      if (!Object.prototype.hasOwnProperty.call(TABLE_PREFIX, name) || name === 'activity_log') fail('不能寫入這張表：' + name);
       return db[name] || (db[name] = []);
     };
-    const find = (name, id) => rowsOf(name).find(r => r.id === id && alive(r)) || fail('找不到資料：' + id);
+    const find = (name, id, label) => {
+      if (id === undefined || id === null || id === '') fail('缺少' + label);
+      return (db[name] || []).find(r => r.id === id && alive(r)) || fail('找不到' + label + '：' + id);
+    };
     const insert = (name, row) => {
-      const rows = rowsOf(name);
+      const rows = name === 'activity_log' ? (db.activity_log || (db.activity_log = [])) : rowsOf(name);
       const r = Object.assign({}, row);
-      if (!r.id) r.id = (ctx.idFor && ctx.idFor(name)) || (TABLE_PREFIX[name] ? nextId(TABLE_PREFIX[name], rows) : fail('要先給活動代碼'));
-      if (rows.some(x => x.id === r.id)) fail('編號 ' + r.id + ' 已經有了');
+      Object.keys(r).forEach(k => { if (r[k] === '' || r[k] === null || r[k] === undefined) delete r[k]; });
+      if (!r.id) r.id = (ctx.idFor && ctx.idFor(name)) || nextId(TABLE_PREFIX[name], rows);
+      if (rows.some(x => x.id === r.id)) fail(name + ' 已有編號 ' + r.id);
       r.created_at = r.created_at || now;
       r.updated_at = now;
       rows.push(r);
@@ -341,160 +341,183 @@
       row.updated_at = now;
       return row;
     };
-    const checkAmount = (value, label) => {
-      const n = num(value);
-      if (n == null || !Number.isInteger(n) || n < 0) fail((label || '金額') + '要是 0 以上的整數');
-      return n;
-    };
-    const activityOfRow = (name, row) => {
+    const activityOf = (name, row) => {
       if (name === 'activities') return row.id;
       if (row.activity_id) return row.activity_id;
-      if (name === 'quotes') { const l = rowsOf('budget_lines').find(x => x.id === row.line_id); return l && l.activity_id; }
-      if (name === 'request_lines') { const r = rowsOf('payment_requests').find(x => x.id === row.request_id); return r && r.activity_id; }
+      if (name === 'quotes') { const l = (db.budget_lines || []).find(x => x.id === row.line_id); return l && l.activity_id; }
+      if (name === 'request_lines') { const r = (db.payment_requests || []).find(x => x.id === row.request_id); return r && r.activity_id; }
       return '';
     };
-    const ensureOpen = activityId => {
-      const a = activityId && rowsOf('activities').find(x => x.id === activityId);
-      if (a && a.locked_at && !ctx.allowLocked) fail('這場活動已完成核銷並鎖定，不能再改');
-      return a;
+    /* 已結案的活動只能看不能改；核銷鎖定後不能再動支出、品項與報價。 */
+    const guard = (name, activityId) => {
+      if (!activityId || (MASTER_TABLES.indexOf(name) !== -1 && name !== 'activities')) return;
+      const activity = (db.activities || []).find(a => a.id === activityId) || fail('找不到活動：' + activityId);
+      if (activity.closed_at) fail('活動已結案，不能修改');
+      if (activity.locked_at && ['expenses', 'budget_lines', 'quotes'].indexOf(name) !== -1) fail('活動已核銷鎖定，不能再改支出或品項');
     };
-    const log = (activityId, entity, entityId, action, text) => insert('activity_log', {
-      activity_id: activityId || '', at: now, entity, entity_id: entityId, action, text
+    const checkMoney = row => ['amount', 'unit_price', 'approved_amount', 'sponsor_amount', 'petty_advance'].forEach(k => {
+      if (row[k] === undefined || row[k] === '' || row[k] === null) return;
+      const n = num(row[k]);
+      if (n == null || !Number.isInteger(n) || n < 0) fail('金額要是 0 以上的整數');
+      row[k] = n;
     });
-    const moneyFields = ['amount', 'unit_price', 'approved_amount', 'sponsor_amount', 'petty_advance', 'est_headcount', 'actual_headcount'];
-    const checkRow = row => moneyFields.forEach(k => { if (row[k] !== undefined && row[k] !== '' && row[k] !== null) row[k] = checkAmount(row[k], k === 'est_headcount' || k === 'actual_headcount' ? '人數' : '金額'); });
+    const label = row => row.item || row.name || row.purpose || row.content || row.id;
+    const log = (activityId, entity, entityId, action, text) => insert('activity_log', { activity_id: activityId || '', at: now, entity, entity_id: entityId, action, text });
 
     if (op === 'create') {
-      const name = args.table;
-      const row = Object.assign({}, args.row);
-      checkRow(row);
-      if (name === 'activities') {
-        if (!row.name) fail('活動名稱不能空白');
-        row.budget_status = row.budget_status || '草稿';
-        row.close_stage = row.close_stage || '未開始';
-      }
-      if (name === 'budget_lines' && !row.item) fail('品項名稱不能空白');
+      const name = String(args.table || '');
+      rowsOf(name);
+      const row = Object.assign({}, args.row || {});
+      checkMoney(row);
       if (name === 'expenses') {
-        if (!row.item) fail('支出項目不能空白');
-        if (row.amount === undefined) fail('支出要有金額');
         row.status = row.status || '待核銷';
         row.source = row.source || '網頁';
-        row.date = row.date || today;
+        if (row.amount === undefined || row.amount === '') fail('缺少金額');
       }
-      if (name === 'payment_requests') {
-        if (row.amount === undefined) fail('申請單要有金額');
-        row.status = row.status || '待申請';
+      if (name === 'payment_requests') row.status = '待申請';
+      if (name === 'activities') {
+        if (!row.id) fail('缺少活動代碼');
+        if (!row.name) fail('活動名稱不能空白');
+        row.budget_status = row.budget_status || '草稿';
+        row.close_stage = '未開始';
+        ['locked_at', 'replied_at', 'settled_at', 'closed_at', 'approved_total', 'budget_approved_at'].forEach(k => delete row[k]);
       }
-      if (name === 'vendors' && !row.name) fail('廠商名稱不能空白');
-      if (name !== 'activities') ensureOpen(activityOfRow(name, row));
-      const created = insert(name, row);
-      log(activityOfRow(name, created), name, created.id, '新增', '新增' + (created.name || created.item || created.payee_name || created.id));
-      return { table: name, row: created };
+      const activityId = activityOf(name, row);
+      if (name !== 'activities') guard(name, activityId);
+      const saved = insert(name, row);
+      log(activityId, name, saved.id, '新增', '新增「' + label(saved) + '」');
+      return { table: name, row: saved };
     }
-    if (op === 'update' || op === 'delete') {
-      const name = args.table;
-      const current = find(name, (args.row || {}).id);
-      ensureOpen(name === 'activities' ? null : activityOfRow(name, current));
-      if (op === 'delete') {
-        patch(current, { deleted_at: now });
-        log(activityOfRow(name, current), name, current.id, '刪除', '刪除' + (current.item || current.name || current.id));
-      } else {
-        const fields = Object.assign({}, args.row);
-        checkRow(fields);
-        patch(current, fields);
-        log(activityOfRow(name, current), name, current.id, '修改', '修改' + (current.item || current.name || current.payee_name || current.id));
-      }
+    if (op === 'update') {
+      const name = String(args.table || '');
+      rowsOf(name);
+      const fields = Object.assign({}, args.row || {});
+      const current = find(name, fields.id, '資料');
+      (PROTECTED_FIELDS[name] || []).forEach(k => delete fields[k]);
+      delete fields.deleted_at;
+      checkMoney(fields);
+      const activityId = activityOf(name, current);
+      guard(name, activityId);
+      patch(current, fields);
+      log(activityId, name, current.id, '修改', '修改「' + label(current) + '」');
+      return { table: name, row: current };
+    }
+    if (op === 'delete') {
+      const name = String(args.table || '');
+      rowsOf(name);
+      const current = find(name, args.id || (args.row && args.row.id), '資料');
+      if (name === 'payment_requests' && current.status !== '待申請') fail('已送出的申請單不能刪除');
+      const activityId = activityOf(name, current);
+      guard(name, activityId);
+      patch(current, { deleted_at: now });
+      log(activityId, name, current.id, '刪除', '刪除「' + label(current) + '」');
       return { table: name, row: current };
     }
     if (op === 'add_quote') {
-      const line = find('budget_lines', args.line_id);
-      ensureOpen(line.activity_id);
-      const amount = checkAmount(args.amount, '報價');
-      const quote = insert('quotes', { line_id: line.id, amount, quoted_at: args.quoted_at || today, reason: args.reason || '', doc_url: args.doc_url || '' });
-      if (!quote.reason) delete quote.reason;
-      if (!quote.doc_url) delete quote.doc_url;
-      log(line.activity_id, 'quotes', quote.id, '新增', line.item + '報價改為 ' + fmt(amount) + (args.reason ? '（' + args.reason + '）' : ''));
-      return { table: 'quotes', row: quote };
+      const line = find('budget_lines', args.line_id, '品項');
+      guard('quotes', line.activity_id);
+      const amount = num(args.amount);
+      if (amount === null || !Number.isInteger(amount) || amount < 0) fail('報價金額要是 0 以上的整數');
+      const previous = latestQuote(line.id, db.quotes);
+      const activity = (db.activities || []).find(a => a.id === line.activity_id) || {};
+      if (previous !== null && activity.budget_approved_at && !String(args.reason || '').trim()) fail('簽呈核准後改價要寫原因');
+      const saved = insert('quotes', { line_id: line.id, amount, quoted_at: args.quoted_at || now, reason: args.reason, doc_url: args.doc_url });
+      log(line.activity_id, 'quotes', saved.id, '新增', previous === null
+        ? '「' + line.item + '」報價 ' + fmt(amount)
+        : '「' + line.item + '」改價 ' + fmt(previous) + ' → ' + fmt(amount) + (args.reason ? '（' + args.reason + '）' : ''));
+      return { table: 'quotes', row: saved };
     }
     if (op === 'set_budget_status') {
-      const activity = find('activities', args.activity_id || args.id);
-      ensureOpen(activity.id);
-      const from = BUDGET_STATUSES.indexOf(activity.budget_status || '草稿');
-      const to = BUDGET_STATUSES.indexOf(args.status);
-      if (to === -1) fail('沒有這個預算狀態：' + args.status);
-      if (to !== from + 1) fail('預算要依序推進：' + BUDGET_STATUSES.join(' → '));
-      activity.budget_status = args.status;
-      if (args.status === '已提報') activity.budget_submitted_at = today;
-      if (args.status === '已核准') {
-        activity.budget_approved_at = today;
+      const activity = find('activities', args.activity_id, '活動');
+      guard('activities', activity.id);
+      const status = String(args.status || '');
+      if (BUDGET_STATUSES.indexOf(status) === -1) fail('預算狀態不正確：' + status);
+      if (status === '草稿' && activity.budget_approved_at) fail('已核准的預算不能退回草稿');
+      activity.budget_status = status;
+      if (status === '已提報') activity.budget_submitted_at = activity.budget_submitted_at || today;
+      if (status === '已核准') {
         let total = 0;
         byActivity(db.budget_lines, activity.id).forEach(line => {
-          const q = latestQuote(line.id, db.quotes);
-          if (q != null) { line.approved_amount = q; line.updated_at = now; total += q; }
+          const quote = latestQuote(line.id, db.quotes);
+          if (quote === null) return;
+          line.approved_amount = quote;
+          line.updated_at = now;
+          total += quote;
         });
+        activity.budget_submitted_at = activity.budget_submitted_at || today;
+        activity.budget_approved_at = now;
         activity.approved_total = total;
       }
       activity.updated_at = now;
-      log(activity.id, 'activities', activity.id, '狀態變更', '預算' + args.status);
+      log(activity.id, 'activities', activity.id, '狀態變更', '預算' + status + (status === '已核准' ? '，簽呈金額 ' + fmt(activity.approved_total) : ''));
       return { table: 'activities', row: activity };
     }
     if (op === 'set_request_status') {
-      const request = find('payment_requests', args.id);
-      ensureOpen(request.activity_id);
-      const from = REQUEST_STATUSES.indexOf(request.status || '待申請');
-      const to = REQUEST_STATUSES.indexOf(args.status);
-      if (to === -1) fail('沒有這個申請單狀態：' + args.status);
-      if (to <= from) fail('申請單狀態只能往前推進');
-      request.status = args.status;
-      if (args.request_no) request.request_no = args.request_no;
-      if (to >= 1 && !request.requested_at) request.requested_at = today;
-      if (to === 2) request.paid_at = args.paid_at || today;
-      request.updated_at = now;
-      log(request.activity_id, 'payment_requests', request.id, '狀態變更', (request.payee_name || '') + request.stage + '申請單' + args.status);
+      const request = find('payment_requests', args.id, '申請單');
+      guard('payment_requests', request.activity_id);
+      const status = String(args.status || '');
+      if (REQUEST_STATUSES.indexOf(status) === -1) fail('申請單狀態不正確：' + status);
+      const fields = { status };
+      if (args.request_no) fields.request_no = args.request_no;
+      if (status === '已申請') fields.requested_at = args.date || request.requested_at || today;
+      if (status === '公司已匯款') { fields.requested_at = request.requested_at || args.requested_at || today; fields.paid_at = args.date || today; }
+      if (status === '待申請') { fields.requested_at = ''; fields.paid_at = ''; }
+      patch(request, fields);
+      log(request.activity_id, 'payment_requests', request.id, '狀態變更', '申請單「' + (request.purpose || request.id) + '」' + status);
       return { table: 'payment_requests', row: request };
     }
     if (op === 'confirm_expense') {
-      const expense = find('expenses', args.id);
-      ensureOpen(expense.activity_id);
-      if (expense.status !== '待確認') fail('這筆支出已經確認過了');
-      const category = args.category || expense.category || expense.suggested_category;
-      if (!category) fail('請先選預算項目');
-      expense.category = category;
-      expense.status = '待核銷';
-      expense.updated_at = now;
-      log(expense.activity_id, 'expenses', expense.id, '狀態變更', '確認支出：' + expense.item);
+      const expense = find('expenses', args.id, '支出');
+      if (expense.status !== '待確認') fail('這筆支出已確認過');
+      guard('expenses', expense.activity_id);
+      const fields = Object.assign({}, args.row || {});
+      delete fields.id;
+      delete fields.deleted_at;
+      checkMoney(fields);
+      fields.status = '待核銷';
+      fields.category = args.category || fields.category || expense.category || expense.suggested_category || '';
+      patch(expense, fields);
+      log(expense.activity_id, 'expenses', expense.id, '狀態變更', '確認支出「' + (expense.item || expense.id) + '」');
       return { table: 'expenses', row: expense };
     }
-    if (['lock_close', 'reply_accounting', 'settle', 'close'].indexOf(op) !== -1) {
-      const activity = find('activities', args.activity_id || args.id);
-      const stage = CLOSE_STAGES.indexOf(closeStage(activity));
-      const need = { lock_close: 0, reply_accounting: 1, settle: 2, close: 3 }[op];
-      if (stage !== need) fail('核銷要依序進行：' + CLOSE_STAGES.slice(1).join(' → '));
-      if (op === 'lock_close') {
-        byActivity(db.expenses, activity.id).forEach(e => { if (e.status === '待核銷') { e.status = '已核銷'; e.updated_at = now; } });
-        const petty = pettySettlement(activity, db.expenses);
-        activity.locked_at = now;
-        activity.settle_direction = petty.direction;
-        activity.settle_amount_expected = petty.amount;
-        activity.close_stage = '已核銷';
-      }
-      if (op === 'reply_accounting') { activity.replied_at = now; activity.close_stage = '已回覆會計'; }
-      if (op === 'settle') {
-        const actual = checkAmount(args.amount, '實際金額');
-        const expected = num(activity.settle_amount_expected) || 0;
-        if (actual !== expected && !String(args.reason || '').trim()) fail('實際金額 ' + fmt(actual) + ' 和系統算的 ' + fmt(expected) + ' 不同，請寫原因');
-        activity.settle_amount_actual = actual;
-        if (args.reason) activity.settle_note = args.reason;
-        activity.settled_at = now;
-        activity.close_stage = '已結清';
-      }
-      if (op === 'close') { activity.closed_at = now; activity.close_stage = '已結案'; }
-      activity.updated_at = now;
-      const text = { lock_close: '完成核銷並鎖定', reply_accounting: '已回覆會計', settle: '零用金已結清', close: '結案' }[op];
-      log(activity.id, 'activities', activity.id, '狀態變更', text);
+    if (op === 'lock_close') {
+      const activity = find('activities', args.activity_id, '活動');
+      if (activity.closed_at) fail('活動已結案');
+      if (activity.locked_at) fail('已經核銷鎖定過');
+      const expenses = byActivity(db.expenses, activity.id);
+      const waiting = expenses.filter(e => e.status === '待確認').length;
+      if (waiting) fail('還有 ' + waiting + ' 筆支出待確認，確認後才能核銷');
+      expenses.filter(e => e.status === '待核銷').forEach(e => { e.status = '已核銷'; e.updated_at = now; });
+      const petty = pettySettlement(activity, db.expenses);
+      patch(activity, { locked_at: now, close_stage: '已核銷', settle_direction: petty.direction, settle_amount_expected: petty.amount });
+      log(activity.id, 'activities', activity.id, '狀態變更', '核銷鎖定，零用金' + petty.direction + (petty.amount ? ' ' + fmt(petty.amount) : ''));
       return { table: 'activities', row: activity };
     }
-    return fail('不認得的操作：' + op);
+    if (op === 'reply_accounting' || op === 'settle' || op === 'close') {
+      const activity = find('activities', args.activity_id, '活動');
+      const step = {
+        reply_accounting: ['locked_at', 'replied_at', '已回覆會計'],
+        settle: ['replied_at', 'settled_at', '已結清'],
+        close: ['settled_at', 'closed_at', '已結案']
+      }[op];
+      if (activity.closed_at) fail('活動已結案');
+      if (!activity[step[0]]) fail('上一個步驟還沒完成');
+      if (activity[step[1]]) fail('這個步驟已經完成過');
+      const fields = { [step[1]]: args.date || now, close_stage: step[2] };
+      if (op === 'settle') {
+        const actual = num(args.amount);
+        if (actual === null) fail('請填實際匯款金額');
+        const expected = num(activity.settle_amount_expected) || 0;
+        const note = String(args.note || '').trim();
+        if (actual !== expected && !note) fail('實際金額和系統算的 ' + fmt(expected) + ' 不同，請寫原因');
+        fields.settle_amount_actual = actual;
+        fields.settle_note = note;
+      }
+      patch(activity, fields);
+      log(activity.id, 'activities', activity.id, '狀態變更', step[2] + (fields.settle_note ? '（' + fields.settle_note + '）' : ''));
+      return { table: 'activities', row: activity };
+    }
+    return fail('不支援的動作：' + op);
   }
 
   return {
@@ -503,6 +526,6 @@
     num, nextId, quotesOf, latestQuote, requestsOfLine, linePayment, lineStage,
     isPossibleDuplicate, needsReceipt, pettySettlement, activityState, closeStage,
     activitySummary, categoryComparison, changesSinceApproval, todoCounts,
-    isTrue, activityIdFor, closeChecks, proposalText, historySummary, searchAll, applyWrite
+    isTrue, activityIdFor, closeChecks, proposalText, historyTable, rundownTimes, applyWrite
   };
 });

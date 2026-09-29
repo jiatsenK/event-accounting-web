@@ -116,69 +116,81 @@ assert.ok(text.includes('人均 2,161 元'));
 assert.ok(text.includes('上一屆人均 2,000 元'));
 assert.ok(D.proposalText({ id: 'x', name: '家庭日', type: '家庭日' }, db).includes('費用擬依活動分攤設定辦理'));
 
-// 歷史分析
-const hist = D.historySummary({
-  activities: [{ id: 'old', name: '舊', date: '2025-01-01', closed_at: '2025-02-01', actual_headcount: 100 }, { id: 'new', name: '新', date: '2027-01-01', est_headcount: 200 }],
-  budget_categories: [{ name: '場地', order: 1 }, { name: '酒水', order: 2 }],
-  budget_lines: [{ id: 'L1', activity_id: 'new', category: '場地' }],
-  quotes: [{ id: 'Q1', line_id: 'L1', amount: 1000 }],
-  expenses: [
-    { id: 'E1', activity_id: 'old', category: '酒水', amount: 300, method: '活動零用金', status: '已核銷' },
-    { id: 'E2', activity_id: 'old', category: '場地', amount: 5000, method: '公司轉帳', status: '已核銷' },
-    { id: 'E3', activity_id: 'new', category: '場地', amount: 900, method: '公司轉帳', status: '待核銷' },
-    { id: 'E4', activity_id: 'new', category: '酒水', amount: 50, method: '個人代墊', status: '待核銷' }
+// 歷史分析表（後端 history 回傳 → 畫面欄列）
+const table = D.historyTable({
+  activities: [
+    { id: 'new', name: '新', date: '2027-01-01', est_headcount: 200, categories: { '場地': 900, '酒水': 50 } },
+    { id: 'old', name: '舊', date: '2025-01-01', closed_at: '2025-02-01', actual_headcount: 100, est_headcount: 120, categories: { '酒水': 300, '場地': 5000 } },
+    { id: 'empty', name: '空', date: '2026-01-01', categories: {} }
   ],
+  budget_categories: [{ name: '酒水', order: 2 }, { name: '場地', order: 1 }],
   drink_records: [{ id: 'D1', activity_id: 'old', category: '啤酒', consumed_units: 24, unit_capacity_ml: 330 }]
 });
-assert.deepStrictEqual(hist.activities.map(a => [a.id, a.total, a.headcount]), [['old', 5300, 100], ['new', 1050, 200]]);
-assert.deepStrictEqual(hist.categories, ['場地', '酒水']);
-assert.deepStrictEqual(hist.drinks, [{ activity_id: 'old', category: '啤酒', liters: 7.9 }]);
+assert.deepStrictEqual(table.columns.map(c => [c.id, c.total, c.headcount, c.perHead]), [['old', 5300, 100, 53], ['new', 950, 200, 5]]);
+assert.deepStrictEqual(table.categories, ['場地', '酒水']);
+assert.deepStrictEqual(table.drinks, [{ category: '啤酒', liters: { old: 7.9 } }]);
 
-// 搜尋
-const found = D.searchAll(Object.assign({ vendors: [{ id: 'V1', name: '某飯店' }] }, db, { budget_lines: db.budget_lines.map(l => Object.assign({ vendor_id: l.id === 'L-000001' ? 'V1' : '' }, l)) }), '飯店');
-assert.deepStrictEqual(found.budget_lines.map(l => l.id), ['L-000001']);
-assert.deepStrictEqual(found.vendors.map(v => v.id), ['V1']);
-assert.deepStrictEqual(D.searchAll(db, '  ').expenses, []);
+// 流程表時間
+const times = D.rundownTimes([
+  { id: 'b', order: 2, duration_min: 15 }, { id: 'a', order: 1, duration_min: 30, anchor_time: '17:30' },
+  { id: 'c', order: 3, duration_min: 10, anchor_time: '18:30' }, { id: 'd', order: 4, duration_min: 5 }
+], '17:00');
+assert.deepStrictEqual(times.map(t => t.segment.id + ' ' + t.start + '-' + t.end), ['a 17:30-18:00', 'b 18:00-18:15', 'c 18:30-18:40', 'd 18:40-18:45']);
 
-// 寫入規則
+// 寫入規則（對齊後端 Ops.gs）
 const ctx = { now: '2026-09-29T10:00:00+08:00', today: '2026-09-29' };
 const w = JSON.parse(JSON.stringify(db));
 w.activities[0].budget_status = '已提報';
+delete w.activities[0].budget_approved_at;
 w.activities.push({ id: 'draft', name: '草稿活動', budget_status: '草稿' });
 const created = D.applyWrite(w, 'create', { table: 'budget_lines', row: { activity_id: 'yearend2026', item: '舞台', category: '場地' } }, ctx);
 assert.strictEqual(created.row.id, 'L-000005');
 assert.strictEqual(created.row.created_at, ctx.now);
 assert.strictEqual(w.activity_log.length, 1);
-D.applyWrite(w, 'add_quote', { line_id: 'L-000005', amount: 40000, reason: '第一次報價' }, ctx);
+D.applyWrite(w, 'add_quote', { line_id: 'L-000005', amount: 40000 }, ctx);
 assert.strictEqual(D.latestQuote('L-000005', w.quotes), 40000);
 assert.throws(() => D.applyWrite(w, 'add_quote', { line_id: 'L-000005', amount: -1 }, ctx), /0 以上的整數/);
-assert.throws(() => D.applyWrite(w, 'set_budget_status', { activity_id: 'draft', status: '已核准' }, ctx), /依序/);
+assert.throws(() => D.applyWrite(w, 'set_budget_status', { activity_id: 'draft', status: '核准' }, ctx), /不正確/);
 D.applyWrite(w, 'set_budget_status', { activity_id: 'yearend2026', status: '已核准' }, ctx);
-assert.strictEqual(w.activities[0].budget_approved_at, '2026-09-29');
+assert.strictEqual(w.activities[0].budget_approved_at, ctx.now);
 assert.strictEqual(w.budget_lines.find(l => l.id === 'L-000001').approved_amount, 486400);
 assert.strictEqual(w.budget_lines.find(l => l.id === 'L-000003').approved_amount, 25000, '沒有報價的維持原值');
 assert.strictEqual(w.activities[0].approved_total, 486400 + 150000 + 30000 + 40000);
+assert.throws(() => D.applyWrite(w, 'set_budget_status', { activity_id: 'yearend2026', status: '草稿' }, ctx), /不能退回/);
+assert.throws(() => D.applyWrite(w, 'add_quote', { line_id: 'L-000005', amount: 42000 }, ctx), /要寫原因/);
+D.applyWrite(w, 'add_quote', { line_id: 'L-000005', amount: 42000, reason: '加燈光' }, Object.assign({}, ctx, { now: '2026-09-30T09:00:00+08:00' }));
+assert.deepStrictEqual(D.changesSinceApproval(w.activities[0], w).map(c => c.line.id), ['L-000005']);
+D.applyWrite(w, 'update', { table: 'payment_requests', row: { id: 'R-3', status: '公司已匯款', purpose: '尾款' } }, ctx);
+assert.deepStrictEqual([w.payment_requests[2].status, w.payment_requests[2].purpose], ['待申請', '尾款'], 'update 不能直接改狀態');
 D.applyWrite(w, 'set_request_status', { id: 'R-3', status: '已申請', request_no: 'PR-1' }, ctx);
 assert.deepStrictEqual([w.payment_requests[2].status, w.payment_requests[2].requested_at, w.payment_requests[2].request_no], ['已申請', '2026-09-29', 'PR-1']);
-assert.throws(() => D.applyWrite(w, 'set_request_status', { id: 'R-3', status: '待申請' }, ctx), /往前/);
+assert.throws(() => D.applyWrite(w, 'delete', { table: 'payment_requests', id: 'R-3' }, ctx), /不能刪除/);
+const madeReq = D.applyWrite(w, 'create', { table: 'payment_requests', row: { activity_id: 'yearend2026', stage: '追加', amount: 10, status: '公司已匯款' } }, ctx);
+assert.strictEqual(madeReq.row.status, '待申請', '新申請單一律待申請');
+D.applyWrite(w, 'delete', { table: 'payment_requests', id: madeReq.row.id }, ctx);
+assert.ok(madeReq.row.deleted_at);
+assert.throws(() => D.applyWrite(w, 'lock_close', { activity_id: 'yearend2026' }, ctx), /待確認/);
 D.applyWrite(w, 'confirm_expense', { id: 'E-3', category: '場地' }, ctx);
 assert.deepStrictEqual([w.expenses[2].status, w.expenses[2].category], ['待核銷', '場地']);
-const withId = D.applyWrite(w, 'create', { table: 'expenses', row: { activity_id: 'yearend2026', item: '冰塊', amount: 600, method: '活動零用金' } }, Object.assign({ idFor: () => 'tmp-1' }, ctx));
-assert.deepStrictEqual([withId.row.id, withId.row.status, withId.row.source, withId.row.date], ['tmp-1', '待核銷', '網頁', '2026-09-29']);
-assert.throws(() => D.applyWrite(w, 'reply_accounting', { activity_id: 'yearend2026' }, ctx), /依序/);
+assert.throws(() => D.applyWrite(w, 'confirm_expense', { id: 'E-3' }, ctx), /確認過/);
+const withId = D.applyWrite(w, 'create', { table: 'expenses', row: { activity_id: 'yearend2026', item: '冰塊', amount: 600, method: '活動零用金', date: '2026-09-29' } }, Object.assign({ idFor: () => 'tmp-1' }, ctx));
+assert.deepStrictEqual([withId.row.id, withId.row.status, withId.row.source], ['tmp-1', '待核銷', '網頁']);
+assert.throws(() => D.applyWrite(w, 'reply_accounting', { activity_id: 'yearend2026' }, ctx), /上一個步驟/);
 D.applyWrite(w, 'lock_close', { activity_id: 'yearend2026' }, ctx);
 assert.ok(w.expenses.filter(e => e.activity_id === 'yearend2026').every(e => e.status === '已核銷'));
 // 30000 − (1240 + 600) − (385 + 410 + 410) = 26955
 assert.deepStrictEqual([w.activities[0].settle_direction, w.activities[0].settle_amount_expected], ['回沖', 26955]);
 assert.throws(() => D.applyWrite(w, 'update', { table: 'expenses', row: { id: 'E-1', amount: 1 } }, ctx), /鎖定/);
+D.applyWrite(w, 'set_request_status', { id: 'R-2', status: '公司已匯款' }, ctx);
 D.applyWrite(w, 'reply_accounting', { activity_id: 'yearend2026' }, ctx);
+assert.throws(() => D.applyWrite(w, 'reply_accounting', { activity_id: 'yearend2026' }, ctx), /完成過/);
 assert.throws(() => D.applyWrite(w, 'settle', { activity_id: 'yearend2026', amount: 26000 }, ctx), /請寫原因/);
-D.applyWrite(w, 'settle', { activity_id: 'yearend2026', amount: 26000, reason: '手續費' }, ctx);
+D.applyWrite(w, 'settle', { activity_id: 'yearend2026', amount: 26000, note: '手續費' }, ctx);
 assert.deepStrictEqual([w.activities[0].settle_amount_actual, w.activities[0].settle_note, D.closeStage(w.activities[0])], [26000, '手續費', '已結清']);
 D.applyWrite(w, 'close', { activity_id: 'yearend2026' }, ctx);
 assert.strictEqual(D.activityState(w.activities[0]), '已結案');
-D.applyWrite(w, 'delete', { table: 'payment_requests', row: { id: 'R-2' } }, Object.assign({ allowLocked: true }, ctx));
-assert.ok(w.payment_requests[1].deleted_at);
-assert.throws(() => D.applyWrite(w, 'create', { table: 'nope', row: {} }, ctx), /沒有這張表/);
+assert.throws(() => D.applyWrite(w, 'update', { table: 'payment_requests', row: { id: 'R-2', note: 'x' } }, ctx), /已結案/);
+assert.throws(() => D.applyWrite(w, 'create', { table: 'nope', row: {} }, ctx), /不能寫入/);
+assert.throws(() => D.applyWrite(w, 'create', { table: 'activities', row: { name: '沒代碼' } }, ctx), /活動代碼/);
 
 console.log('v2 domain: all passed');
