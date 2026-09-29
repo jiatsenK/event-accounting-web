@@ -92,6 +92,17 @@
     };
   }
 
+  function estimatePettyCashReturn(activity, expenses) {
+    const advance = optionalNonNegativeNumber(activity && activity.petty_cash_advance, '零用金暫支');
+    const deductions = (expenses || []).reduce((sum, row) => {
+      const method = String(row && row.payment_method || '').trim();
+      return method === '個人代墊' || method === '活動零用金'
+        ? sum + expenseAmount(row)
+        : sum;
+    }, 0);
+    return advance === null ? null : advance - deductions;
+  }
+
   function summarizeBudgetBreakdown(activity, expenses) {
     const configured = Array.isArray(activity && activity.budget_items) ? activity.budget_items : [];
     const items = configured.map(item => ({
@@ -149,6 +160,29 @@
     }) || null;
   }
 
+  function findPossibleDuplicates(expenses) {
+    const groups = new Map();
+    (expenses || []).forEach(row => {
+      const key = JSON.stringify([
+        String(row && row.activity_id || '').trim(),
+        String(row && row.date || '').trim(),
+        expenseAmount(row)
+      ]);
+      const group = groups.get(key) || [];
+      group.push(String(row && row.expense_id || '').trim());
+      groups.set(key, group);
+    });
+
+    const duplicateIds = new Set();
+    groups.forEach(ids => {
+      if (ids.length < 2) return;
+      ids.forEach(id => {
+        if (id) duplicateIds.add(id);
+      });
+    });
+    return duplicateIds;
+  }
+
   function summarizeDashboard(activity, expenses) {
     const rows = expenses || [];
     const budget = optionalNonNegativeNumber(activity && activity.budget, '活動預算');
@@ -171,6 +205,7 @@
       pettyCashAdvance: settlement.advance,
       pettyCashUsed: settlement.deductionTotal,
       pettyCashRemaining: settlement.settlementAmount,
+      pettyCashEstimatedReturn: estimatePettyCashReturn(activity, rows),
       budgetBreakdown,
       pendingAdvances: Array.from(pendingByPayer, ([payer, amount]) => ({ payer, amount }))
     };
@@ -435,6 +470,7 @@
     validateExpense,
     summarizeExpenses,
     summarizePettyCashSettlement,
+    estimatePettyCashReturn,
     summarizeBudgetBreakdown,
     summarizeDashboard,
     summarizePaymentMethods,
@@ -443,7 +479,8 @@
     isAlreadySubmittedExpense,
     allocateAmount,
     expenseEditableFieldsEqual,
-    findDuplicateExpense
+    findDuplicateExpense,
+    findPossibleDuplicates
   };
 });
 
@@ -472,13 +509,45 @@ if (typeof window !== 'undefined') {
       } catch (_) {}
     }
 
+    function applyPettyCashEstimateDisplay() {
+      try {
+        if (typeof state === 'undefined' || !state.activity) return;
+        const value = document.querySelector('#pettyCashEstimate');
+        if (!value) return;
+        const estimate = EventAccountingDomain.estimatePettyCashReturn(state.activity, state.expenses || []);
+        if (estimate === null) {
+          value.textContent = '—';
+        } else if (estimate > 0) {
+          value.textContent = `應匯回 ${typeof money === 'function' ? money(estimate) : estimate}`;
+        } else if (estimate < 0) {
+          value.textContent = `補請 ${typeof money === 'function' ? money(Math.abs(estimate)) : Math.abs(estimate)}`;
+        } else {
+          value.textContent = '無需匯回或補請';
+        }
+      } catch (_) {}
+    }
+
     if (typeof render === 'function') {
       const baseRender = render;
       render = function (data) {
         baseRender(data);
         applySemanticBudgetDisplay();
+        applyPettyCashEstimateDisplay();
       };
       applySemanticBudgetDisplay();
+      applyPettyCashEstimateDisplay();
+    }
+
+    // 帳務模組可能在 window load 後才動態載入，這時 render 尚未宣告、無法包裝；
+    // 觀察既有暫支欄位的每次重繪，確保預估列仍會跟著同一批 state 更新。
+    const pettyCashAdvance = document.querySelector('#pettyCashAdvance');
+    if (pettyCashAdvance && typeof window.MutationObserver === 'function') {
+      new window.MutationObserver(applyPettyCashEstimateDisplay).observe(pettyCashAdvance, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+      applyPettyCashEstimateDisplay();
     }
   };
 
