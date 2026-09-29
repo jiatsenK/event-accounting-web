@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const views = require('../accounting-views.js');
 
-test('帳務掛載模板保留既有 panel，不再有廠商主檔／款項申請', () => {
+test('帳務掛載模板：六個分頁中的帳務 panel，款項申請與核銷收尾接回', () => {
   assert.match(views.template, /data-tab-panel="overview"/);
   assert.match(views.template, /data-tab-panel="expenses"/);
   assert.match(views.template, /data-tab-panel="budget"/);
@@ -11,8 +11,18 @@ test('帳務掛載模板保留既有 panel，不再有廠商主檔／款項申�
   assert.match(views.template, /id="advanceBudgetStatus"/);
   assert.match(views.template, /id="downloadBudgetProposal"/);
   assert.doesNotMatch(views.template, /data-tab-panel="vendors"/);
-  assert.doesNotMatch(views.template, /data-tab-panel="payment_requests"/);
-  assert.match(views.template, /data-tab-panel="reimbursement"/);
+  assert.match(views.template, /data-tab-panel="payment_requests"/);
+  assert.match(views.template, /id="paymentRequestForm"/);
+  assert.match(views.template, /data-vendor-payments/);
+  assert.match(views.template, /data-tab-panel="close"/);
+  assert.doesNotMatch(views.template, /data-tab-panel="reimbursement"/);
+  // 核銷分頁：收尾清單、零用金結算、完成核銷、三表預覽與下載、沖銷申請單。
+  ['closeChecklist', 'pettySettlement', 'closeFinalizeSlot', 'exportPreview', 'generateReimbursementReport', 'openSettlementRequest']
+    .forEach(id => assert.match(views.template, new RegExp('id="' + id + '"')));
+  const close = views.template.slice(views.template.indexOf('data-tab-panel="close"'));
+  assert.ok(close.indexOf('id="pettySettlement"') < close.indexOf('id="closeFinalizeSlot"'));
+  assert.ok(close.indexOf('id="closeFinalizeSlot"') < close.indexOf('id="exportPreview"'));
+  assert.ok(close.indexOf('id="exportPreview"') < close.indexOf('id="openSettlementRequest"'));
   assert.match(views.template, /id="expenseSection"/);
   assert.match(views.template, /id="personalAdvanceSection" hidden/);
   assert.match(views.template, /data-expense-view="expenses"/);
@@ -26,7 +36,7 @@ test('帳務掛載模板保留既有 panel，不再有廠商主檔／款項申�
 test('帳務既有 scripts 由同一 mount 依序載入', () => {
   assert.deepEqual(views.scriptSources.map(item => item.key), [
     'exceljs', 'docx', 'accounting-domain', 'activity-budget', 'accounting-core', 'accounting-ui', 'activity-budget-ui',
-    'accounting-issue17', 'accounting-settlement'
+    'accounting-issue17', 'accounting-settlement', 'payment-request', 'payment-request-ui', 'workbench-ui'
   ]);
   assert.equal(
     views.scriptSources.find(item => item.key === 'accounting-core').src,
@@ -40,7 +50,7 @@ test('入口外殼與帳務模板不共用 status/activity selector id', () => {
   const shell = fs.readFileSync(__dirname + '/../index.html', 'utf8');
   const entry = fs.readFileSync(__dirname + '/../activity-app.js', 'utf8');
   assert.match(shell, /id="platformStatus"/);
-  assert.match(entry, /id="platformActivitySelector"/);
+  assert.match(entry, /data-open-activity/);
   assert.doesNotMatch(entry, /id="activitySelector"/);
   assert.equal((views.template.match(/id="status"/g) || []).length, 1);
   assert.equal((views.template.match(/id="activitySelector"/g) || []).length, 1);

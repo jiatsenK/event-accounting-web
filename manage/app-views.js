@@ -5,27 +5,44 @@
 })(typeof window !== 'undefined' ? window : null, function () {
   'use strict';
 
+  // #155：活動頁六個分頁；「規劃」分頁含三個子頁（流程表、獎項、飲品），
+  // 其餘分頁一頁對一個 view。歷史分析是跨活動的獨立一區。
+  function tab(id, label, views) {
+    return Object.freeze({
+      id,
+      label,
+      views: Object.freeze((views || [{ id, label }]).map(item => Object.freeze(item)))
+    });
+  }
+
   const AREAS = Object.freeze({
-    accounting: Object.freeze({
-      label: '活動帳務',
-      views: Object.freeze([
-        Object.freeze({ id: 'overview', label: '總覽' }),
-        Object.freeze({ id: 'budget', label: '活動預算' }),
-        Object.freeze({ id: 'expenses', label: '支出明細' }),
-        Object.freeze({ id: 'prizes', label: '獎項' }),
-        Object.freeze({ id: 'reimbursement', label: '核銷整理' })
+    activity: Object.freeze({
+      label: '活動',
+      tabs: Object.freeze([
+        tab('overview', '總覽'),
+        tab('budget', '預算與廠商'),
+        tab('planning', '規劃', [{ id: 'rundown', label: '流程表' }, { id: 'prizes', label: '獎項' }, { id: 'drinks', label: '飲品' }]),
+        tab('payment_requests', '款項申請'),
+        tab('expenses', '支出'),
+        tab('close', '核銷')
       ])
     }),
-    planning: Object.freeze({
-      label: '活動規劃',
-      views: Object.freeze([
-        Object.freeze({ id: 'history', label: '歷史紀錄' }),
-        Object.freeze({ id: 'forecast', label: '規劃試算' }),
-        Object.freeze({ id: 'rundown', label: '流程表' }),
-        Object.freeze({ id: 'dashboard', label: '歷史分析' })
-      ])
+    analysis: Object.freeze({
+      label: '歷史分析',
+      tabs: Object.freeze([tab('dashboard', '歷史分析')])
     })
   });
+
+  function areaViews(areaId) {
+    const area = AREAS[areaId];
+    return area ? area.tabs.reduce((list, item) => list.concat(item.views), []) : [];
+  }
+
+  function tabForView(areaId, viewId) {
+    const area = AREAS[areaId];
+    if (!area) return null;
+    return area.tabs.find(item => item.views.some(view => view.id === viewId)) || area.tabs[0];
+  }
 
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, char => ({
@@ -46,25 +63,15 @@
   }
 
   const DEFAULT_VIEW_MODULES = Object.freeze({
-    'accounting:overview': Object.freeze({
-      mount(container, context) {
-        container.innerHTML = '<div class="view-placeholder view-placeholder-ready">' +
-          '<p class="view-kicker">掛載骨架已就緒</p>' +
-          '<h2>帳務總覽</h2>' +
-          '<p>下一步會把既有帳務 DOM 與 <code>assets/app-core.js</code> 接到這個掛載點，不改寫帳務計算與匯出邏輯。</p>' +
-          '<p class="view-context">activity_id：<strong>' + escapeHtml(context.activityId) + '</strong></p>' +
-          '</div>';
-      }
-    }),
-    'accounting:expenses': stubView('支出明細', '此 view 將沿用既有支出清單、篩選與編輯邏輯。'),
-    'accounting:budget': stubView('活動預算', '此 view 將建立與核准活動預算。'),
-    'accounting:vendors': stubView('廠商主檔', '此 view 將讀取正式廠商主檔。'),
-    'accounting:payment_requests': stubView('款項申請', '此 view 將列出款項申請單、依狀態篩選並可產出 xlsx。'),
-    'accounting:reimbursement': stubView('核銷整理', '此 view 將沿用既有核銷預覽與 Excel 匯出邏輯。'),
-    'planning:history': stubView('歷史紀錄', '此 view 將接上規劃資料層的歷史資料讀取。'),
-    'planning:forecast': stubView('規劃試算', '此 view 將接上規劃資料層的試算與建議量計算。'),
-    'planning:rundown': stubView('流程表', '此 view 將接上流程表資料層（rundown 讀寫與四種列印版本）。'),
-    'planning:dashboard': stubView('歷史分析', '此 view 將接上跨活動歷史分析資料層。')
+    'activity:overview': stubView('總覽', '此 view 將沿用既有帳務總覽。'),
+    'activity:budget': stubView('預算與廠商', '此 view 將沿用既有活動預算。'),
+    'activity:rundown': stubView('流程表', '此 view 將接上流程表資料層。'),
+    'activity:prizes': stubView('獎項', '此 view 將接上獎項資料。'),
+    'activity:drinks': stubView('飲品', '此 view 將接上飲品規劃試算與歷史紀錄。'),
+    'activity:payment_requests': stubView('款項申請', '此 view 將列出款項申請單。'),
+    'activity:expenses': stubView('支出', '此 view 將沿用既有支出清單。'),
+    'activity:close': stubView('核銷', '此 view 將沿用既有核銷預覽與 Excel 匯出。'),
+    'analysis:dashboard': stubView('歷史分析', '此 view 將接上跨活動歷史分析資料層。')
   });
 
   function mountFailure(container, error) {
@@ -92,10 +99,10 @@
     let renderVersion = 0;
 
     rootElement.innerHTML = '<header class="section-header">' +
-      '<button class="back-button" type="button" data-back>← 回活動管理</button>' +
-      '<div><p class="eyebrow" data-area-label></p><h1 data-activity-name></h1></div>' +
+      '<button class="back-button" type="button" data-back>← 回活動列表</button>' +
+      '<div><p class="eyebrow" data-area-label></p><h1 data-activity-name></h1><p class="activity-state" data-activity-state hidden></p></div>' +
       '<div class="section-header-actions" data-header-actions></div>' +
-      '</header><nav class="section-tabs" data-section-tabs></nav><div data-view-stack></div>';
+      '</header><nav class="section-tabs" data-section-tabs></nav><nav class="section-subtabs" data-section-subtabs hidden></nav><div data-view-stack></div>';
     const headerActions = rootElement.querySelector('[data-header-actions]');
     rootElement.addEventListener('click', event => {
       if (event.target.closest('[data-back]')) {
@@ -109,12 +116,24 @@
     async function render(route, activity) {
       const area = AREAS[route.area];
       if (!area) throw new RangeError('未知的活動區塊');
-      const currentView = area.views.find(item => item.id === route.view) || area.views[0];
+      const currentTab = tabForView(route.area, route.view);
+      const currentView = currentTab.views.find(item => item.id === route.view) || currentTab.views[0];
       rootElement.querySelector('[data-area-label]').textContent = area.label;
-      rootElement.querySelector('[data-activity-name]').textContent = activity && activity.name || route.activityId;
+      rootElement.querySelector('[data-activity-name]').textContent = route.area === 'analysis'
+        ? '各場活動比較' : (activity && activity.name || route.activityId);
+      const stateLabel = rootElement.querySelector('[data-activity-state]');
+      const closed = route.area === 'activity' && String(activity && activity.status || '').trim() === '已結案';
+      stateLabel.hidden = !closed;
+      stateLabel.textContent = closed ? '已結案：往年紀錄，帳務已鎖定，只能查看' : '';
       const tabs = rootElement.querySelector('[data-section-tabs]');
-      tabs.setAttribute('aria-label', area.label + '功能');
-      tabs.innerHTML = area.views.map(item => '<button type="button" data-view="' + item.id + '" aria-pressed="' + String(item.id === currentView.id) + '"' +
+      tabs.setAttribute('aria-label', area.label + '分頁');
+      tabs.hidden = area.tabs.length <= 1;
+      tabs.innerHTML = area.tabs.map(item => '<button type="button" data-view="' + item.views[0].id + '" aria-pressed="' + String(item.id === currentTab.id) + '"' +
+        (item.id === currentTab.id ? ' class="active"' : '') + '>' + escapeHtml(item.label) + '</button>').join('');
+      const subtabs = rootElement.querySelector('[data-section-subtabs]');
+      subtabs.hidden = currentTab.views.length <= 1;
+      subtabs.setAttribute('aria-label', currentTab.label + '子頁');
+      subtabs.innerHTML = currentTab.views.length <= 1 ? '' : currentTab.views.map(item => '<button type="button" data-view="' + item.id + '" aria-pressed="' + String(item.id === currentView.id) + '"' +
         (item.id === currentView.id ? ' class="active"' : '') + '>' + escapeHtml(item.label) + '</button>').join('');
 
       const version = ++renderVersion;
@@ -148,6 +167,8 @@
 
   return {
     AREAS,
+    areaViews,
+    tabForView,
     DEFAULT_VIEW_MODULES,
     viewKey,
     mountView,

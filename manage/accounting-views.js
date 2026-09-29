@@ -20,9 +20,42 @@
     '<textarea name="note" placeholder="備註／價差原因"></textarea><div class="form-actions"><button id="submitBudgetLine" type="submit">儲存品項</button><button id="cancelBudgetEdit" class="secondary" type="button" hidden>取消修改</button></div><div id="activityBudgetFormStatus" class="status form-status" aria-live="polite"></div></form></div>' +
     '<div id="activityBudgetStatusMessage" class="status form-status" aria-live="polite"></div><div class="budget-table-wrap"><table class="budget-table"><thead><tr><th>預算項目</th><th>廠商</th><th>品項</th><th class="num">單價</th><th class="num">數量</th><th class="num">含稅金額</th><th class="num">廠商總額</th><th class="num">去年同項</th><th>付款／備註</th><th></th></tr></thead>' +
     '<tbody id="activityBudgetRows"><tr><td colspan="10" class="empty">讀取中…</td></tr></tbody></table></div></div></section>';
+  // #155：款項申請分頁（一張＝一個收款對象的一次付款），下方依收款對象加總已申請／已匯款。
+  const PAYMENT_REQUEST_PANEL = '<section class="tab-panel" data-tab-panel="payment_requests" role="tabpanel" hidden>' +
+    '<div class="card"><div class="section-heading"><div><h2>款項申請單</h2><div class="muted">一張＝一個收款對象的一次付款；訂金、尾款、追加、回沖、零用金請款各開一張</div></div>' +
+    '<button id="showPaymentRequestEditor" type="button">新增申請單</button></div>' +
+    '<div class="payment-request-toolbar"><div class="status-tabs" role="group" aria-label="依狀態篩選" id="paymentRequestStatusTabs"></div>' +
+    '<select id="paymentRequestRecipientFilter" aria-label="依收款對象篩選"><option value="">全部收款對象</option></select></div>' +
+    '<div id="paymentRequestEditor" class="editor-panel" hidden><div class="section-heading"><h2 id="paymentRequestFormTitle">新增款項申請單</h2><button id="closePaymentRequestEditor" class="secondary" type="button">關閉</button></div>' +
+    '<form id="paymentRequestForm"><div class="row"><input name="收款對象" list="paymentRequestRecipients" placeholder="收款對象（廠商名稱或個人帳戶）" required><datalist id="paymentRequestRecipients"></datalist>' +
+    '<select name="付款階段"><option value="">付款階段</option><option value="訂金">訂金</option><option value="尾款">尾款</option><option value="追加">追加</option><option value="回沖">回沖</option><option value="零用金請款">零用金請款</option></select></div>' +
+    '<div class="row"><input name="金額合計" type="number" step="1" placeholder="金額合計（回沖填負數）" required><input name="申請日期" type="date" aria-label="申請日期"><input name="匯款期限" type="date" aria-label="匯款期限"></div>' +
+    '<input name="用途說明" placeholder="用途說明，一句話：活動＋用途">' +
+    '<div class="row"><input name="expense_ids" placeholder="涵蓋的支出編號（逗號分隔，選填）"><input name="附憑證張數" type="number" min="0" step="1" placeholder="附憑證張數"></div>' +
+    '<div class="row"><select name="簽核狀態"><option value="待申請">待申請</option><option value="已申請">已申請</option><option value="公司已匯款">公司已匯款</option></select></div>' +
+    '<textarea name="備註" placeholder="備註（選填）"></textarea>' +
+    '<div class="form-actions"><button id="submitPaymentRequest" type="submit">儲存申請單</button><button id="cancelPaymentRequestEdit" class="secondary" type="button" hidden>取消修改</button></div>' +
+    '<div id="paymentRequestFormStatus" class="status form-status" aria-live="polite"></div></form></div>' +
+    '<div id="paymentRequestStatusMessage" class="status form-status" aria-live="polite"></div><div class="payment-request-table-wrap"><table class="payment-request-table"><thead><tr><th>申請日期</th><th>收款對象</th><th>付款階段</th><th class="num">金額合計</th><th>用途說明</th><th>匯款期限</th><th>狀態</th><th></th></tr></thead>' +
+    '<tbody id="paymentRequestRows"><tr><td colspan="8" class="empty">讀取中…</td></tr></tbody></table></div></div>' +
+    '<div class="card section"><div class="section-heading"><div><h2>各收款對象付款進度</h2><div class="muted">依申請單加總；「已申請」包含公司已匯款的單</div></div></div><div data-vendor-payments></div></div></section>';
+  // 預算與廠商分頁下方：同一份付款進度，對照預算看每家廠商付到哪。
+  const BUDGET_VENDOR_PAYMENTS = '<div class="card section"><div class="section-heading"><div><h2>廠商付款進度</h2><div class="muted">來自款項申請單；訂金、尾款、追加分開列，不用再合併儲存格</div></div><button type="button" class="link-button" data-open-tab="payment_requests">看申請單</button></div><div data-vendor-payments></div></div>';
+  // #155 第 8、13 項：核銷分頁照 14 步的第 14 步排成收尾清單，
+  // 零用金結算、完成核銷、三表預覽與下載、回覆會計、結清都在這一頁。
+  function closeStep(number, title, body) {
+    return '<div class="card close-step" data-close-step="' + number + '"><div class="close-step-head"><span class="close-step-mark" aria-hidden="true">' + number + '</span>' +
+      '<div><h2>' + title + '</h2><div class="muted" data-close-step-note></div></div></div>' + body + '</div>';
+  }
+  const CLOSE_PANEL_HEAD = '<section class="tab-panel" data-tab-panel="close" role="tabpanel" hidden>' +
+    '<div class="card close-intro"><h2>核銷收尾</h2><p class="muted">活動結束後照順序做完。整份費用提報回公司、零用金結清，才算核銷完成。</p><ol id="closeChecklist" class="close-checklist"></ol></div>' +
+    closeStep(1, '確認支出都登記了', '<div class="close-step-actions"><button type="button" class="secondary" data-open-tab="expenses">到支出分頁檢查</button></div>') +
+    closeStep(2, '零用金結算', '<div id="pettySettlement"></div>') +
+    closeStep(3, '完成核銷並鎖定', '<div class="close-step-actions" id="closeFinalizeSlot"></div><div id="closeFinalizeStatus" class="status form-status" aria-live="polite"></div>');
+  const CLOSE_PANEL_REPLY = closeStep(5, '回覆會計：沖銷申請單', '<div id="closeSettlementSummary"></div><div class="close-step-actions"><button type="button" id="openSettlementRequest">開沖銷申請單</button></div>') +
+    closeStep(6, '結清', '<p class="muted">公司收到匯回的錢（或補款給你）之後，在第 2 步填沖銷日期並存檔。</p>');
   function templateWithAccountingPanels() {
     const marker = '<section class="tab-panel" data-tab-panel="reimbursement"';
-    const settlement = '<section class="card section"><h2>零用金結算</h2><div id="pettySettlement"></div></section>';
     const advances = '<div class="card" id="personalAdvanceSection" hidden><div class="section-heading"><div><h2>個人代墊明細</h2></div></div><form id="advanceQuery" class="table-tools"><label>代墊人（完整姓名；留空看本活動全部）<input id="advancePayer" type="search"></label><label><input id="advanceHistory" type="checkbox">跨活動查詢</label><button type="submit">查詢</button></form><p class="muted">已請款依請款單編號計算，與核銷狀態分開。歷史舊狀態保留原值。</p><div id="personalAdvanceGroups" aria-live="polite"></div></div>';
     const expenseViewToggle = '<div class="view-toggle" role="group" aria-label="切換支出檢視"><button type="button" class="view-toggle-button active" data-expense-view="expenses" aria-pressed="true">支出明細</button><button type="button" class="view-toggle-button" data-expense-view="advances" aria-pressed="false">個人代墊</button></div>';
     return ACCOUNTING_TEMPLATE
@@ -30,8 +63,10 @@
         '核銷狀態由支付方式自動帶入，不在此手動改。',
         '支出登記時一律為待核銷，活動後才整批改為已核銷，不在此手動修改核銷狀態。'
       )
-      .replace(marker, BUDGET_PANEL + marker)
-      .replace('<div class="overview-split section">', settlement + '<div class="overview-split section">')
+      .replace(marker, BUDGET_PANEL.replace(/<\/section>$/, BUDGET_VENDOR_PAYMENTS + '</section>') + PAYMENT_REQUEST_PANEL + marker)
+      .replace(marker + ' role="tabpanel" hidden>\n    <div class="card">', CLOSE_PANEL_HEAD + '\n    <div class="card close-step" data-close-step="4">')
+      .replace('<h2>核銷整理</h2><div class="muted">下載前先確認最後會如何合併與顯示</div>', '<div class="close-step-head"><span class="close-step-mark" aria-hidden="true">4</span><div><h2>結算表：核銷總覽、零用金使用明細、分攤表</h2><div class="muted">下載前先看預覽，確認最後會怎麼合併與顯示</div></div></div>')
+      .replace('<div id="reportStatus" class="status form-status" aria-live="polite"></div></div>\n  </section>', '<div id="reportStatus" class="status form-status" aria-live="polite"></div></div>' + CLOSE_PANEL_REPLY + '\n  </section>')
       .replace(
         '<section class="tab-panel" data-tab-panel="expenses" role="tabpanel" hidden>\n    <div class="card">',
         '<section class="tab-panel" data-tab-panel="expenses" role="tabpanel" hidden>\n    ' + expenseViewToggle + '\n    <div class="card" id="expenseSection">'
@@ -53,7 +88,10 @@
     Object.freeze({ key: 'accounting-ui', src: '../assets/accounting-ui.js?v=20260904-46' }),
     Object.freeze({ key: 'activity-budget-ui', src: '../assets/activity-budget-ui.js?v=20260916-01' }),
     Object.freeze({ key: 'accounting-issue17', src: '../assets/issue17.js?v=20260918-01' }),
-    Object.freeze({ key: 'accounting-settlement', src: '../assets/settlement-ui.js?v=20260906-52' })
+    Object.freeze({ key: 'accounting-settlement', src: '../assets/settlement-ui.js?v=20260906-52' }),
+    Object.freeze({ key: 'payment-request', src: '../assets/payment-request.js?v=20260929-01' }),
+    Object.freeze({ key: 'payment-request-ui', src: '../assets/payment-request-ui.js?v=20260929-01' }),
+    Object.freeze({ key: 'workbench-ui', src: '../assets/workbench-ui.js?v=20260929-01' })
   ]);
   let dependenciesPromise = null;
   let initialized = false;

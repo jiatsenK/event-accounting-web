@@ -183,9 +183,28 @@
     }
   });
 
+  // #155：規劃分頁的「飲品」子頁＝本場的建議採購量試算＋往年飲品紀錄，
+  // 兩個既有畫面上下排，不改內容。
+  const drinks = Object.freeze({
+    async mount(container, context) {
+      container.innerHTML = '<div class="drinks-view"><section data-drinks-forecast></section>' +
+        '<section data-drinks-history class="section"></section></div>';
+      const forecastBox = container.querySelector('[data-drinks-forecast]');
+      const historyBox = container.querySelector('[data-drinks-history]');
+      const failed = (box, error) => {
+        box.innerHTML = '<div class="planning-app"><div class="no-data">' + escapeHtml(error && error.message || '讀取失敗') + '</div></div>';
+      };
+      await Promise.all([
+        forecast.mount(forecastBox, context).catch(error => failed(forecastBox, error)),
+        history.mount(historyBox, context).catch(error => failed(historyBox, error))
+      ]);
+    }
+  });
+
   return {
     history,
     forecast,
+    drinks,
     hasAccountingPurchasePending,
     estimatedHeadcount,
     eventTotals,
