@@ -335,8 +335,11 @@ async function saveInlineExpense(expenseId, field, td) {
       setInlineExpenseStatus('沒有需要儲存的變更');
       return;
     }
-    setInlineExpenseStatus('正在儲存修改…');
-    const confirmed = await apiWrite({ action: 'update_expense', expense_id: expenseId, ...expense });
+    setInlineExpenseStatus('儲存中…');
+    const confirmed = await apiWrite(
+      { action: 'update_expense', expense_id: expenseId, ...expense },
+      { optimistic: optimisticExpenseView }
+    );
     render(confirmed);
     setInlineExpenseStatus('已儲存修改');
   } catch (err) {

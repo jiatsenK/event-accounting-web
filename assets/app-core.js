@@ -106,7 +106,7 @@ function expenseMatches(row, expense) {
   return EventAccountingDomain.expenseEditableFieldsEqual(row, expense);
 }
 
-async function apiWrite(fields) {
+async function apiWriteConfirmed(fields) {
   if (!state.apiUrl || !state.token) throw new Error('尚未輸入存取碼');
   const action = fields.action;
   const budgetAction = ['save_activity_budget_line', 'delete_activity_budget_line', 'update_budget_status'].includes(action);
@@ -201,6 +201,129 @@ async function apiWrite(fields) {
   }
 }
 
+function markOptimisticRow(savingRow) {
+  if (!savingRow) return;
+  const row = Array.from(document.querySelectorAll(savingRow.selector)).find(element =>
+    String(element.getAttribute(savingRow.attribute) || '') === String(savingRow.value || '')
+  );
+  if (!row) return;
+  row.querySelectorAll('button, input, select, textarea').forEach(control => { control.disabled = true; });
+  const marker = document.createElement('span');
+  marker.className = 'saving-marker';
+  marker.textContent = '儲存中…';
+  (row.lastElementChild || row).appendChild(marker);
+}
+
+function applyOptimisticUpdate(projection) {
+  if (!projection || typeof projection.render !== 'function') return null;
+  let settled = false;
+  projection.render(projection.next);
+  markOptimisticRow(projection.savingRow);
+  return {
+    confirm(confirmed) {
+      if (settled) return confirmed;
+      settled = true;
+      projection.render(confirmed);
+      return confirmed;
+    },
+    rollback() {
+      if (settled) return;
+      settled = true;
+      projection.render(projection.previous);
+    }
+  };
+}
+
+function currentAccountingView() {
+  return {
+    activity: state.activity,
+    allocation: state.allocation,
+    expenses: state.expenses.slice(),
+    backend_version: state.backendVersion,
+    capabilities: state.capabilities.slice(),
+    payment_methods: (state.paymentMethods || []).slice(),
+    reimbursement_statuses: (state.reimbursementStatuses || []).slice()
+  };
+}
+
+function optimisticExpenseView(fields) {
+  const previous = currentAccountingView();
+  const rows = previous.expenses.map(row => ({ ...row }));
+  const expense = { ...fields };
+  delete expense.action;
+  if (fields.action === 'update_expense') {
+    const index = rows.findIndex(row => String(row.expense_id || '') === String(fields.expense_id || ''));
+    if (index >= 0) rows[index] = { ...rows[index], ...expense };
+  } else {
+    expense.expense_id = 'optimistic-expense-' + Date.now();
+    expense.reimbursement_status = expense.reimbursement_status || '待核銷';
+    rows.push(expense);
+  }
+  const savingId = fields.expense_id || expense.expense_id;
+  return {
+    previous,
+    next: { ...previous, expenses: rows, _optimistic: true },
+    render,
+    savingRow: { selector: '[data-expense-id]', attribute: 'data-expense-id', value: savingId }
+  };
+}
+
+function optimisticBudgetLineView(fields, renderView) {
+  const previous = state.activityBudget || { activity: {}, rows: [] };
+  const rows = (Array.isArray(previous.rows) ? previous.rows : []).map(row => ({ ...row }));
+  const savedId = String(fields.budget_line_id || ('optimistic-budget-' + Date.now()));
+  const knownVendor = (previous.vendors || []).find(item =>
+    String(item.vendor_key || '') === String(fields.vendor_key || '')
+  );
+  const line = { ...fields, budget_line_id: savedId, vendor: fields.vendor || (knownVendor && knownVendor.name) || '' };
+  delete line.action;
+  delete line.activity_id;
+  const index = rows.findIndex(row => String(row.budget_line_id || '') === savedId);
+  if (index >= 0) rows[index] = { ...rows[index], ...line };
+  else rows.push(line);
+  const totals = new Map();
+  const vendorKey = row => String(row.vendor_key || '').trim()
+    ? 'key:' + String(row.vendor_key).trim()
+    : 'name:' + String(row.vendor || '').trim();
+  rows.forEach(row => totals.set(vendorKey(row), (totals.get(vendorKey(row)) || 0) + Number(row.amount || 0)));
+  rows.forEach(row => { row.vendor_total = totals.get(vendorKey(row)); });
+  return {
+    previous,
+    next: { ...previous, rows, total: rows.reduce((sum, row) => sum + Number(row.amount || 0), 0) },
+    render: renderView,
+    savingRow: { selector: '[data-budget-line-id]', attribute: 'data-budget-line-id', value: savedId }
+  };
+}
+
+function optimisticPaymentRequestView(fields, currentRows, renderView) {
+  const previous = { requests: (currentRows || []).map(row => ({ ...row })) };
+  const rows = previous.requests.map(row => ({ ...row }));
+  const request = window.PaymentRequest.normalizeRequest(fields);
+  request.request_id = request.request_id || ('optimistic-request-' + Date.now());
+  const index = rows.findIndex(row => String(row.request_id || '') === request.request_id);
+  if (index >= 0) rows[index] = { ...rows[index], ...request };
+  else rows.push(request);
+  return {
+    previous,
+    next: { requests: rows },
+    render: renderView,
+    savingRow: { selector: '[data-request-id]', attribute: 'data-request-id', value: request.request_id }
+  };
+}
+
+async function apiWrite(fields, options = {}) {
+  const optimisticUpdate = typeof options.optimistic === 'function'
+    ? applyOptimisticUpdate(options.optimistic(fields))
+    : null;
+  try {
+    const confirmed = await apiWriteConfirmed(fields);
+    return optimisticUpdate ? optimisticUpdate.confirm(confirmed) : confirmed;
+  } catch (error) {
+    if (optimisticUpdate) optimisticUpdate.rollback();
+    throw error;
+  }
+}
+
 async function refresh() {
   const activityId = state.activityId;
   const requestId = ++refreshToken;
@@ -288,7 +411,7 @@ async function loadVendors() {
 }
 
 function render(data) {
-  cacheAccounting(state.activityId, data);
+  if (!data._optimistic) cacheAccounting(state.activityId, data);
   const activity = data.activity || {};
   const expenses = data.expenses || [];
   state.activity = activity;
@@ -446,16 +569,22 @@ async function submitExpense(event) {
         setExpenseStatus('沒有需要儲存的變更');
         return;
       }
-      setExpenseStatus('正在儲存修改…');
-      const confirmed = await apiWrite({ action: 'update_expense', expense_id: state.editingExpenseId, ...expense });
+      setExpenseStatus('儲存中…');
+      const confirmed = await apiWrite(
+        { action: 'update_expense', expense_id: state.editingExpenseId, ...expense },
+        { optimistic: optimisticExpenseView }
+      );
       resetExpenseForm();
       render(confirmed);
       setExpenseStatus('已儲存修改');
       return;
     }
 
-    setExpenseStatus('正在登記支出…');
-    const confirmed = await apiWrite({ action: 'add_expense', ...expense });
+    setExpenseStatus('儲存中…');
+    const confirmed = await apiWrite(
+      { action: 'add_expense', ...expense },
+      { optimistic: optimisticExpenseView }
+    );
     resetExpenseForm();
     render(confirmed);
     setExpenseStatus('已登記支出');

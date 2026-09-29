@@ -40,7 +40,7 @@ test('帳務既有 scripts 由同一 mount 依序載入', () => {
   ]);
   assert.equal(
     views.scriptSources.find(item => item.key === 'accounting-core').src,
-    '../assets/app-core.js?v=20260916-01'
+    '../assets/app-core.js?v=20260929-155c'
   );
   assert.equal(views.cacheKey, 'accounting');
 });
