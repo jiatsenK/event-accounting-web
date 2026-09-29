@@ -190,13 +190,19 @@
         '簽核狀態': form.get('簽核狀態'),
         '備註': form.get('備註')
       });
-      setPaymentRequestFormStatus('正在儲存…');
+      setPaymentRequestFormStatus('儲存中…');
       await apiWrite({
         action: 'save_payment_request', activity_id: state.activityId, request_id: request.request_id,
         '收款對象': request['收款對象'], '付款階段': request['付款階段'], '金額合計': request['金額合計'],
         '申請日期': request['申請日期'], '匯款期限': request['匯款期限'], '用途說明': request['用途說明'],
         expense_ids: request.expense_ids.join(','), '附憑證張數': request['附憑證張數'],
         '簽核狀態': request['簽核狀態'], '備註': request['備註']
+      }, {
+        optimistic: fields => optimisticPaymentRequestView(fields, allRequests, payload => {
+          allRequests = Array.isArray(payload.requests) ? payload.requests : [];
+          renderRecipientOptions();
+          renderPaymentRequests();
+        })
       });
       await loadPaymentRequests();
       resetPaymentRequestForm();

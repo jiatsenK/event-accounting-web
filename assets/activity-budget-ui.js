@@ -219,8 +219,11 @@
         payment_terms: form.get('payment_terms'),
         note: form.get('note')
       });
-      setBudgetFormStatus('正在儲存…');
-      const payload = await apiWrite({ action: 'save_activity_budget_line', activity_id: state.activityId, ...line });
+      setBudgetFormStatus('儲存中…');
+      const payload = await apiWrite(
+        { action: 'save_activity_budget_line', activity_id: state.activityId, ...line },
+        { optimistic: fields => optimisticBudgetLineView(fields, renderActivityBudget) }
+      );
       renderActivityBudget(payload);
       resetBudgetForm();
       $('#budgetEditor').hidden = true;
