@@ -59,15 +59,15 @@
     const viewHost = viewsApi.createViewHost(sectionView, {
       navigate: next => router.navigate(next),
       modules: {
-        'accounting:overview': win.AccountingViews,
-        'accounting:budget': win.AccountingViews,
-        'accounting:expenses': win.AccountingViews,
-        'accounting:prizes': win.PrizeViews,
-        'accounting:reimbursement': win.AccountingViews,
-        'planning:history': win.PlanningViews && win.PlanningViews.history,
-        'planning:forecast': win.PlanningViews && win.PlanningViews.forecast,
-        'planning:rundown': win.RundownViews && win.RundownViews.rundown,
-        'planning:dashboard': win.DashboardViews && win.DashboardViews.dashboard
+        'activity:overview': win.AccountingViews,
+        'activity:budget': win.AccountingViews,
+        'activity:payment_requests': win.AccountingViews,
+        'activity:expenses': win.AccountingViews,
+        'activity:close': win.AccountingViews,
+        'activity:rundown': win.RundownViews && win.RundownViews.rundown,
+        'activity:prizes': win.PrizeViews,
+        'activity:drinks': win.PlanningViews && win.PlanningViews.drinks,
+        'analysis:dashboard': win.DashboardViews && win.DashboardViews.dashboard
       }
     });
 
@@ -84,40 +84,42 @@
       return activities.find(item => String(item.activity_id || '') === activityId) || fallbackActivity(activityId);
     }
 
+    // #155：入口改成活動列表（ERP 的單據列表），點一場活動進活動頁六個分頁。
+    // 已結案的活動留在列表當往年紀錄，點進去看當年完整的帳（帳務已鎖定、唯讀）。
     function renderEntry(route) {
-      const activity = selectedActivity(route.activityId);
-      // 篩選只影響下拉選單列出哪些活動；目前活動一律留著，不然切換中的活動會從清單消失。
-      const visibleActivities = activities.filter(item =>
-        !statusFilter || item.status === statusFilter || String(item.activity_id) === route.activityId);
+      const visibleActivities = activities.filter(item => !statusFilter || String(item.status || '').trim() === statusFilter);
       const filterButtons = ['', ...STATUS_FILTERS].map(value => {
         const label = value || '全部';
         const active = statusFilter === value;
+        const count = activities.filter(item => !value || String(item.status || '').trim() === value).length;
         return '<button type="button" class="status-filter" data-status-filter="' + escapeHtml(value) + '"' +
-          (active ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' + escapeHtml(label) + '</button>';
+          (active ? ' aria-pressed="true"' : ' aria-pressed="false"') + '>' + escapeHtml(label) + ' <span class="count">' + count + '</span></button>';
+      }).join('');
+      const rows = visibleActivities.map(item => {
+        const id = String(item.activity_id || '');
+        const historical = isHistoricalActivity(item);
+        const meta = [item.date ? '活動日期 ' + item.date : '', item.activity_type || ''].filter(Boolean).join(' · ');
+        return '<button type="button" class="activity-row' + (id === route.activityId ? ' current' : '') + '" data-open-activity="' + escapeHtml(id) + '">' +
+          '<span class="activity-row-name">' + escapeHtml(canonicalActivityName(item)) + '</span>' +
+          '<span class="activity-row-meta">' + escapeHtml(meta || '—') + '</span>' +
+          '<span class="activity-row-status ' + (historical ? 'closed' : 'open') + '">' + escapeHtml(item.status || '未設定') + '</span>' +
+          '<b aria-hidden="true">→</b></button>';
       }).join('');
       entryView.innerHTML = '<header class="entry-header"><div><p class="eyebrow">活動管理</p>' +
-        '<h1>' + escapeHtml(canonicalActivityName(activity)) + '</h1><p class="muted">先確認活動，再選擇要處理的區塊。</p></div>' +
+        '<h1>活動</h1><p class="muted">點一場活動，預算、款項申請、支出和核銷都在同一頁。已結案的活動就是往年紀錄。</p></div>' +
         '<div class="activity-picker"><div class="status-filters" role="group" aria-label="依狀態篩選活動">' + filterButtons + '</div>' +
-        '<label><span>切換活動</span><select id="platformActivitySelector" aria-label="切換活動">' +
-        visibleActivities.map(item => '<option value="' + escapeHtml(item.activity_id) + '"' +
-          (String(item.activity_id) === route.activityId ? ' selected' : '') + '>' + escapeHtml(canonicalActivityName(item)) + '</option>').join('') +
-        '</select></label></div></header><div class="area-grid" aria-label="活動區塊">' +
-        (isHistoricalActivity(activity)
-          ? '<button type="button" class="area-card" data-area="planning" data-view="dashboard"><span>歷史帳務</span><small>已結案，帳務已鎖定；用圖表看歷史金額</small><b aria-hidden="true">→</b></button>'
-          : '<button type="button" class="area-card" data-area="accounting"><span>活動帳務</span><small>總覽、活動預算、支出明細、核銷整理</small><b aria-hidden="true">→</b></button>') +
-        '<button type="button" class="area-card" data-area="planning"><span>活動規劃</span><small>歷史紀錄、規劃試算、流程表</small><b aria-hidden="true">→</b></button></div>';
-      const selector = entryView.querySelector('#platformActivitySelector');
-      selector.disabled = visibleActivities.length <= 1;
-      selector.addEventListener('change', event => router.replace({ activityId: event.target.value }));
+        '<button type="button" class="secondary" data-open-analysis>歷史分析</button></div></header>' +
+        '<div class="activity-list" aria-label="活動列表">' + (rows || '<div class="empty">沒有符合條件的活動</div>') + '</div>';
       Array.from(entryView.querySelectorAll('[data-status-filter]')).forEach(button => {
         button.addEventListener('click', () => {
           statusFilter = button.dataset.statusFilter;
           renderEntry(route);
         });
       });
-      Array.from(entryView.querySelectorAll('[data-area]')).forEach(button => {
-        button.addEventListener('click', () => router.navigate({ area: button.dataset.area, view: button.dataset.view || '' }));
+      Array.from(entryView.querySelectorAll('[data-open-activity]')).forEach(button => {
+        button.addEventListener('click', () => router.navigate({ activityId: button.dataset.openActivity, area: 'activity', view: 'overview' }));
       });
+      entryView.querySelector('[data-open-analysis]').addEventListener('click', () => router.navigate({ area: 'analysis', view: 'dashboard' }));
     }
 
     function renderRoute(route) {

@@ -1,0 +1,46 @@
+/* #155 活動工作台：活動列表、規劃子頁、款項申請篩選、核銷收尾清單。 */
+.activity-picker { align-self: end; }
+.activity-picker > button { justify-self: start; min-height: 2rem; padding: 0 var(--space-xs); cursor: pointer; color: var(--color-accent); background: var(--color-surface); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-input); }
+.status-filters { flex-wrap: wrap; }
+.status-filter .count { color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.activity-list { display: grid; gap: var(--space-2xs); padding: var(--space-lg) 0; }
+.activity-list .empty { color: var(--color-muted); padding: var(--space-md) 0; }
+.activity-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto; gap: var(--space-sm); align-items: center; min-height: 3.5rem; padding: var(--space-xs) var(--space-sm); text-align: left; color: var(--color-ink); background: var(--color-surface); border: var(--rule-thin) solid var(--color-rule); border-radius: var(--radius-card); cursor: pointer; transition: border-color var(--dur-short) var(--ease-out); }
+.activity-row:hover, .activity-row.current { border-color: var(--color-accent); }
+.activity-row-name { font-weight: 760; overflow-wrap: anywhere; }
+.activity-row-meta { color: var(--color-muted); font-size: var(--text-sm); }
+.activity-row-status { font-size: var(--text-sm); padding: 0.1rem 0.6rem; border-radius: 999px; white-space: nowrap; }
+.activity-row-status.open { color: #28566f; background: #e8f0f6; }
+.activity-row-status.closed { color: #5b5b55; background: #eeeeea; }
+.activity-row b { color: var(--color-accent); }
+.activity-state { margin: var(--space-3xs) 0 0; color: var(--color-muted); font-size: var(--text-sm); }
+.section-subtabs { display: flex; gap: var(--space-2xs); padding: var(--space-xs) 0 0; }
+.section-subtabs button { min-height: 2rem; padding: 0 var(--space-sm); color: var(--color-muted); background: transparent; border: var(--rule-thin) solid var(--color-rule); border-radius: 999px; cursor: pointer; }
+.section-subtabs button.active { color: var(--color-ink); background: var(--color-surface); border-color: var(--color-accent); }
+.accounting-app .payment-request-toolbar { justify-content: space-between; margin-top: 12px; }
+.accounting-app .payment-request-toolbar select { width: auto; min-width: 12rem; }
+.accounting-app .status-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.accounting-app .vendor-payment-table { min-width: 720px; }
+.accounting-app .vendor-payment-table .muted { font-size: 12px; }
+.accounting-app .close-intro p { margin: 4px 0 12px; }
+.accounting-app .close-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.accounting-app .close-checklist li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; }
+.accounting-app .close-checklist li > span:last-child { display: grid; }
+.accounting-app .close-step-mark { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; font-weight: 760; color: #2f4858; background: #e8f0f6; flex: none; }
+.accounting-app .close-checklist li.done .close-step-mark, .accounting-app .close-step.done .close-step-mark { color: #fff; background: #28603c; }
+.accounting-app .close-step { margin-top: 14px; }
+.accounting-app .close-step-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+.accounting-app .close-step-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.accounting-app .close-step.done { border-color: #cfe3d4; }
+@media (max-width: 48rem) {
+  .activity-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .activity-row-meta { grid-column: 1; }
+  .activity-row b { display: none; }
+  .accounting-app .payment-request-toolbar select { width: 100%; }
+}
+.accounting-app #pettySettlement input[type="checkbox"] { width: auto; height: auto; min-height: 0; margin: 0 6px 0 0; vertical-align: middle; }
+.accounting-app #pettySettlement label { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.accounting-app #pettySettlement label.advance-row { justify-content: space-between; }
+.accounting-app .status-tabs .status-filter { min-height: 2rem; padding: 0 10px; font-size: 14px; font-weight: 600; color: #73736d; background: #fff; border: 1px solid #e1e4de; border-radius: 999px; }
+.accounting-app .status-tabs .status-filter[aria-pressed="true"] { color: #252525; background: #eef2ef; border-color: #2f4858; }
+.accounting-app .status-tabs .status-filter .count { color: #73736d; }
