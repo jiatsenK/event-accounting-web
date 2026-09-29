@@ -84,6 +84,55 @@
   flex-wrap: nowrap;
 }
 
+.accounting-app .budget-output-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #e3e6e0;
+  border-radius: 10px;
+  background: #fafbf9;
+}
+
+.accounting-app .budget-output-panel h3 {
+  margin: 0;
+}
+
+.accounting-app #budgetProposalText {
+  width: 100%;
+  min-height: 190px;
+  margin-top: 12px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.65;
+  background: #fff;
+}
+
+.accounting-app .budget-sheet-preview {
+  margin-top: 20px;
+}
+
+.accounting-app .budget-sheet-preview-wrap {
+  overflow: auto;
+}
+
+.accounting-app .budget-sheet-preview table {
+  min-width: 860px;
+}
+
+.accounting-app .budget-sheet-preview td[rowspan] {
+  vertical-align: middle;
+  font-weight: 750;
+}
+
+.accounting-app .budget-sheet-preview tfoot th {
+  border-top: 3px double #252825;
+}
+
+.accounting-app .budget-download-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .accounting-app .danger-outline {
   color: #8f2e2e;
   border-color: #d9b5b5;

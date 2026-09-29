@@ -129,6 +129,30 @@
     return { title, intro };
   }
 
+  function proposalText(payload) {
+    const copy = proposalCopy(payload);
+    return [
+      '主旨：' + copy.title,
+      '說明：',
+      ...copy.intro,
+      '預估總額：$' + money(payload && payload.total)
+    ].join('\n');
+  }
+
+  function budgetSheetRows(payload) {
+    const rows = Array.isArray(payload && payload.rows) ? payload.rows : [];
+    return groupRows(rows).flatMap(group => group.rows.map((row, index) => ({
+      vendor: index === 0 ? group.vendor : null,
+      vendor_row_span: index === 0 ? group.rows.length : 0,
+      item: row.item,
+      unit_price: Number(row.unit_price),
+      quantity: Number(row.quantity),
+      amount: Number(row.amount),
+      total: index === 0 ? group.total : null,
+      note: row.note || row.payment_terms || null
+    })));
+  }
+
   function applyBudgetCell(cell, options) {
     const opts = options || {};
     cell.font = { name: 'Microsoft JhengHei', size: opts.size || 14, bold: Boolean(opts.bold) };
@@ -145,7 +169,8 @@
     if (!ExcelJS || !ExcelJS.Workbook) throw new Error('Excel 產生器尚未載入');
     const activity = payload.activity || {};
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
-    if (!rows.length) throw new Error('活動預算尚無品項');
+    const sheetRows = budgetSheetRows(payload);
+    if (!sheetRows.length) throw new Error('活動預算尚無品項');
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'event-accounting';
     const sheet = workbook.addWorksheet('預估費用', {
@@ -173,28 +198,32 @@
     });
     sheet.getRow(2).height = 40;
     let rowNumber = 3;
-    groupRows(rows).forEach(group => {
-      const start = rowNumber;
-      group.rows.forEach(row => {
-        const excelRow = sheet.getRow(rowNumber);
-        excelRow.height = 40;
-        excelRow.values = [null, row.item, Number(row.unit_price), Number(row.quantity), Number(row.amount), null, row.note || row.payment_terms || null];
-        for (let column = 1; column <= 7; column += 1) applyBudgetCell(excelRow.getCell(column));
-        excelRow.getCell(3).numFmt = '#,##0';
-        excelRow.getCell(5).numFmt = '$#,##0';
-        rowNumber += 1;
-      });
-      const end = rowNumber - 1;
-      if (end > start) {
-        sheet.mergeCells(`A${start}:A${end}`);
-        sheet.mergeCells(`F${start}:F${end}`);
+    const groupRanges = [];
+    sheetRows.forEach(row => {
+      const excelRow = sheet.getRow(rowNumber);
+      excelRow.height = 40;
+      excelRow.values = [row.vendor, row.item, row.unit_price, row.quantity, row.amount, row.total, row.note];
+      for (let column = 1; column <= 7; column += 1) applyBudgetCell(excelRow.getCell(column));
+      excelRow.getCell(3).numFmt = '#,##0';
+      excelRow.getCell(5).numFmt = '$#,##0';
+      if (row.vendor_row_span) {
+        const start = rowNumber;
+        const end = start + row.vendor_row_span - 1;
+        groupRanges.push({ start, end, vendor: row.vendor, total: row.total });
       }
-      sheet.getCell(`A${start}`).value = group.vendor;
-      sheet.getCell(`F${start}`).value = group.total;
-      sheet.getCell(`F${start}`).numFmt = '$#,##0';
+      rowNumber += 1;
+    });
+    groupRanges.forEach(group => {
+      if (group.end > group.start) {
+        sheet.mergeCells(`A${group.start}:A${group.end}`);
+        sheet.mergeCells(`F${group.start}:F${group.end}`);
+      }
+      sheet.getCell(`A${group.start}`).value = group.vendor;
+      sheet.getCell(`F${group.start}`).value = group.total;
+      sheet.getCell(`F${group.start}`).numFmt = '$#,##0';
       for (let column = 1; column <= 7; column += 1) {
-        sheet.getRow(start).getCell(column).border.top = { style: 'double', color: { argb: 'FF000000' } };
-        sheet.getRow(end).getCell(column).border.bottom = { style: 'double', color: { argb: 'FF000000' } };
+        sheet.getRow(group.start).getCell(column).border.top = { style: 'double', color: { argb: 'FF000000' } };
+        sheet.getRow(group.end).getCell(column).border.bottom = { style: 'double', color: { argb: 'FF000000' } };
       }
     });
     const totalRow = sheet.getRow(rowNumber);
@@ -393,6 +422,8 @@
     nextStatus,
     groupRows,
     proposalCopy,
+    proposalText,
+    budgetSheetRows,
     buildBudgetWorkbook,
     buildProposalDocument,
     downloadBudgetAttachment,
