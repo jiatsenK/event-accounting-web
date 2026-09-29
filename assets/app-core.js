@@ -238,6 +238,7 @@ function currentAccountingView() {
   return {
     activity: state.activity,
     allocation: state.allocation,
+    petty_cash_settlement: state.pettyCashSettlement || null,
     expenses: state.expenses.slice(),
     backend_version: state.backendVersion,
     capabilities: state.capabilities.slice(),
@@ -416,6 +417,7 @@ function render(data) {
   const expenses = data.expenses || [];
   state.activity = activity;
   state.allocation = data.allocation || null;
+  state.pettyCashSettlement = data.petty_cash_settlement || null;
   state.expenses = expenses;
   state.backendVersion = String(data.backend_version || '');
   state.capabilities = Array.isArray(data.capabilities) ? data.capabilities : [];
