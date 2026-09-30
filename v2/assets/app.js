@@ -445,6 +445,15 @@
       if (!root.confirm('確定刪除這張申請單？')) return;
       if (send('delete', { table: 'payment_requests', id: el.dataset.id, row: { id: el.dataset.id } })) { closeDrawer(); toast('已刪除申請單'); }
     },
+    'download-request': async el => {
+      try {
+        toast('正在產生款項申請單…');
+        await root.V2Exports.downloadPaymentRequest(root.ExcelJS, db(), el.dataset.id);
+        toast('款項申請單已下載');
+      } catch (error) {
+        drawerError(error && error.message || '產生失敗');
+      }
+    },
     'confirm-exp': el => {
       const e = expById(el.dataset.id);
       const pick = document.querySelector('[data-cat="' + CSS.escape(e.id) + '"]') || $('c_exp');

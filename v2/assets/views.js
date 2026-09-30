@@ -547,7 +547,7 @@
         + (links.length || exps.length ? '<div class="dsec"><h3>關聯</h3><div class="links">' + links.map(rl => { const l = db().budget_lines.find(x => x.id === rl.line_id) || {}; return '<button type="button" data-act="drawer" data-type="line" data-id="' + esc(rl.line_id) + '"><span><b>' + esc(l.item || rl.line_id) + '</b> NT$ ' + money(rl.amount) + '</span><span>預算品項</span></button>'; }).join('')
           + exps.map(e => '<button type="button" data-act="drawer" data-type="exp" data-id="' + esc(e.id) + '"><span><b>' + esc(e.item) + '</b> NT$ ' + money(e.amount) + '</span><span>支出</span></button>').join('') + '</div></div>' : '')
         + (d.error ? '<div class="note r">' + esc(d.error) + '</div>' : '');
-      foot = '<button class="btn sec" type="button" disabled>' + ic('file', 's') + '下載申請單（下一步做）</button>'
+      foot = '<button class="btn sec" type="button" data-act="download-request" data-id="' + esc(r.id) + '">' + ic('file', 's') + '下載申請單</button>'
         + (closed(ra) ? '' : r.status === '待申請' ? '<button class="btn" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="已申請">' + ic('send', 's') + '標記已申請</button>'
           : r.status === '已申請' ? '<button class="btn sec" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="待申請">退回待申請</button><button class="btn" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="公司已匯款">' + ic('bank', 's') + '標記公司已匯款</button>'
           : '<button class="btn sec" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="已申請">退回已申請</button>');
