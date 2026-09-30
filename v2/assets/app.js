@@ -430,8 +430,14 @@
     'req-status': el => {
       const status = el.dataset.status;
       const args = { id: el.dataset.id, status };
+      const req = db().payment_requests.find(r => r.id === args.id) || {};
+      const back = D.REQUEST_STATUSES.indexOf(status) < D.REQUEST_STATUSES.indexOf(req.status || '待申請');
+      const pick = val(status === '公司已匯款' ? 'rq_paid' : 'rq_date');
+      if (!back && pick) args.date = pick;
+      if (back && status === '已申請') args.date = req.requested_at;
+      if (status === '公司已匯款' && val('rq_sent')) args.requested_at = val('rq_sent');
       if (status === '已申請' && val('rq_no')) args.request_no = val('rq_no');
-      if (send('set_request_status', args)) toast(status === '公司已匯款' ? '已標記公司已匯款' : '已標記已申請');
+      if (send('set_request_status', args)) toast(back ? '已退回' + status : status === '公司已匯款' ? '已標記公司已匯款' : '已標記已申請');
     },
     'create-request': () => saveRequest(null),
     'save-request': el => saveRequest(el.dataset.id),

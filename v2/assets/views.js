@@ -542,13 +542,15 @@
         + '<dt>用途</dt><dd>' + esc(r.purpose || '—') + '</dd>'
         + '<dt>送出日</dt><dd class="tn">' + (r.requested_at ? dateText(r.requested_at) : '—') + '</dd><dt>公司匯款日</dt><dd class="tn">' + (r.paid_at ? dateText(r.paid_at) : '—') + '</dd>'
         + '<dt>涵蓋品項</dt><dd>' + links.length + ' 項</dd>' + (r.note ? '<dt>備註</dt><dd>' + esc(r.note) + '</dd>' : '') + '</dl></div>'
-        + (!closed(ra) && r.status === '待申請' ? '<div class="dsec"><h3>送出</h3>' + f('rq_no', '公司的申請單編號', inp('rq_no', r.request_no, 'placeholder="送出後才有，可先空白"')) + '</div>' : '')
+        + (closed(ra) ? '' : r.status === '待申請' ? '<div class="dsec"><h3>送出</h3><div class="grid2">' + f('rq_date', '送出日', inp('rq_date', todayStr(), 'type="date"')) + f('rq_no', '公司的申請單編號', inp('rq_no', r.request_no, 'placeholder="送出後才有，可先空白"')) + '</div></div>'
+          : r.status === '已申請' ? '<div class="dsec"><h3>公司匯款</h3><div class="grid2">' + f('rq_sent', '送出日', inp('rq_sent', r.requested_at, 'type="date"')) + f('rq_paid', '公司匯款日', inp('rq_paid', todayStr(), 'type="date"')) + '</div></div>' : '')
         + (links.length || exps.length ? '<div class="dsec"><h3>關聯</h3><div class="links">' + links.map(rl => { const l = db().budget_lines.find(x => x.id === rl.line_id) || {}; return '<button type="button" data-act="drawer" data-type="line" data-id="' + esc(rl.line_id) + '"><span><b>' + esc(l.item || rl.line_id) + '</b> NT$ ' + money(rl.amount) + '</span><span>預算品項</span></button>'; }).join('')
           + exps.map(e => '<button type="button" data-act="drawer" data-type="exp" data-id="' + esc(e.id) + '"><span><b>' + esc(e.item) + '</b> NT$ ' + money(e.amount) + '</span><span>支出</span></button>').join('') + '</div></div>' : '')
         + (d.error ? '<div class="note r">' + esc(d.error) + '</div>' : '');
       foot = '<button class="btn sec" type="button" disabled>' + ic('file', 's') + '下載申請單（下一步做）</button>'
         + (closed(ra) ? '' : r.status === '待申請' ? '<button class="btn" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="已申請">' + ic('send', 's') + '標記已申請</button>'
-          : r.status === '已申請' ? '<button class="btn" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="公司已匯款">' + ic('bank', 's') + '標記公司已匯款</button>' : '');
+          : r.status === '已申請' ? '<button class="btn sec" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="待申請">退回待申請</button><button class="btn" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="公司已匯款">' + ic('bank', 's') + '標記公司已匯款</button>'
+          : '<button class="btn sec" type="button" data-act="req-status" data-id="' + esc(r.id) + '" data-status="已申請">退回已申請</button>');
     }
     if ((d.type === 'req' && d.edit) || d.type === 'newReq') {
       const isNew = d.type === 'newReq';

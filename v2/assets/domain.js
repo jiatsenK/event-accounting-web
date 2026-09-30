@@ -459,8 +459,8 @@
       if (REQUEST_STATUSES.indexOf(status) === -1) fail('申請單狀態不正確：' + status);
       const fields = { status };
       if (args.request_no) fields.request_no = args.request_no;
-      if (status === '已申請') fields.requested_at = args.date || request.requested_at || today;
-      if (status === '公司已匯款') { fields.requested_at = request.requested_at || args.requested_at || today; fields.paid_at = args.date || today; }
+      if (status === '已申請') { fields.requested_at = args.date || request.requested_at || today; fields.paid_at = ''; }
+      if (status === '公司已匯款') { fields.requested_at = args.requested_at || request.requested_at || today; fields.paid_at = args.date || today; }
       if (status === '待申請') { fields.requested_at = ''; fields.paid_at = ''; }
       patch(request, fields);
       log(request.activity_id, 'payment_requests', request.id, '狀態變更', '申請單「' + (request.purpose || request.id) + '」' + status);
