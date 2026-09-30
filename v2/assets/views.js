@@ -182,7 +182,7 @@
         return '<tr><td><div class="who"><span class="av" style="background:var(--brand-soft);color:var(--brand)">' + ic('sparkle', 's') + '</span><div><b>' + esc(e.item) + '</b><small>來源 ' + esc(e.source || 'ChatGPT') + (isDup(e) ? ' · <span class="delta-up">可能重複</span>' : '') + '</small></div></div></td>'
           + '<td>' + (a ? '<a class="btn link" href="#/activity/' + esc(a.id) + '/expenses?status=待確認">' + esc(a.name) + '</a>' : esc(e.activity_id)) + '</td><td class="tn">' + dateText(e.date) + '</td><td>' + esc(e.method || '—') + '</td><td class="num">' + money(e.amount) + '</td>'
           + '<td>' + catSelect('cat_' + e.id, e.category || e.suggested_category, 'class="inline" aria-label="預算項目" data-cat="' + esc(e.id) + '"') + '</td>'
-          + '<td style="text-align:right"><button class="btn sm" type="button" data-act="confirm-exp" data-id="' + esc(e.id) + '">確認</button></td></tr>';
+          + '<td style="text-align:right;white-space:nowrap"><button class="btn sec sm" type="button" data-act="delete-exp" data-id="' + esc(e.id) + '" style="color:var(--r)">刪除</button> <button class="btn sm" type="button" data-act="confirm-exp" data-id="' + esc(e.id) + '">確認</button></td></tr>';
       }).join('') : '<tr><td colspan="7" class="empty">' + ic('check') + '<div style="margin-top:6px">都確認完了</div></td></tr>')
       + '</tbody></table></div></div>';
   }
