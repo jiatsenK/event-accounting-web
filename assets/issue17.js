@@ -160,8 +160,33 @@
         const mainRow = `<tr data-expense-id="${id}" data-payment-method="${escapeHtml(row.payment_method)}">${editableCell('date')}${editableCell('item')}${editableCell('category')}${editableCell('budget_item')}${editableCell('payment_method')}${editableCell('payer')}${statusCell}${editableCell('amount','num')}${editableCell('note')}${settlementCell}</tr>`;
         return settlementRows ? mainRow + settlementDetailRow(id, settlementRows) : mainRow;
       }).join('') : '<tr><td colspan="10" class="empty">目前沒有支出</td></tr>';
+      const duplicateIds = EventAccountingDomain.findPossibleDuplicates(rows);
+      tbody.querySelectorAll('tr[data-expense-id]').forEach(expenseRow => {
+        const isDuplicate = duplicateIds.has(String(expenseRow.dataset.expenseId || ''));
+        expenseRow.dataset.possibleDuplicate = String(isDuplicate);
+        if (!isDuplicate) return;
+        const itemCell = expenseRow.querySelector('[data-inline-edit-field="item"]')?.closest('td');
+        if (!itemCell) return;
+        const badge = document.createElement('span');
+        badge.className = 'possible-duplicate-badge';
+        badge.textContent = '可能重複';
+        itemCell.appendChild(badge);
+      });
       if (typeof window.applyExpenseFilters === 'function') window.applyExpenseFilters();
     };
+  }
+
+  const duplicateFilter = document.querySelector('#expenseDuplicateFilter');
+  if (duplicateFilter && typeof window.applyExpenseFilters === 'function') {
+    const applyBaseExpenseFilters = window.applyExpenseFilters;
+    window.applyExpenseFilters = function issue155ApplyExpenseFilters() {
+      applyBaseExpenseFilters();
+      if (!duplicateFilter.checked) return;
+      document.querySelectorAll('#expenseRows tr:not([data-possible-duplicate="true"])').forEach(row => {
+        row.hidden = true;
+      });
+    };
+    duplicateFilter.addEventListener('change', window.applyExpenseFilters);
   }
 
   document.querySelector('#expenseRows') && document.querySelector('#expenseRows').addEventListener('click', event => {
