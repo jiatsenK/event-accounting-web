@@ -187,6 +187,8 @@
       });
     };
     duplicateFilter.addEventListener('change', window.applyExpenseFilters);
+    document.querySelector('#expenseSearch')?.addEventListener('input', window.applyExpenseFilters);
+    document.querySelector('#expensePaymentFilter')?.addEventListener('change', window.applyExpenseFilters);
   }
 
   document.querySelector('#expenseRows') && document.querySelector('#expenseRows').addEventListener('click', event => {

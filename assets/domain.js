@@ -537,6 +537,18 @@ if (typeof window !== 'undefined') {
       applySemanticBudgetDisplay();
       applyPettyCashEstimateDisplay();
     }
+
+    // 帳務模組可能在 window load 後才動態載入，這時 render 尚未宣告、無法包裝；
+    // 觀察既有暫支欄位的每次重繪，確保預估列仍會跟著同一批 state 更新。
+    const pettyCashAdvance = document.querySelector('#pettyCashAdvance');
+    if (pettyCashAdvance && typeof window.MutationObserver === 'function') {
+      new window.MutationObserver(applyPettyCashEstimateDisplay).observe(pettyCashAdvance, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+      applyPettyCashEstimateDisplay();
+    }
   };
 
   if (document.readyState === 'complete') applyFrontendCompatibility();
